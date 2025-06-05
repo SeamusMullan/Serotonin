@@ -1,0 +1,5 @@
+*.o
+*.bin
+*.iso
+build-tools/bin
+build-tools/src
