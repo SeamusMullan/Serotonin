@@ -12,7 +12,7 @@
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 0
-#define KERNEL_VERSION_LOW 1 
+#define KERNEL_VERSION_LOW 2 
 
 #define KERNEL_HEAP_START 0x00F000 
 #define KERNEL_HEAP_SIZE  0x300000
@@ -40,7 +40,7 @@ inline void kernel_jump_to_higher_half(void (*entry)(unsigned long, unsigned lon
     uintptr_t offset    = flat_addr - KERNEL_PHYS_BASE;
     uintptr_t high_addr = KERNEL_VMA_BASE + offset;
     
-    printf("calling higher half %08x\n",high_addr);
+    printf("calling higher half 0x%08x\n",high_addr);
 
     asm volatile (
     "push %[arg2]\n"
@@ -180,7 +180,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     uint32_t mem_upper;
     uint32_t mem_total;
 
-	printf("serotonin kernel - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
+	printf("serotonin kernel (higher half) - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
     printf("kernel now (eip): 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x\n",kernel_current_eip(),KERNEL_HEAP_START,magic,addr);
     
     pic_remap(0x20, 0x28);
