@@ -4,13 +4,9 @@
 #include <stdint.h>
 #include <stddef.h>
 
-void printf(const char* fmt, ...) {
-    const char* p = fmt;
+void printf_internal(const char* p, void** arg_ptr) 
+{
     char buffer[32];
-
-    void** arg_ptr = (void**)(&fmt);
-    arg_ptr++; // skip format string itself
-
     while (*p) {
         if (*p == '%' && *(p + 1)) {
             p++;
@@ -49,4 +45,54 @@ void printf(const char* fmt, ...) {
         }
         p++;
     }
+}
+
+void printf(const char* fmt, ...) 
+{
+    const char* p = fmt;
+
+    void** arg_ptr = (void**)(&fmt);
+    arg_ptr++; // skip format string itself
+
+    printf_internal(p, arg_ptr);
+}
+
+void printfs_write_status(enum print_status_types status_type) {
+    tty_writestring("[");
+    switch (status_type) {
+        case PRINT_STATUS_DEBUG:
+            tty_setcolor(vga_entry_color(VGA_COLOR_WHITE,VGA_COLOR_LIGHT_BLUE));
+            tty_writestring("DDD");
+            break;
+        case PRINT_STATUS_INFO:
+            tty_setcolor(vga_entry_color(VGA_COLOR_WHITE,VGA_COLOR_BLUE));
+            tty_writestring("III");
+            break;
+        case PRINT_STATUS_WARNING:
+            tty_setcolor(vga_entry_color(VGA_COLOR_WHITE,VGA_COLOR_LIGHT_RED));
+            tty_writestring("WWW");
+            break;
+        case PRINT_STATUS_ERROR:
+            tty_setcolor(vga_entry_color(VGA_COLOR_WHITE,VGA_COLOR_RED));
+            tty_writestring("EEE");
+            break;
+        case PRINT_STATUS_FATAL:
+            tty_setcolor(vga_entry_color(VGA_COLOR_WHITE,VGA_COLOR_RED));
+            tty_writestring("!!!");
+            break;
+    }
+    tty_setcolor(vga_entry_color(VGA_COLOR_WHITE,VGA_COLOR_BLACK));
+    tty_writestring("] ");
+}
+
+// Print with status
+void printfs(enum print_status_types status_type, const char* fmt, ...) 
+{
+    const char* p = fmt;
+
+    void** arg_ptr = (void**)(&fmt);
+    arg_ptr++; // skip format string itself
+
+    printfs_write_status(status_type);
+    printf_internal(p, arg_ptr);
 }

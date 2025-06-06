@@ -39,13 +39,13 @@ void kernel_panic(char* str) {
     asm volatile ("mov %%ds, %0" : "=r"(ds));
     asm volatile ("mov %%ss, %0" : "=r"(ss));
 
-    printf("[!!!] Kernel panic. Please reboot your computer.\n");
-    printf("Reason: %s\n", str);
-    printf("Kernel version: %d.%d.%d\n", KERNEL_VERSION_HIGH, KERNEL_VERSION_MID, KERNEL_VERSION_LOW);
-    printf("EIP: 0x%x\n", (uint32_t)eip);
-    printf("EAX: 0x%x  EBX: 0x%x  ECX: 0x%x  EDX: 0x%x\n", eax, ebx, ecx, edx);
-    printf("ESI: 0x%x  EDI: 0x%x  EBP: 0x%x  ESP: 0x%x\n", esi, edi, ebp, esp);
-    printf("EFLAGS: 0x%x  CS: 0x%x  DS: 0x%x  SS: 0x%x\n", eflags, cs, ds, ss);
+    printfs(PRINT_STATUS_FATAL,"Kernel panic. Please reboot your computer.\n");
+    printfs(PRINT_STATUS_FATAL,"Reason: %s\n", str);
+    printfs(PRINT_STATUS_FATAL,"Kernel version: %d.%d.%d\n", KERNEL_VERSION_HIGH, KERNEL_VERSION_MID, KERNEL_VERSION_LOW);
+    printfs(PRINT_STATUS_FATAL,"EIP: 0x%x\n", (uint32_t)eip);
+    printfs(PRINT_STATUS_FATAL,"EAX: 0x%x  EBX: 0x%x  ECX: 0x%x  EDX: 0x%x\n", eax, ebx, ecx, edx);
+    printfs(PRINT_STATUS_FATAL,"ESI: 0x%x  EDI: 0x%x  EBP: 0x%x  ESP: 0x%x\n", esi, edi, ebp, esp);
+    printfs(PRINT_STATUS_FATAL,"EFLAGS: 0x%x  CS: 0x%x  DS: 0x%x  SS: 0x%x\n", eflags, cs, ds, ss);
 
     abort();
 }
@@ -57,6 +57,12 @@ void kernel_main(void)
 
 	/* Newline support is left as an exercise. */
 	printf("serotonin kernel - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
+
+    printfs(PRINT_STATUS_DEBUG,"Test\n");
+    printfs(PRINT_STATUS_INFO,"Test\n");
+    printfs(PRINT_STATUS_WARNING,"Test\n");
+    printfs(PRINT_STATUS_ERROR,"Test\n");
+    printfs(PRINT_STATUS_FATAL,"Test\n");
 
     /*
     for (int i = 0; i < 16; i++) {
