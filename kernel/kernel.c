@@ -7,6 +7,10 @@
 #include "stdlib/stdlib.h"
 #include "multiboot.h"
 
+#define KERNEL_VERSION_HIGH 0
+#define KERNEL_VERSION_MID 0
+#define KERNEL_VERSION_LOW 1 
+
 /**
  * @brief Sleep for a specified number of milliseconds.
  * 
@@ -64,11 +68,11 @@ void kernel_panic(char* str) {
 
 /**
  * @brief The main entry point of the kernel.
- * 
- * This function initializes the terminal interface and prints the kernel version.
- * It can also be used for testing various functionalities of the kernel.
+ *
+ * @param magic The magic number passed by the bootloader.
+ * @param addr The address of the multiboot information structure.
  */
-void kernel_main(void) 
+void kernel_main(unsigned long magic, unsigned long addr)
 {
 	tty_initialize();
 
