@@ -7,7 +7,7 @@ set -e  # Exit on any error
 
 # Project configuration
 PROJECT_NAME="Serotonin"
-PROJECT_VERSION="0.0.1"
+PROJECT_VERSION="0.0.3"
 PROJECT_BRIEF="An operating system written with C"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOCS_DIR="$PROJECT_ROOT/docs"
