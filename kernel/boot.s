@@ -76,7 +76,7 @@ _start:
 	runtime support to work as well.
 	*/
 	cli
-	
+
 
 	/*
 	Enter the high-level kernel. The ABI requires the stack is 16-byte
@@ -86,6 +86,8 @@ _start:
 	stack since (pushed 0 bytes so far), so the alignment has thus been
 	preserved and the call is well defined.
 	*/
+	pushl %ebx
+	pushl %eax
 	call kernel_main
 
 	/*

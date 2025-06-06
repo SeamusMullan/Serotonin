@@ -1,7 +1,3 @@
-#define KERNEL_VERSION_HIGH 0
-#define KERNEL_VERSION_MID 0
-#define KERNEL_VERSION_LOW 1 
-
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -9,6 +5,13 @@
 #include "string.h"
 #include "stdio/stdio.h"
 #include "stdlib/stdlib.h"
+#include "multiboot.h"
+
+#define KERNEL_VERSION_HIGH 0
+#define KERNEL_VERSION_MID 0
+#define KERNEL_VERSION_LOW 1 
+
+#define CHECK_FLAG(flags,bit)   ((flags) & (1 << (bit)))
 
 void kernel_sleep(unsigned int mili)
 {
@@ -50,11 +53,46 @@ void kernel_panic(char* str) {
     abort();
 }
 
-void kernel_main(void) 
+void kernel_main(unsigned long magic, unsigned long addr) 
 {
 	tty_initialize();
 
 	printf("serotonin kernel - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
+    if (magic != MULTIBOOT_BOOTLOADER_MAGIC)
+    {
+        kernel_panic("multiboot - invalid magic number");
+    }
+    printfs(PRINT_STATUS_INFO,"Multiboot header loaded, mbi=0x%08x\n",addr);
+    multiboot_info_t *mbi = (multiboot_info_t *) addr;
+    printf("flags = 0x%x\n", (unsigned) mbi->flags);
+
+    if (CHECK_FLAG (mbi->flags, 0))
+    {
+        printf("mem_lower = %uKB, mem_upper = %uKB\n", (unsigned) mbi->mem_lower, (unsigned) mbi->mem_upper);
+    }
+    else {
+        kernel_panic("multiboot - mem_ invalid"); 
+    }
+    
+    if (CHECK_FLAG (mbi->flags, 6))
+    {
+      multiboot_memory_map_t *mmap;
+      
+      printf ("mmap_addr = 0x%x, mmap_length = 0x%x\n",
+              (unsigned) mbi->mmap_addr, (unsigned) mbi->mmap_length);
+      for (mmap = (multiboot_memory_map_t *) mbi->mmap_addr;
+           (unsigned long) mmap < mbi->mmap_addr + mbi->mmap_length;
+           mmap = (multiboot_memory_map_t *) ((unsigned long) mmap
+                                    + mmap->size + sizeof (mmap->size)))
+        printf (" size = 0x%x, base_addr = 0x%x%08x,"
+                " length = 0x%x%08x, type = 0x%x\n",
+                (unsigned) mmap->size,
+                (unsigned) (mmap->addr >> 32),
+                (unsigned) (mmap->addr & 0xffffffff),
+                (unsigned) (mmap->len >> 32),
+                (unsigned) (mmap->len & 0xffffffff),
+                (unsigned) mmap->type);
+    }
 
     /*
     printfs(PRINT_STATUS_DEBUG,"Test\n");
