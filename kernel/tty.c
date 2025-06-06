@@ -92,6 +92,7 @@ void tty_putchar(char c)
     if (c == '\n') {
         terminal_row++;
         terminal_column = 0;
+        tty_set_cursor(terminal_column, terminal_row);
         return;
     }
 	tty_putentryat(c, terminal_color, terminal_column, terminal_row);
