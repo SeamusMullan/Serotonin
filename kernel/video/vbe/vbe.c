@@ -35,7 +35,14 @@ uint32_t vbe_colors[16] = {
     0xFFFFFFFF  // WHITE
 };
 
-// Must be called *after* paging_init((uintptr_t)mbi->framebuffer_addr) has run.
+/**
+ * @brief Initialize the VBE (VESA BIOS Extensions) for graphics mode.
+ *
+ * This function sets up the VBE for use with the framebuffer.
+ * Must be called *after* paging_init((uintptr_t)mbi->framebuffer_addr) has run.
+ * 
+ * @param mbi The multiboot information structure.
+ */
 void vbe_init(multiboot_info_t *mbi) {
     // 1) Grab the physical‐address fields from multiboot
     uint32_t phys_fb = (uint32_t)(mbi->framebuffer_addr);
@@ -76,7 +83,15 @@ void vbe_init(multiboot_info_t *mbi) {
     }
 }
 
-// A “safe” way to write a 32-bit pixel even when pitch is not a multiple of 4
+/**
+ * @brief Write a pixel to the framebuffer.
+ * 
+ * A “safe” way to write a 32-bit pixel even when pitch is not a multiple of 4.
+ *
+ * @param x The x coordinate of the pixel.
+ * @param y The y coordinate of the pixel.
+ * @param color The color of the pixel.
+ */
 void vbe_putpixel(uint32_t x, uint32_t y, uint32_t color) {
     if (x >= vbe_info.width || y >= vbe_info.height) return;
 
@@ -89,7 +104,17 @@ void vbe_putpixel(uint32_t x, uint32_t y, uint32_t color) {
     terminal_dirty = 1;
 }
 
-// Fill a rectangle by calling putpixel for each pixel in it
+/**
+ * @brief Fill a rectangle with a solid color.
+ *
+ * Fills a rectangle in the backbuffer with the specified color.
+ * 
+ * @param x The x coordinate of the top-left corner.
+ * @param y The y coordinate of the top-left corner.
+ * @param w The width of the rectangle.
+ * @param h The height of the rectangle.
+ * @param color The color to fill the rectangle with.
+ */
 void vbe_fillrect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
     for (uint32_t dy = 0; dy < h; dy++) {
         for (uint32_t dx = 0; dx < w; dx++) {
@@ -100,7 +125,10 @@ void vbe_fillrect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color
     terminal_dirty = 1;
 }
 
-// Copy the entire backbuffer into the frontbuffer
+/**
+ * @brief Copy the backbuffer to the frontbuffer.
+ * This function is used to update the display with the contents of the backbuffer.
+ */
 void vbe_flip(void) {
     if (!terminal_dirty) return; 
     // frontbuffer is at vbe_info.framebuffer
@@ -111,6 +139,17 @@ void vbe_flip(void) {
     terminal_dirty = 0;
 }
 
+/**
+ * @brief Draw a glyph at the specified position.
+ *
+ * This function draws a single glyph from the font at the specified (x, y) position
+ * in the backbuffer, using the specified color.
+ *
+ * @param glyph The FontGlyph to draw.
+ * @param x The x coordinate where to draw the glyph.
+ * @param y The y coordinate where to draw the glyph.
+ * @param color The color to use for drawing the glyph.
+ */
 void vbe_drawglyph(FontGlyph *glyph, uint32_t x, uint32_t y, uint32_t color) {
     if (!glyph) return;
 
@@ -138,6 +177,14 @@ void vbe_drawglyph(FontGlyph *glyph, uint32_t x, uint32_t y, uint32_t color) {
     terminal_dirty = 1;
 }
 
+/**
+ * @brief Print a string to the framebuffer.
+ *
+ * @param str The string to print.
+ * @param x The x coordinate to start printing at.
+ * @param y The y coordinate to start printing at.
+ * @param color The color to use for the text.
+ */
 void vbe_puts(const char *str, uint32_t x, uint32_t y, uint32_t color) {
     uint32_t orig_x = x;
 
@@ -161,14 +208,29 @@ void vbe_puts(const char *str, uint32_t x, uint32_t y, uint32_t color) {
     terminal_dirty = 1;
 }
 
+/**
+ * @brief Get the maximum number of columns in the terminal.
+ * 
+ * @return uint32_t The maximum number of columns.
+ */
 static uint32_t term_max_cols(void) {
     return vbe_info.width / VBE_FONT_WIDTH;
 }
 
+/**
+ * @brief Get the maximum number of rows in the terminal.
+ *
+ * @return uint32_t The maximum number of rows.
+ */
 static uint32_t term_max_rows(void) {
     return vbe_info.height / VBE_FONT_HEIGHT;
 }
 
+/**
+ * @brief Write a character to the terminal.
+ *
+ * @param c The character to write.
+ */
 void vbe_terminal_putchar(char c) {
     if (c == '\n') {
         // Newline → next row
@@ -218,12 +280,24 @@ void vbe_terminal_putchar(char c) {
     terminal_dirty = 1;
 }
 
+/**
+ * @brief Print a string to the terminal.
+ *
+ * @param str The string to print.
+ */
 void vbe_terminal_puts(const char *str) {
     while (*str) {
         vbe_terminal_putchar(*str++);
     }
 }
 
+/**
+ * @brief Move the cursor back one position.
+ * This function moves the cursor back one position in the terminal.
+ * If already at the top-left corner, does nothing.
+ * If at the start of a line, moves up to the end of the previous line.
+ * If at the start of the terminal, does nothing.
+ */
 void vbe_terminal_back(void) {
     if (term_cursor_col == 0 && term_cursor_row == 0) {
         // Already at top-left → nothing to do
@@ -248,14 +322,30 @@ void vbe_terminal_back(void) {
     terminal_dirty = 1;
 }
 
+/**
+ * @brief Set the foreground color for the terminal.
+ *
+ * @param color The color to set as the foreground color.
+ */
 void vbe_setcolor_fg(uint8_t color) {
     term_fg_color = color;
 }
 
+/**
+ * @brief Set the background color for the terminal.
+ *
+ * @param color The color to set as the background color.
+ */
 void vbe_setcolor_bg(uint8_t color) {
     term_bg_color = color;
 }
 
+/**
+ * @brief Initialize the VBE color palette.
+ *
+ * This function initializes the VBE color palette with standard colors
+ * and additional colors for 6x6x6 RGB and grayscale.
+ */
 void vbe_palette_init(void) {
 
     for (int i = 0; i < 16; i++) {
@@ -280,9 +370,24 @@ void vbe_palette_init(void) {
     }
 }
 
+/**
+ * @brief Set the foreground color using a palette index.
+ *
+ * This function sets the terminal's foreground color using a predefined palette index.
+ *
+ * @param color The vbe_color_t index to set as the foreground color.
+ */
 void vbe_setcolor_fg_palette(vbe_color_t color) {
     term_fg_color = vbe_colors[color];
 }
+
+/**
+ * @brief Set the background color using a palette index.
+ *
+ * This function sets the terminal's background color using a predefined palette index.
+ *
+ * @param color The vbe_color_t index to set as the background color.
+ */
 void vbe_setcolor_bg_palette(vbe_color_t color) {
     term_bg_color = vbe_colors[color];
 }

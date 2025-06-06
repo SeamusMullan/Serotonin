@@ -7833,6 +7833,12 @@ static const struct {
   "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000",
 };
 
+
+/**
+ * @brief Render the splash image to the framebuffer
+ * @param offset_x The x offset to start rendering the image
+ * @param offset_y The y offset to start rendering the image
+ */
 void splash_render(int offset_x,int offset_y) {
 
   unsigned int x, y;
@@ -7854,6 +7860,12 @@ void splash_render(int offset_x,int offset_y) {
   vbe_flip();
 }
 
+/**
+ * @brief Create a color render object
+ * 
+ * This function generates a gradient of colors across the screen. (makes it gay)
+ * 
+ */
 void create_color_render() {
   unsigned int r = 255, g = 0, b = 0;
   unsigned int color;

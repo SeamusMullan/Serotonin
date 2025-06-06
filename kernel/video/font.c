@@ -100,6 +100,11 @@ FontGlyph ascii_font[] = {
 
 const int ascii_font_glyph_count = 95;
 
+/**
+ * @brief Find a glyph by its Unicode codepoint
+ * @param codepoint The Unicode codepoint of the glyph
+ * @return FontGlyph* A pointer to the glyph, or NULL if not found
+ */
 FontGlyph *find_glyph(uint16_t codepoint) {
     for (size_t i = 0; i < ascii_font_glyph_count; i++) {
         if (ascii_font[i].codepoint == codepoint) {

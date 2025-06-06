@@ -26,6 +26,14 @@ page_table_t fb_page_table;
 uintptr_t page_dir_ptr;
 uintptr_t fb_addr_ptr;  // stores the _physical_ framebuffer base
 
+/**
+ * @brief Initialize the paging system.
+ *
+ * This function sets up the initial page tables and directory for the kernel's
+ * virtual memory management.
+ *
+ * @param fb_phys_base The physical address of the framebuffer.
+ */
 void paging_init(uintptr_t fb_phys_base) {
     fb_addr_ptr = fb_phys_base;
 
@@ -95,6 +103,15 @@ void paging_init(uintptr_t fb_phys_base) {
     );
 }
 
+/**
+ * @brief Convert a physical address to a virtual address.
+ * 
+ * This function maps physical addresses to their corresponding
+ * virtual addresses based on the kernel's paging setup.
+ * 
+ * @param pa The physical address to convert.
+ * @return void* The corresponding virtual address.
+ */
 void *phys_to_virt(uintptr_t pa) {
     // 0…4 MiB (identity)
     if (pa < 0x00400000U) {
