@@ -18,21 +18,21 @@ extern uint32_t vbe_palette[256];
 
 typedef enum {
     VBE_COLOR_BLACK = 0,
-    VBE_COLOR_BLUE,
-    VBE_COLOR_GREEN,
-    VBE_COLOR_CYAN,
-    VBE_COLOR_RED,
-    VBE_COLOR_MAGENTA,
-    VBE_COLOR_BROWN,
-    VBE_COLOR_LIGHT_GRAY,
-    VBE_COLOR_DARK_GRAY,
-    VBE_COLOR_LIGHT_BLUE,
-    VBE_COLOR_LIGHT_GREEN,
-    VBE_COLOR_LIGHT_CYAN,
-    VBE_COLOR_LIGHT_RED,
-    VBE_COLOR_LIGHT_MAGENTA,
-    VBE_COLOR_YELLOW,
-    VBE_COLOR_WHITE
+    VBE_COLOR_BLUE = 1,
+    VBE_COLOR_GREEN = 2,
+    VBE_COLOR_CYAN = 3,
+    VBE_COLOR_RED = 4,
+    VBE_COLOR_MAGENTA = 5,
+    VBE_COLOR_BROWN = 6,
+    VBE_COLOR_LIGHT_GRAY = 7,
+    VBE_COLOR_DARK_GRAY = 8,
+    VBE_COLOR_LIGHT_BLUE = 9,
+    VBE_COLOR_LIGHT_GREEN = 10,
+    VBE_COLOR_LIGHT_CYAN = 11,
+    VBE_COLOR_LIGHT_RED = 12,
+    VBE_COLOR_LIGHT_MAGENTA = 13,
+    VBE_COLOR_YELLOW = 14,
+    VBE_COLOR_WHITE = 15
 } vbe_color_t;
 
 extern uint32_t vbe_colors[16];
@@ -65,5 +65,7 @@ void vbe_terminal_back(void);
 void vbe_setcolor_fg(uint8_t color);
 void vbe_setcolor_bg(uint8_t color);
 void vbe_palette_init(void);
+void vbe_setcolor_fg_palette(vbe_color_t color);
+void vbe_setcolor_bg_palette(vbe_color_t color);
 
 #endif

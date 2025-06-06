@@ -169,31 +169,31 @@ void printfs_write_status(enum print_status_types status_type) {
     vbe_terminal_puts("[");
     switch (status_type) {
         case PRINT_STATUS_DEBUG:
-            vbe_setcolor_bg(vbe_palette[VBE_COLOR_LIGHT_BLUE]);
+            vbe_setcolor_bg_palette(VBE_COLOR_LIGHT_BLUE);
             vbe_terminal_puts("DDD");
             break;
         case PRINT_STATUS_INFO:
-            vbe_setcolor_bg(vbe_palette[VBE_COLOR_BLUE]);
+            vbe_setcolor_bg_palette(VBE_COLOR_BLUE);
             vbe_terminal_puts("III");
             break;
         case PRINT_STATUS_WARNING:
-            vbe_setcolor_bg(vbe_palette[VBE_COLOR_BROWN]);
+            vbe_setcolor_bg_palette(VBE_COLOR_BROWN);
             vbe_terminal_puts("WWW");
             break;
         case PRINT_STATUS_ERROR:
-            vbe_setcolor_bg(vbe_palette[VBE_COLOR_RED]);
+            vbe_setcolor_bg_palette(VBE_COLOR_RED);
             vbe_terminal_puts("EEE");
             break;
         case PRINT_STATUS_FATAL:
-            vbe_setcolor_bg(vbe_palette[VBE_COLOR_RED]);
+            vbe_setcolor_bg_palette(VBE_COLOR_RED);
             vbe_terminal_puts("!!!");
             break;
         case PRINT_STATUS_SUCCESS:
-            vbe_setcolor_bg(vbe_palette[VBE_COLOR_GREEN]);
+            vbe_setcolor_bg_palette(VBE_COLOR_GREEN);
             vbe_terminal_puts("SSS");
             break;
     }
-    vbe_setcolor_bg(vbe_palette[VBE_COLOR_BLACK]);
+    vbe_setcolor_bg_palette(VBE_COLOR_BLACK);
     vbe_terminal_puts("] ");
 }
 
