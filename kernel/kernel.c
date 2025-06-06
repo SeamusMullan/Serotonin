@@ -15,8 +15,6 @@
 #define KERNEL_HEAP_SIZE  0x100000
 #define BLOCK_ALIGN 8
 
-#define CHECK_FLAG(flags,bit)   ((flags) & (1 << (bit)))
-
 typedef struct block_header {
     uint32_t size;
     uint8_t free;
@@ -32,6 +30,29 @@ uint32_t align(uint32_t size) {
     return (size + BLOCK_ALIGN - 1) & ~(BLOCK_ALIGN - 1);
 }
 
+/**
+ * @brief Sleep for a specified number of milliseconds.
+ * 
+ * This function provides a busy-wait loop to create a delay in the kernel.
+ * It is not an efficient way to sleep, as it consumes CPU cycles while waiting.
+ * @param mili The number of milliseconds to sleep.
+ */
+ void kernel_sleep(unsigned int mili)
+{
+    volatile unsigned int count = mili * 10000;
+    while (count--) {
+        asm volatile("nop"); 
+    }
+}
+
+/**
+ * @brief Trigger a kernel panic with a specified message.
+ * 
+ * This function is called when a critical error occurs in the kernel.
+ * It prints the panic message along with the current state of the CPU registers
+ * and halts the system.
+ * @param str The panic message to display.
+ */
 void kernel_panic(char* str) {
     uintptr_t eip = (uintptr_t)__builtin_return_address(0);
 
@@ -119,7 +140,13 @@ void kernel_sleep(unsigned int mili)
     }
 }
 
-void kernel_main(unsigned long magic, unsigned long addr) 
+/**
+ * @brief The main entry point of the kernel.
+ *
+ * @param magic The magic number passed by the bootloader.
+ * @param addr The address of the multiboot information structure.
+ */
+void kernel_main(unsigned long magic, unsigned long addr)
 {
 	tty_initialize();
 
