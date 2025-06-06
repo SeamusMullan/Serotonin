@@ -17,22 +17,22 @@ static uint32_t fb_size_bytes;
 uint32_t vbe_palette[256];
 
 uint32_t vbe_colors[16] = {
-    0x000000, // BLACK
-    0x0000AA, // BLUE
-    0x00AA00, // GREEN
-    0x00AAAA, // CYAN
-    0xAA0000, // RED
-    0xAA00AA, // MAGENTA
-    0xAA5500, // BROWN / YELLOW
-    0xAAAAAA, // LIGHT GRAY
-    0x555555, // DARK GRAY
-    0x5555FF, // LIGHT BLUE
-    0x55FF55, // LIGHT GREEN
-    0x55FFFF, // LIGHT CYAN
-    0xFF5555, // LIGHT RED
-    0xFF55FF, // LIGHT MAGENTA
-    0xFFFF55, // YELLOW / LIGHT YELLOW
-    0xFFFFFF  // WHITE
+    0xFF000000, // BLACK
+    0xFF0000AA, // BLUE
+    0xFF00AA00, // GREEN
+    0xFF00AAAA, // CYAN
+    0xFFAA0000, // RED
+    0xFFAA00AA, // MAGENTA
+    0xFFAA5500, // BROWN / YELLOW
+    0xFFAAAAAA, // LIGHT GRAY
+    0xFF555555, // DARK GRAY
+    0xFF5555FF, // LIGHT BLUE
+    0xFF55FF55, // LIGHT GREEN
+    0xFF55FFFF, // LIGHT CYAN
+    0xFFFF5555, // LIGHT RED
+    0xFFFF55FF, // LIGHT MAGENTA
+    0xFFFFFF00, // YELLOW / LIGHT YELLOW
+    0xFFFFFFFF  // WHITE
 };
 
 // Must be called *after* paging_init((uintptr_t)mbi->framebuffer_addr) has run.
@@ -278,4 +278,11 @@ void vbe_palette_init(void) {
         uint8_t level = 8 + i * 10;
         vbe_palette[index++] = (level << 16) | (level << 8) | level;
     }
+}
+
+void vbe_setcolor_fg_palette(vbe_color_t color) {
+    term_fg_color = vbe_colors[color];
+}
+void vbe_setcolor_bg_palette(vbe_color_t color) {
+    term_bg_color = vbe_colors[color];
 }

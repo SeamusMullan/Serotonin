@@ -235,6 +235,10 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     uint32_t mem_upper;
     uint32_t mem_total;
 
+    for (uint32_t i = 0; i < 16; i++) {
+        vbe_fillrect(10*i, SCREEN_HEIGHT, 10, 10, vbe_colors[i]);
+    }
+
     printf("   _____                _              _       \n");
     printf("  / ____|              | |            (_)      \n");
     printf(" | (___   ___ _ __ ___ | |_ ___  _ __  _ _ __  \n");
