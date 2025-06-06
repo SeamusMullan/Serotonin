@@ -17,4 +17,10 @@ typedef page_directory_entry_t page_directory_t[PAGE_ENTRIES];
 #define IDENTITY_MAP_MB    8 
 #define PAGE_FLAGS         (PAGE_PRESENT | PAGE_RW)
 
+#define KERNEL_HEAP_VMA     0xC0400000U
+#define KERNEL_HEAP_PHYS    0x00800000U
+#define KERNEL_HEAP_SIZE    (16 * 1024 * 1024U)
+#define HEAP_NUM_TABLES     (KERNEL_HEAP_SIZE / (4 * 1024 * 1024))
+#define BLOCK_ALIGN 8
+
 void paging_init(void);

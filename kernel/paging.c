@@ -19,6 +19,15 @@ page_table_t first_page_table;
 __attribute__((aligned(PAGE_SIZE)))
 page_table_t kernel_page_table;
 
+__attribute__((aligned(PAGE_SIZE)))
+page_table_t heap_page_table0;
+__attribute__((aligned(PAGE_SIZE)))
+page_table_t heap_page_table1;
+__attribute__((aligned(PAGE_SIZE)))
+page_table_t heap_page_table2;
+__attribute__((aligned(PAGE_SIZE)))
+page_table_t heap_page_table3;
+
 void paging_init(void) {
     uintptr_t addr_pd = (uintptr_t)&page_directory;
     uintptr_t addr_pt1 = (uintptr_t)&first_page_table;
@@ -38,6 +47,15 @@ void paging_init(void) {
         kernel_page_table[i] = (KERNEL_PHYS_BASE + i * PAGE_SIZE) | PAGE_FLAGS;
     }
 
+    // Build heap tables: map 0x00800000..0x017FFFFF
+    for (uint32_t i = 0; i < PAGE_ENTRIES; i++) {
+        heap_page_table0[i] = ((KERNEL_HEAP_PHYS +   0 * 0x400000) + i * PAGE_SIZE) | PAGE_FLAGS;
+        heap_page_table1[i] = ((KERNEL_HEAP_PHYS +   1 * 0x400000) + i * PAGE_SIZE) | PAGE_FLAGS;
+        heap_page_table2[i] = ((KERNEL_HEAP_PHYS +   2 * 0x400000) + i * PAGE_SIZE) | PAGE_FLAGS;
+        heap_page_table3[i] = ((KERNEL_HEAP_PHYS +   3 * 0x400000) + i * PAGE_SIZE) | PAGE_FLAGS;
+    }
+
+
     // Zero out the rest of the page directory
     for (uint32_t i = 0; i < PAGE_ENTRIES; i++) {
         page_directory[i] = 0;
@@ -48,6 +66,10 @@ void paging_init(void) {
 
     // PDE[768] = 0xC0000000 >> 22 = 768 → kernel_page_table
     page_directory[768] = ((uint32_t)&kernel_page_table) | PAGE_FLAGS;
+    page_directory[769]   = ((uint32_t)&heap_page_table0[0])  | PAGE_FLAGS;
+    page_directory[770]   = ((uint32_t)&heap_page_table1[0])  | PAGE_FLAGS;
+    page_directory[771]   = ((uint32_t)&heap_page_table2[0])  | PAGE_FLAGS;
+    page_directory[772]   = ((uint32_t)&heap_page_table3[0])  | PAGE_FLAGS;
 
     asm volatile (
         "mov %0, %%cr3    \n\t"  // Load page directory base

@@ -14,9 +14,8 @@
 #define KERNEL_VERSION_MID 0
 #define KERNEL_VERSION_LOW 2 
 
-#define KERNEL_HEAP_START 0x00F000 
-#define KERNEL_HEAP_SIZE  0x300000
-#define BLOCK_ALIGN 8
+#define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
+#define HEAP_SIZE   (KERNEL_HEAP_SIZE)
 
 typedef struct block_header {
     uint32_t size;
@@ -24,9 +23,9 @@ typedef struct block_header {
     struct block_header *next;
 } block_header_t;
 
-static uint32_t heap_start = KERNEL_HEAP_START;
-static uint32_t heap_end = KERNEL_HEAP_START + KERNEL_HEAP_SIZE;
-static uint32_t current_heap = KERNEL_HEAP_START;
+static uint32_t heap_start = (uint32_t)HEAP_START;
+static uint32_t heap_end = (uint32_t)(KERNEL_HEAP_VMA + KERNEL_HEAP_SIZE);
+static uint32_t current_heap = (uint32_t)KERNEL_HEAP_VMA;
 static block_header_t *heap_list = NULL;
 
 #define CHECK_FLAG(flags,bit)   ((flags) & (1 << (bit)))
@@ -181,7 +180,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     uint32_t mem_total;
 
 	printf("serotonin kernel (higher half) - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
-    printf("kernel now (eip): 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x\n",kernel_current_eip(),KERNEL_HEAP_START,magic,addr);
+    printf("kernel now (eip): 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x\n",kernel_current_eip(),HEAP_START,magic,addr);
     
     pic_remap(0x20, 0x28);
 
