@@ -61,6 +61,111 @@ void utoa(uint32_t value, char* str) {
     str[i] = '\0';
 }
 
+// Long to string
+void ltoa(long value, char* str) {
+    if (value < 0) {
+        *str++ = '-';
+        value = -value;
+    }
+
+    char buf[20];
+    int i = 0;
+    do {
+        buf[i++] = '0' + (value % 10);
+        value /= 10;
+    } while (value);
+
+    while (i--) {
+        *str++ = buf[i];
+    }
+    *str = '\0';
+}
+
+// Unsigned long to string
+void ultoa(unsigned long value, char* str) {
+    char buf[20];
+    int i = 0;
+    do {
+        buf[i++] = '0' + (value % 10);
+        value /= 10;
+    } while (value);
+
+    while (i--) {
+        *str++ = buf[i];
+    }
+    *str = '\0';
+}
+
+// Unsigned long to hex string
+void ultoa_hex(unsigned long value, char* str) {
+    const char* hex_digits = "0123456789abcdef";
+    char buf[16];
+    int i = 0;
+
+    do {
+        buf[i++] = hex_digits[value & 0xF];
+        value >>= 4;
+    } while (value);
+
+    while (i--) {
+        *str++ = buf[i];
+    }
+    *str = '\0';
+}
+
+// Long long to string
+void lltoa(long long value, char* str) {
+    if (value < 0) {
+        *str++ = '-';
+        value = -value;
+    }
+
+    char buf[32];
+    int i = 0;
+    do {
+        buf[i++] = '0' + (value % 10);
+        value /= 10;
+    } while (value);
+
+    while (i--) {
+        *str++ = buf[i];
+    }
+    *str = '\0';
+}
+
+// Unsigned long long to string
+void ulltoa(unsigned long long value, char* str) {
+    char buf[32];
+    int i = 0;
+    do {
+        buf[i++] = '0' + (value % 10);
+        value /= 10;
+    } while (value);
+
+    while (i--) {
+        *str++ = buf[i];
+    }
+    *str = '\0';
+}
+
+// Unsigned long long to hex string
+void ulltoa_hex(unsigned long long value, char* str) {
+    const char* hex_digits = "0123456789abcdef";
+    char buf[16];
+    int i = 0;
+
+    do {
+        buf[i++] = hex_digits[value & 0xF];
+        value >>= 4;
+    } while (value);
+
+    while (i--) {
+        *str++ = buf[i];
+    }
+    *str = '\0';
+}
+
+
 // Halt system
 __attribute__((__noreturn__))
 void abort() {

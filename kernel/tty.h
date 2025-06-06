@@ -23,8 +23,8 @@ enum vga_color {
 	VGA_COLOR_WHITE = 15,
 };
 
-inline uint8_t vga_entry_color(enum vga_color fg, enum vga_color bg);
-inline uint16_t vga_entry(unsigned char uc, uint8_t color);
+uint8_t vga_entry_color(enum vga_color fg, enum vga_color bg);
+uint16_t vga_entry(unsigned char uc, uint8_t color);
 void tty_initialize(void);
 void tty_setcolor(uint8_t color);
 void tty_putentryat(char c, uint8_t color, size_t x, size_t y);
