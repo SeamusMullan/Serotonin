@@ -5,3 +5,4 @@ build-tools/bin
 build-tools/src
 docs/html
 docs/latex
+docs/Doxyfile
