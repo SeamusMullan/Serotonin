@@ -7,7 +7,7 @@ PROJECT_NAME           = "Serotonin"
 PROJECT_NUMBER         = "0.0.1"
 PROJECT_BRIEF          = "An operating system written with C"
 PROJECT_LOGO           = 
-OUTPUT_DIRECTORY       = "/home/seamu/Documents/Github/serotonin/docs"
+OUTPUT_DIRECTORY       = "/mnt/storage/Serotonin/docs"
 CREATE_SUBDIRS         = NO
 ALLOW_UNICODE_NAMES    = NO
 OUTPUT_LANGUAGE        = English
@@ -17,7 +17,7 @@ ABBREVIATE_BRIEF       =
 ALWAYS_DETAILED_SEC    = NO
 INLINE_INHERITED_MEMB  = NO
 FULL_PATH_NAMES        = YES
-STRIP_FROM_PATH        = "/home/seamu/Documents/Github/serotonin"
+STRIP_FROM_PATH        = "/mnt/storage/Serotonin"
 STRIP_FROM_INC_PATH    = 
 SHORT_NAMES            = NO
 JAVADOC_AUTOBRIEF      = YES
@@ -104,8 +104,8 @@ WARN_LOGFILE           =
 #---------------------------------------------------------------------------
 # Configuration options related to the input files
 #---------------------------------------------------------------------------
-INPUT                  = "/home/seamu/Documents/Github/serotonin/kernel" \
-                         "/home/seamu/Documents/Github/serotonin/README.md"
+INPUT                  = "/mnt/storage/Serotonin/kernel" \
+                         "/mnt/storage/Serotonin/README.md"
 INPUT_ENCODING         = UTF-8
 FILE_PATTERNS          = *.c \
                          *.h \
@@ -251,7 +251,7 @@ ENABLE_PREPROCESSING   = YES
 MACRO_EXPANSION        = NO
 EXPAND_ONLY_PREDEF     = NO
 SEARCH_INCLUDES        = YES
-INCLUDE_PATH           = "/home/seamu/Documents/Github/serotonin/kernel"
+INCLUDE_PATH           = "/mnt/storage/Serotonin/kernel"
 INCLUDE_FILE_PATTERNS  = 
 PREDEFINED             = 
 EXPAND_AS_DEFINED      = 
