@@ -273,3 +273,129 @@ irq1:
     add $4, %esp
     popa
     iret
+
+.global irq2
+irq2:
+    pusha
+    pushl $2
+    call irq_handler
+    add $4, %esp
+    popa
+    iret
+
+.global irq3
+irq3:
+    pusha
+    pushl $3
+    call irq_handler
+    add $4, %esp
+    popa
+    iret
+
+.global irq4
+irq4:
+    pusha
+    pushl $4
+    call irq_handler
+    add $4, %esp
+    popa
+    iret
+
+.global irq5
+irq5:
+    pusha
+    pushl $5
+    call irq_handler
+    add $4, %esp
+    popa
+    iret
+
+.global irq6
+irq6:
+    pusha
+    pushl $6
+    call irq_handler
+    add $4, %esp
+    popa
+    iret
+
+.global irq7
+irq7:
+    pusha
+    pushl $7
+    call irq_handler
+    add $4, %esp
+    popa
+    iret
+
+.global irq8
+irq8:
+    pusha
+    pushl $8
+    call irq_handler
+    add $4, %esp
+    popa
+    iret
+
+.global irq9
+irq9:
+    pusha
+    pushl $9
+    call irq_handler
+    add $4, %esp
+    popa
+    iret
+
+.global irq10
+irq10:
+    pusha
+    pushl $10
+    call irq_handler
+    add $4, %esp
+    popa
+    iret
+
+.global irq11
+irq11:
+    pusha
+    pushl $11
+    call irq_handler
+    add $4, %esp
+    popa
+    iret
+
+.global irq12
+irq12:
+    pusha
+    pushl $12
+    call irq_handler
+    add $4, %esp
+    popa
+    iret
+
+.global irq13
+irq13:
+    pusha
+    pushl $13
+    call irq_handler
+    add $4, %esp
+    popa
+    iret
+
+.global irq14
+irq14:
+    pusha
+    pushl $14
+    call irq_handler
+    add $4, %esp
+    popa
+    iret
+
+.global irq15
+irq15:
+    pusha
+    pushl $15
+    call irq_handler
+    add $4, %esp
+    popa
+    iret
