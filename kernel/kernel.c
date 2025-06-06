@@ -7,12 +7,13 @@
 #include "stdlib/stdlib.h"
 #include "multiboot.h"
 
-#define KERNEL_VERSION_HIGH 0
-#define KERNEL_VERSION_MID 0
-#define KERNEL_VERSION_LOW 1 
-
-#define CHECK_FLAG(flags,bit)   ((flags) & (1 << (bit)))
-
+/**
+ * @brief Sleep for a specified number of milliseconds.
+ * 
+ * This function provides a busy-wait loop to create a delay in the kernel.
+ * It is not an efficient way to sleep, as it consumes CPU cycles while waiting.
+ * @param mili The number of milliseconds to sleep.
+ */
 void kernel_sleep(unsigned int mili)
 {
     volatile unsigned int count = mili * 10000;
@@ -21,6 +22,14 @@ void kernel_sleep(unsigned int mili)
     }
 }
 
+/**
+ * @brief Trigger a kernel panic with a specified message.
+ * 
+ * This function is called when a critical error occurs in the kernel.
+ * It prints the panic message along with the current state of the CPU registers
+ * and halts the system.
+ * @param str The panic message to display.
+ */
 void kernel_panic(char* str) {
     uintptr_t eip = (uintptr_t)__builtin_return_address(0);
 
@@ -53,7 +62,13 @@ void kernel_panic(char* str) {
     abort();
 }
 
-void kernel_main(unsigned long magic, unsigned long addr) 
+/**
+ * @brief The main entry point of the kernel.
+ * 
+ * This function initializes the terminal interface and prints the kernel version.
+ * It can also be used for testing various functionalities of the kernel.
+ */
+void kernel_main(void) 
 {
 	tty_initialize();
 

@@ -5,6 +5,12 @@
 #include <stddef.h>
 #include "../string.h"
 
+/**
+ * @brief Internal printf function.
+ * 
+ * @param p Format string.
+ * @param arg_ptr Pointer to the argument list.
+ */
 void printf_internal(const char* p, void** arg_ptr) {
     char buffer[32];
 
@@ -128,7 +134,12 @@ void printf_internal(const char* p, void** arg_ptr) {
     }
 }
 
-
+/**
+ * @brief Print formatted output.
+ *
+ * @param fmt Format string.
+ * @param ... Variable arguments.
+ */
 void printf(const char* fmt, ...) 
 {
     const char* p = fmt;
@@ -139,6 +150,11 @@ void printf(const char* fmt, ...)
     printf_internal(p, arg_ptr);
 }
 
+/**
+ * @brief Write the status to the TTY.
+ *
+ * @param status_type The status type to write.
+ */
 void printfs_write_status(enum print_status_types status_type) {
     tty_writestring("[");
     switch (status_type) {
@@ -167,7 +183,13 @@ void printfs_write_status(enum print_status_types status_type) {
     tty_writestring("] ");
 }
 
-// Print with status
+/**
+ * @brief Print formatted string with status.
+ *
+ * @param status_type The status type to print.
+ * @param fmt Format string.
+ * @param ... Variable arguments.
+ */
 void printfs(enum print_status_types status_type, const char* fmt, ...) 
 {
     const char* p = fmt;
