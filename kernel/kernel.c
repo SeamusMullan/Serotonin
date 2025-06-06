@@ -300,4 +300,6 @@ void kernel_main(unsigned long arg1, unsigned long arg2) {
 
     paging_init();
     kernel_jump_to_higher_half(kernel_main_high,arg1,arg2);
+
+    panic("returned from higher half kernel!"); 
 }
