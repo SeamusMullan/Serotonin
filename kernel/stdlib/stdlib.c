@@ -1,5 +1,6 @@
 #include "stdlib.h"
 #include <stdint.h>
+#include "../stdio/stdio.h"
 
 // Integer to string (base 10)
 void itoa(int value, char* str) {
@@ -58,4 +59,13 @@ void utoa(uint32_t value, char* str) {
         str[k] = buffer[j];
     }
     str[i] = '\0';
+}
+
+// Halt system
+__attribute__((__noreturn__))
+void abort() {
+    printf("abort() called - system halted\n");
+    __asm__ volatile("cli; hlt");
+    while (1) { }
+    __builtin_unreachable();
 }

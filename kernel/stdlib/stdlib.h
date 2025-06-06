@@ -7,4 +7,7 @@ void itoa(int value, char* str);
 void utoa_hex(uint32_t value, char* str);
 void utoa(uint32_t value, char* str);
 
+__attribute__((__noreturn__))
+void abort();
+
 #endif
