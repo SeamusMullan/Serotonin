@@ -398,6 +398,8 @@ ldiv_t ldiv(long numer, long denom) {
     return result;
 }
 
+
+// ========== This currently breaks the build so we got comments for that ==========
 /**
  * @brief Divide two long long integers and return quotient and remainder.
  * 
@@ -405,12 +407,13 @@ ldiv_t ldiv(long numer, long denom) {
  * @param denom The denominator.
  * @return lldiv_t Structure containing quotient and remainder.
  */
-lldiv_t lldiv(long long numer, long long denom) {
-    lldiv_t result;
-    result.quot = numer / denom;
-    result.rem = numer % denom;
-    return result;
-}
+// lldiv_t lldiv(long long numer, long long denom) {
+//     lldiv_t result;
+//     result.quot = numer / denom;
+//     result.rem = numer % denom;
+//     return result;
+// }
+// ========== End of the breaking code ==========
 
 /* Random number generator state */
 static unsigned long next = 1;
