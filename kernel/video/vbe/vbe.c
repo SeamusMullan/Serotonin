@@ -7,7 +7,6 @@
 #include "../../paging.h"
 #include "../font.h"
 
-int terminal_dirty = 0;
 uint32_t term_fg_color = 0xFFFFFF;
 uint32_t term_bg_color = 0x000000;
 

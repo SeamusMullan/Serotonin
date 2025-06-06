@@ -11,6 +11,8 @@
 #define SCREEN_WIDTH 1024
 #define SCREEN_HEIGHT 768
 
+extern int terminal_dirty;
+
 static uint32_t term_cursor_col = 0;
 static uint32_t term_cursor_row = 0;
 

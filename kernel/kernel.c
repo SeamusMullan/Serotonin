@@ -11,6 +11,7 @@
 #include "paging.h"
 #include "video/vbe/vbe.h"
 #include "video/font.h"
+#include "video/splash.h"
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 0
@@ -35,6 +36,8 @@ static uint32_t heap_start = (uint32_t)HEAP_START;
 static uint32_t heap_end = (uint32_t)(KERNEL_HEAP_VMA + KERNEL_HEAP_SIZE);
 static uint32_t current_heap = (uint32_t)KERNEL_HEAP_VMA;
 static block_header_t *heap_list = NULL;
+
+int terminal_dirty = 0;
 
 #define CHECK_FLAG(flags,bit)   ((flags) & (1 << (bit)))
 
@@ -274,6 +277,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     // Clear screen to black
     vbe_fillrect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0xFF000000);
 
+    /* Testing Screen Rendering
     // 1. Color bars (horizontal stripes)
     uint32_t colors[] = {
         0xFFFF0000,  // Red
@@ -330,6 +334,9 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         uint32_t color = 0xFF000000 | blue;
         vbe_fillrect(x, rgb_grad_y, 1, rgb_grad_height, color);
     }
+    */
+
+    splash_render();
 
     abort();
 
