@@ -39,30 +39,31 @@ void kernel_panic(char* str) {
     asm volatile ("mov %%ds, %0" : "=r"(ds));
     asm volatile ("mov %%ss, %0" : "=r"(ss));
 
-    printfs(PRINT_STATUS_FATAL,"Kernel panic. Please reboot your computer.\n");
-    printfs(PRINT_STATUS_FATAL,"Reason: %s\n", str);
-    printfs(PRINT_STATUS_FATAL,"Kernel version: %d.%d.%d\n", KERNEL_VERSION_HIGH, KERNEL_VERSION_MID, KERNEL_VERSION_LOW);
-    printfs(PRINT_STATUS_FATAL,"EIP: 0x%x\n", (uint32_t)eip);
-    printfs(PRINT_STATUS_FATAL,"EAX: 0x%x  EBX: 0x%x  ECX: 0x%x  EDX: 0x%x\n", eax, ebx, ecx, edx);
-    printfs(PRINT_STATUS_FATAL,"ESI: 0x%x  EDI: 0x%x  EBP: 0x%x  ESP: 0x%x\n", esi, edi, ebp, esp);
-    printfs(PRINT_STATUS_FATAL,"EFLAGS: 0x%x  CS: 0x%x  DS: 0x%x  SS: 0x%x\n", eflags, cs, ds, ss);
+    printfs(PRINT_STATUS_FATAL, "Kernel panic. Please reboot your computer.\n");
+    printfs(PRINT_STATUS_FATAL, "Reason: %s\n", str);
+    printfs(PRINT_STATUS_FATAL, "Kernel version: %d.%d.%d\n", KERNEL_VERSION_HIGH, KERNEL_VERSION_MID, KERNEL_VERSION_LOW);
+    printfs(PRINT_STATUS_FATAL, "EIP: 0x%08x\n", (unsigned int)eip);
+    printfs(PRINT_STATUS_FATAL, "EAX: 0x%08x  EBX: 0x%08x  ECX: 0x%08x  EDX: 0x%08x\n",(unsigned int)eax, (unsigned int)ebx, (unsigned int)ecx, (unsigned int)edx);
+    printfs(PRINT_STATUS_FATAL, "ESI: 0x%08x  EDI: 0x%08x  EBP: 0x%08x  ESP: 0x%08x\n",(unsigned int)esi, (unsigned int)edi, (unsigned int)ebp, (unsigned int)esp);
+    printfs(PRINT_STATUS_FATAL, "EFLAGS: 0x%08x  CS: 0x%04x  DS: 0x%04x  SS: 0x%04x\n",(unsigned int)eflags, (unsigned int)cs, (unsigned int)ds, (unsigned int)ss);
+
 
     abort();
 }
 
 void kernel_main(void) 
 {
-	/* Initialize terminal interface */
 	tty_initialize();
 
-	/* Newline support is left as an exercise. */
 	printf("serotonin kernel - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
 
+    /*
     printfs(PRINT_STATUS_DEBUG,"Test\n");
     printfs(PRINT_STATUS_INFO,"Test\n");
     printfs(PRINT_STATUS_WARNING,"Test\n");
     printfs(PRINT_STATUS_ERROR,"Test\n");
     printfs(PRINT_STATUS_FATAL,"Test\n");
+    */
 
     /*
     for (int i = 0; i < 16; i++) {

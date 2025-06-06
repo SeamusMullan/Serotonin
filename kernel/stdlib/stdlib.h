@@ -6,6 +6,12 @@
 void itoa(int value, char* str);
 void utoa_hex(uint32_t value, char* str);
 void utoa(uint32_t value, char* str);
+void ltoa(long value, char* buffer);
+void ultoa(unsigned long value, char* buffer);
+void ultoa_hex(unsigned long value, char* buffer);
+void lltoa(long long value, char* buffer);
+void ulltoa(unsigned long long value, char* buffer);
+void ulltoa_hex(unsigned long long value, char* buffer);
 
 __attribute__((__noreturn__))
 void abort();
