@@ -115,9 +115,16 @@ isr13:
 .global isr14
 isr14:
     cli
-    pushl $14
-    call fault_handler
+    pusha
+    pushl %ds
+
+    mov 44(%esp), %eax
+    push %eax
+    call page_fault_handler
+
     add $4, %esp
+    popl %ds
+    popa
     iret
 
 .global isr15

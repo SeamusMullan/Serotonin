@@ -1,3 +1,5 @@
+#ifndef _KERNEL_PAGING
+#define _KERNEL_PAGING
 #include <stdint.h>
 
 #define PAGE_SIZE      4096
@@ -23,4 +25,18 @@ typedef page_directory_entry_t page_directory_t[PAGE_ENTRIES];
 #define HEAP_NUM_TABLES     (KERNEL_HEAP_SIZE / (4 * 1024 * 1024))
 #define BLOCK_ALIGN 8
 
+#define PAGE_SIZE    4096
+#define PAGE_ENTRIES 1024
+
+#define PAGE_PRESENT 0x1
+#define PAGE_RW      0x2
+#define PAGE_FLAGS   (PAGE_PRESENT | PAGE_RW)
+
+#define TEST_PAGE_PHYS    PAGE_SIZE*8
+
+extern uintptr_t page_dir_ptr;
+
 void paging_init(void);
+void *phys_to_virt(uintptr_t phys_addr);
+
+#endif

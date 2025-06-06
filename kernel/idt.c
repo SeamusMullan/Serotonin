@@ -98,8 +98,14 @@ void init_idt() {
         idt_set_gate(i, (uint32_t)isrs[i], 0x08, 0x8E);
     }
 
-    idt_set_gate(32 + 0, (uint32_t)irq0, 0x08, 0x8E);
-    idt_set_gate(32 + 1, (uint32_t)irq1, 0x08, 0x8E);
+    void (*irqs[16])() = {
+        irq0, irq1, irq2, irq3, irq4, irq5, irq6, irq7,
+        irq8, irq9, irq10, irq11, irq12, irq13, irq14, irq15
+    };
+
+    for (int i = 0; i < 16; i++) {
+        idt_set_gate(32 + i, (uint32_t)irqs[i], 0x08, 0x8E);
+    }
 
     idt_load(&idtp);
 }

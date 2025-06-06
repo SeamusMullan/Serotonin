@@ -89,7 +89,7 @@ void kernel_sleep(unsigned int milliseconds) {
  * @param str The panic message to display.
  */
 void kernel_panic(char* str) {
-    uintptr_t eip = (uintptr_t)__builtin_return_address(0);
+    uintptr_t eip = (uintptr_t)kernel_current_eip();
 
     uint32_t eax, ebx, ecx, edx;
     uint32_t esi, edi, ebp, esp;
@@ -175,6 +175,8 @@ void kernel_free(void *ptr) {
  */
 void kernel_main_high(unsigned long magic, unsigned long addr)
 {
+    page_directory_t *page_dir = (page_directory_t*)page_dir_ptr;
+
     uint32_t mem_lower;
     uint32_t mem_upper;
     uint32_t mem_total;
