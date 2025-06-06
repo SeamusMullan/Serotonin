@@ -6,6 +6,7 @@
 #include "stdio/stdio.h"
 #include "stdlib/stdlib.h"
 #include "multiboot.h"
+#include "idt.h"
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 0
@@ -150,6 +151,13 @@ void kernel_main(unsigned long magic, unsigned long addr)
 
 	printf("serotonin kernel - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
     printf("kernel start: 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x\n",&kernel_main,KERNEL_HEAP_START,magic,addr);
+    
+    init_idt();
+    struct idt_ptr idtp_read;
+    asm volatile ("sidt %0" : "=m"(idtp_read));
+    printfs(PRINT_STATUS_INFO,"IDT base:  0x%08x\n", idtp_read.base);
+    printfs(PRINT_STATUS_INFO,"IDT limit: 0x%04x\n", idtp_read.limit);
+
     if (magic != MULTIBOOT_BOOTLOADER_MAGIC)
     {
         kernel_panic("multiboot - invalid magic number");
@@ -171,9 +179,15 @@ void kernel_main(unsigned long magic, unsigned long addr)
         kernel_panic("multiboot - unable to detect memory"); 
     }
 
-    uint16_t cs;
-    asm volatile ("mov %%cs, %0" : "=r"(cs));
-
+    
+    asm volatile (
+        "mov $0, %%eax\n\t"
+        "mov $0, %%ebx\n\t"
+        "div %%ebx\n\t"    // eax / ebx → divide by zero
+        :
+        :
+        : "eax", "ebx"
+    );
 
     /*
     printfs(PRINT_STATUS_DEBUG,"Test\n");
