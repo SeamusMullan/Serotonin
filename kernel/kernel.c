@@ -8,6 +8,7 @@
 #include "multiboot.h"
 #include "idt.h"
 #include "io/io.h"
+#include "paging.h"
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 0
@@ -32,6 +33,35 @@ static block_header_t *heap_list = NULL;
 
 uint32_t align(uint32_t size) {
     return (size + BLOCK_ALIGN - 1) & ~(BLOCK_ALIGN - 1);
+}
+
+inline void kernel_jump_to_higher_half(void (*entry)(unsigned long, unsigned long), unsigned long magic, unsigned long multiboot_info) {
+    uintptr_t flat_addr = (uintptr_t)entry;
+    uintptr_t offset    = flat_addr - KERNEL_PHYS_BASE;
+    uintptr_t high_addr = KERNEL_VMA_BASE + offset;
+    
+    printf("calling higher half %08x\n",high_addr);
+
+    asm volatile (
+    "push %[arg2]\n"
+    "push %[arg1]\n"
+    "call *%[func]\n"
+    :
+    : [func] "r"(high_addr), [arg1] "r"(magic), [arg2] "r"(multiboot_info)
+    : "memory"
+    );
+}
+
+static inline void *kernel_current_eip(void) {
+    void *eip;
+    asm volatile (
+        "call 1f       \n"
+        "1: pop %%eax  \n"
+        : "=a"(eip)
+        :
+        : "memory"
+    );
+    return eip;
 }
 
 /**
@@ -144,16 +174,14 @@ void kernel_free(void *ptr) {
  * @param magic The magic number passed by the bootloader.
  * @param addr The address of the multiboot information structure.
  */
-void kernel_main(unsigned long magic, unsigned long addr)
+void kernel_main_high(unsigned long magic, unsigned long addr)
 {
-	tty_initialize();
-
     uint32_t mem_lower;
     uint32_t mem_upper;
     uint32_t mem_total;
 
 	printf("serotonin kernel - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
-    printf("kernel start: 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x\n",&kernel_main,KERNEL_HEAP_START,magic,addr);
+    printf("kernel now (eip): 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x\n",kernel_current_eip(),KERNEL_HEAP_START,magic,addr);
     
     pic_remap(0x20, 0x28);
 
@@ -187,7 +215,6 @@ void kernel_main(unsigned long magic, unsigned long addr)
         kernel_panic("multiboot - unable to detect memory"); 
     }
 
-
     kernel_sleep(100000);
 
     /*
@@ -213,4 +240,21 @@ void kernel_main(unsigned long magic, unsigned long addr)
     */
 
     //kernel_panic("end of kernel_main");
+}
+
+void kernel_main(unsigned long arg1, unsigned long arg2) {
+    unsigned long volatile saved_magic = arg1;
+    unsigned long volatile saved_multiboot_info = arg2;
+
+    //asm volatile ("movl %%ebx, %0" : "=r"(saved_magic) : "r"(arg1));
+    //asm volatile ("movl %%eax, %0" : "=r"(saved_multiboot_info) : "r"(arg2));
+
+    //printf("%x, %x\n",arg1,arg2);
+
+    tty_initialize();
+
+    printf("serotonin is paging memory - if you are stuck here please reboot.\n");
+
+    paging_init();
+    kernel_jump_to_higher_half(kernel_main_high,arg1,arg2);
 }

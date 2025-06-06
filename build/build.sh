@@ -17,10 +17,11 @@ i686-elf-gcc -c stdlib/stdlib.c -o stdlib/stdlib.o -std=gnu99 -ffreestanding -O2
 i686-elf-gcc -c stdlib/mem.c -o stdlib/mem.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
 i686-elf-gcc -c stdio/stdio.c -o stdio/stdio.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
 i686-elf-gcc -c kernel.c -o kernel.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
+i686-elf-gcc -c paging.c -o paging.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
 i686-elf-gcc -c io/irq.c -o io/irq.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
 i686-elf-gcc -c io/pic.c -o io/pic.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
 i686-elf-gcc -c io/keyboard.c -o io/keyboard.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
-i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt_flush.o gdt.o idt.o isr.o fault.o io/irq.o io/pic.o io/keyboard.o
+i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt_flush.o gdt.o idt.o isr.o fault.o io/irq.o io/pic.o io/keyboard.o paging.o
 
 cd ../build
 
