@@ -232,6 +232,14 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     uint32_t mem_upper;
     uint32_t mem_total;
 
+    printf("   _____                _              _       \n");
+    printf("  / ____|              | |            (_)      \n");
+    printf(" | (___   ___ _ __ ___ | |_ ___  _ __  _ _ __  \n");
+    printf("  \\___ \\ / _ \\ '__/ _ \\| __/ _ \\| '_ \\| | '_ \\ \n");
+    printf("  ____) |  __/ | | (_) | || (_) | | | | | | | |\n");
+    printf(" |_____/ \\___|_|  \\___/ \\__\\___/|_| |_|_|_| |_|\n");
+
+
 	printf(" serotonin kernel (higher half) - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
     printf("kernel now (eip): 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x\n",kernel_current_eip(),HEAP_START,magic,addr);
     
@@ -261,18 +269,69 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         kernel_panic("multiboot - unable to detect memory"); 
     }
 
-    printf("fb addr=%p\n",mbi->framebuffer_addr);
+    kernel_sleep(1000);
 
+    // Clear screen to black
+    vbe_fillrect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0xFF000000);
 
-    kernel_sleep(100000);
+    // 1. Color bars (horizontal stripes)
+    uint32_t colors[] = {
+        0xFFFF0000,  // Red
+        0xFF00FF00,  // Green
+        0xFF0000FF,  // Blue
+        0xFFFFFF00,  // Yellow
+        0xFFFF00FF,  // Magenta
+        0xFF00FFFF,  // Cyan
+        0xFFFFFFFF,  // White
+        0xFF808080,  // Gray
+    };
 
-    /*
-    printfs(PRINT_STATUS_DEBUG,"Test\n");
-    printfs(PRINT_STATUS_INFO,"Test\n");
-    printfs(PRINT_STATUS_WARNING,"Test\n");
-    printfs(PRINT_STATUS_ERROR,"Test\n");
-    printfs(PRINT_STATUS_FATAL,"Test\n");
-    */
+    size_t num_colors = sizeof(colors) / sizeof(colors[0]);
+    uint32_t stripe_height = SCREEN_HEIGHT / 4 / num_colors;
+
+    for (size_t i = 0; i < num_colors; i++) {
+        uint32_t y = i * stripe_height;
+        vbe_fillrect(0, y, SCREEN_WIDTH, stripe_height, colors[i]);
+    }
+
+    // 2. Black to white gradient
+    uint32_t gradient_height = SCREEN_HEIGHT / 4;
+    uint32_t gradient_y = SCREEN_HEIGHT / 4;
+
+    for (uint32_t x = 0; x < SCREEN_WIDTH; x++) {
+        uint8_t value = (uint8_t)((x * 255) / SCREEN_WIDTH);
+        uint32_t color = 0xFF000000 | (value << 16) | (value << 8) | value;
+        vbe_fillrect(x, gradient_y, 1, gradient_height, color);
+    }
+
+    // 3. RGB component gradients
+    uint32_t rgb_grad_height = SCREEN_HEIGHT / 4 / 3;
+    uint32_t rgb_grad_y = SCREEN_HEIGHT / 2;
+
+    // Red gradient
+    for (uint32_t x = 0; x < SCREEN_WIDTH; x++) {
+        uint8_t red = (uint8_t)((x * 255) / SCREEN_WIDTH);
+        uint32_t color = 0xFF000000 | (red << 16);
+        vbe_fillrect(x, rgb_grad_y, 1, rgb_grad_height, color);
+    }
+
+    // Green gradient
+    rgb_grad_y += rgb_grad_height;
+    for (uint32_t x = 0; x < SCREEN_WIDTH; x++) {
+        uint8_t green = (uint8_t)((x * 255) / SCREEN_WIDTH);
+        uint32_t color = 0xFF000000 | (green << 8);
+        vbe_fillrect(x, rgb_grad_y, 1, rgb_grad_height, color);
+    }
+
+    // Blue gradient
+    rgb_grad_y += rgb_grad_height;
+    for (uint32_t x = 0; x < SCREEN_WIDTH; x++) {
+        uint8_t blue = (uint8_t)((x * 255) / SCREEN_WIDTH);
+        uint32_t color = 0xFF000000 | blue;
+        vbe_fillrect(x, rgb_grad_y, 1, rgb_grad_height, color);
+    }
+
+    abort();
 
     /*
     for (int i = 0; i < 16; i++) {

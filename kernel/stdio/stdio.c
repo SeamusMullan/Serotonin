@@ -189,7 +189,7 @@ void printfs_write_status(enum print_status_types status_type) {
             vbe_terminal_puts("!!!");
             break;
         case PRINT_STATUS_SUCCESS:
-            vbe_setcolor_bg(vbe_palette[VBE_COLOR_LIGHT_GREEN]);
+            vbe_setcolor_bg(vbe_palette[VBE_COLOR_GREEN]);
             vbe_terminal_puts("SSS");
             break;
     }
