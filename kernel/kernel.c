@@ -162,7 +162,7 @@ void kernel_main(unsigned long magic, unsigned long addr)
     {
         kernel_panic("multiboot - invalid magic number");
     }
-    printfs(PRINT_STATUS_INFO,"Multiboot header loaded, mbi=0x%08x\n",addr);
+    printfs(PRINT_STATUS_SUCCESS,"Multiboot header loaded, mbi=0x%08x\n",addr);
     multiboot_info_t *mbi = (multiboot_info_t *) addr;
     //printf("flags = 0x%x\n", (unsigned) mbi->flags);
 

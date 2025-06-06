@@ -196,6 +196,10 @@ void printfs_write_status(enum print_status_types status_type) {
             tty_setcolor(vga_entry_color(VGA_COLOR_WHITE,VGA_COLOR_RED));
             tty_writestring("!!!");
             break;
+        case PRINT_STATUS_SUCCESS:
+            tty_setcolor(vga_entry_color(VGA_COLOR_BLACK,VGA_COLOR_LIGHT_GREEN));
+            tty_writestring("SSS");
+            break;
     }
     tty_setcolor(vga_entry_color(VGA_COLOR_WHITE,VGA_COLOR_BLACK));
     tty_writestring("] ");
