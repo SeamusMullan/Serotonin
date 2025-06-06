@@ -107,6 +107,24 @@ void printf_internal(const char* p, void** arg_ptr) {
                     tty_writestring(buffer);
                     break;
 
+                case 'p': {
+                    void* ptr = *arg_ptr++;
+                    uintptr_t addr = (uintptr_t)ptr;
+                    tty_writestring("0x");
+
+                    utoa_hex(addr, buffer);
+
+                    int len = strlen(buffer);
+                    while (len < width) {
+                        tty_putchar(pad_char);
+                        width--;
+                    }
+
+                    tty_writestring(buffer);
+                    break;
+                }
+
+
                 default:
                     tty_putchar('%');
                     tty_putchar(*p);

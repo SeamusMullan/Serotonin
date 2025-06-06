@@ -11,14 +11,25 @@
 #define KERNEL_VERSION_MID 0
 #define KERNEL_VERSION_LOW 1 
 
+#define KERNEL_HEAP_START 0x100000 
+#define KERNEL_HEAP_SIZE  0x100000
+#define BLOCK_ALIGN 8
+
 #define CHECK_FLAG(flags,bit)   ((flags) & (1 << (bit)))
 
-void kernel_sleep(unsigned int mili)
-{
-    volatile unsigned int count = mili * 10000;
-    while (count--) {
-        asm volatile("nop"); 
-    }
+typedef struct block_header {
+    uint32_t size;
+    uint8_t free;
+    struct block_header *next;
+} block_header_t;
+
+static uint32_t heap_start = KERNEL_HEAP_START;
+static uint32_t heap_end = KERNEL_HEAP_START + KERNEL_HEAP_SIZE;
+static uint32_t current_heap = KERNEL_HEAP_START;
+static block_header_t *heap_list = NULL;
+
+uint32_t align(uint32_t size) {
+    return (size + BLOCK_ALIGN - 1) & ~(BLOCK_ALIGN - 1);
 }
 
 void kernel_panic(char* str) {
@@ -53,9 +64,68 @@ void kernel_panic(char* str) {
     abort();
 }
 
+void *kernel_malloc(uint32_t size) {
+    size = align(size);
+    block_header_t *curr = heap_list;
+
+    // First allocation
+    if (!heap_list) {
+        heap_list = (block_header_t *)current_heap;
+        heap_list->size = size;
+        heap_list->free = 0;
+        heap_list->next = NULL;
+        current_heap += sizeof(block_header_t) + size;
+        return (void *)(heap_list + 1);
+    }
+
+    // Look for a free block
+    while (curr) {
+        if (curr->free && curr->size >= size) {
+            curr->free = 0;
+            return (void *)(curr + 1);
+        }
+        if (!curr->next) break;
+        curr = curr->next;
+    }
+
+    // Allocate new block
+    block_header_t *new_block = (block_header_t *)current_heap;
+    current_heap += sizeof(block_header_t) + size;
+    if (current_heap >= heap_end) {
+        kernel_panic("out of kernel heap memory");
+        return NULL;
+    }
+
+    new_block->size = size;
+    new_block->free = 0;
+    new_block->next = NULL;
+    curr->next = new_block;
+
+    return (void *)(new_block + 1);
+}
+
+void kernel_free(void *ptr) {
+    if (!ptr) return;
+
+    block_header_t *block = ((block_header_t *)ptr) - 1;
+    block->free = 1;
+}
+
+void kernel_sleep(unsigned int mili)
+{
+    volatile unsigned int count = mili * 10000;
+    while (count--) {
+        asm volatile("nop"); 
+    }
+}
+
 void kernel_main(unsigned long magic, unsigned long addr) 
 {
 	tty_initialize();
+
+    uint32_t mem_lower;
+    uint32_t mem_upper;
+    uint32_t mem_total;
 
 	printf("serotonin kernel - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
     if (magic != MULTIBOOT_BOOTLOADER_MAGIC)
@@ -68,31 +138,39 @@ void kernel_main(unsigned long magic, unsigned long addr)
 
     if (CHECK_FLAG (mbi->flags, 0))
     {
-        printf("mem_lower = %uKB, mem_upper = %uKB\n", (unsigned) mbi->mem_lower, (unsigned) mbi->mem_upper);
+        mem_lower = (unsigned) mbi->mem_lower;
+        mem_upper = (unsigned) mbi->mem_upper;
+        mem_total = mem_lower+mem_upper;
+        printfs(PRINT_STATUS_INFO,"Detected lower memory: %uKB\n", mem_lower);
+        printfs(PRINT_STATUS_INFO,"Detected upper memory: %uKB\n", mem_upper);
+        printfs(PRINT_STATUS_INFO,"Total memory detected: %uKB\n", mem_total);
     }
     else {
-        kernel_panic("multiboot - mem_ invalid"); 
+        kernel_panic("multiboot - unable to detect memory"); 
     }
-    
-    if (CHECK_FLAG (mbi->flags, 6))
-    {
-      multiboot_memory_map_t *mmap;
-      
-      printf ("mmap_addr = 0x%x, mmap_length = 0x%x\n",
-              (unsigned) mbi->mmap_addr, (unsigned) mbi->mmap_length);
-      for (mmap = (multiboot_memory_map_t *) mbi->mmap_addr;
-           (unsigned long) mmap < mbi->mmap_addr + mbi->mmap_length;
-           mmap = (multiboot_memory_map_t *) ((unsigned long) mmap
-                                    + mmap->size + sizeof (mmap->size)))
-        printf (" size = 0x%x, base_addr = 0x%x%08x,"
-                " length = 0x%x%08x, type = 0x%x\n",
-                (unsigned) mmap->size,
-                (unsigned) (mmap->addr >> 32),
-                (unsigned) (mmap->addr & 0xffffffff),
-                (unsigned) (mmap->len >> 32),
-                (unsigned) (mmap->len & 0xffffffff),
-                (unsigned) mmap->type);
+
+    uint8_t *a = kernel_malloc(32);
+    printf("allocated A: %p\n", a);
+    void *b = kernel_malloc(64);
+    printf("allocated B: %p\n", b);
+    void *c = kernel_malloc(128);
+    printf("allocated C: %p\n", c);
+
+    kernel_free(b);
+    printf("freed B\n");
+
+    void *d = kernel_malloc(48);
+    printf("allocated D: %p\n", d);
+
+    memset(a, 0xAA, 32);
+
+    for (uint32_t i = 0; i < 32; i++) {
+        printf("%02x ", a[i]);
+        if ((i + 1) % 16 == 0)
+            printf("\n");
     }
+    printf("\n");
+
 
     /*
     printfs(PRINT_STATUS_DEBUG,"Test\n");
