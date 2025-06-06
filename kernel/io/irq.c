@@ -4,12 +4,13 @@
 volatile uint64_t timer_ticks = 0;
 
 void irq_handler(int irq) {
-    printfs(PRINT_STATUS_DEBUG,"IRQ %d received\n", irq);
+    //printfs(PRINT_STATUS_DEBUG,"IRQ %d received\n", irq);
 
     if (irq == 0) {
         timer_ticks++;
     } else if (irq == 1) {
-        printf("[KEYBOARD]\n");
+        uint8_t scancode = inb(0x60);
+        handle_scancode(scancode);
     }
 
     if (irq >= 8)

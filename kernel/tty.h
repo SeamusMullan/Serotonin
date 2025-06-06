@@ -2,6 +2,7 @@
 #define _KERNEL_TTY
 
 #include <stddef.h>
+#include <stdint.h>
 
 /* Hardware text mode color constants. */
 enum vga_color {
@@ -31,6 +32,8 @@ void tty_putentryat(char c, uint8_t color, size_t x, size_t y);
 void tty_putchar(char c);
 void tty_write(const char* data, size_t size);
 void tty_scroll(void);
+void tty_back(void);
 void tty_writestring(const char* data);
+void tty_set_cursor(int column, int row);
 
 #endif

@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include "string.h"
 #include "tty.h"
+#include "io/io.h"
 
 #define VGA_WIDTH   80
 #define VGA_HEIGHT  25
@@ -99,6 +100,7 @@ void tty_putchar(char c)
         if (++terminal_row == VGA_HEIGHT) 
 		    terminal_row = 0;
     }
+    tty_set_cursor(terminal_column, terminal_row);
 }
 
 /**
@@ -127,6 +129,8 @@ void tty_scroll(void)
     for (size_t i = start_index; i < VGA_HEIGHT*VGA_WIDTH; i++) {
 		terminal_buffer[i-start_index] = terminal_buffer[i];
 	}
+    terminal_column = 0;
+    tty_set_cursor(terminal_column, terminal_row);
 }
 
 /**
@@ -144,4 +148,32 @@ void tty_writestring(const char* data)
         terminal_row--;
     }
 	tty_write(data, strlen(data));
+}
+
+void tty_back(void)
+{
+    if (terminal_column == 0 && terminal_row == 0) {
+        return;
+    }
+
+    if (terminal_column == 0) {
+        terminal_row--;
+        terminal_column = VGA_WIDTH - 1;
+    } else {
+        terminal_column--;
+    }
+
+    tty_putentryat(' ', terminal_color, terminal_column, terminal_row);
+    tty_set_cursor(terminal_column, terminal_row);
+}
+
+void tty_set_cursor(int column, int row)
+{
+    uint16_t position = row * VGA_WIDTH + column;
+
+    outb(0x3D4, 0x0F);
+    outb(0x3D5, (uint8_t)(position & 0xFF));
+
+    outb(0x3D4, 0x0E);
+    outb(0x3D5, (uint8_t)((position >> 8) & 0xFF));
 }

@@ -27,5 +27,6 @@ static inline void io_wait(void)
 
 void irq_handler(int irq);
 void pic_remap(int offset1, int offset2);
+void handle_scancode(uint8_t scancode);
 
 #endif
