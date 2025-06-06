@@ -237,9 +237,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     splash_render(0,SCREEN_HEIGHT-300);
 
-    for (uint32_t i = 0; i < 16; i++) {
-        vbe_fillrect(10*i, SCREEN_HEIGHT, 10, 10, vbe_colors[i]);
-    }
+    create_color_render();
 
     printf("   _____                _              _       \n");
     printf("  / ____|              | |            (_)      \n");

@@ -2,6 +2,8 @@
 #include "vbe/vbe.h"
 #include "font.h"
 
+#define NUM_STEPS  1000 
+
 /* GIMP RGB C-Source image dump (serotonin.c) */
 
 static const struct {
@@ -7850,4 +7852,66 @@ void splash_render(int offset_x,int offset_y) {
       }
   }
   vbe_flip();
+}
+
+void create_color_render() {
+  unsigned int r = 255, g = 0, b = 0;
+  unsigned int color;
+  int step_size = 1; // Control how many colors (larger step = fewer colors)
+
+  for (int i = 0; i < NUM_STEPS; i++) {
+    // integer hue from 0..1535 (≈ 6×256)
+    // Multiply first to avoid truncating to zero too early
+    int hue = (i * 1536) / NUM_STEPS; 
+    int region = hue >> 8;       // hue / 256
+    int offset = hue & 0xFF;     // hue % 256
+
+    int r = 0, g = 0, b = 0;
+
+    switch (region) {
+        case 0: 
+            // Red → Yellow:    R=255, G=0→255, B=0
+            r = 255;       
+            g = offset;    // from 0 up to 255
+            b = 0;        
+            break;
+        case 1:
+            // Yellow → Green:  R=255→0, G=255, B=0
+            r = 255 - offset; 
+            g = 255;         
+            b = 0;            
+            break;
+        case 2:
+            // Green → Cyan:    R=0, G=255, B=0→255
+            r = 0;        
+            g = 255;      
+            b = offset;   // from 0 up to 255
+            break;
+        case 3:
+            // Cyan → Blue:     R=0, G=255→0, B=255
+            r = 0;         
+            g = 255 - offset; 
+            b = 255;       
+            break;
+        case 4:
+            // Blue → Magenta:  R=0→255, G=0, B=255
+            r = offset; // from 0 up to 255
+            g = 0;       
+            b = 255;     
+            break;
+        case 5:
+            // Magenta → Red:   R=255, G=0, B=255→0
+            r = 255;       
+            g = 0;         
+            b = 255 - offset; 
+            break;
+    }
+
+    // Pack into 0xFFRRGGBB
+    uint32_t packed = 0xFF000000 
+                    | ((uint32_t)r << 16) 
+                    | ((uint32_t)g << 8) 
+                    | (uint32_t)b;
+    vbe_fillrect(1*i, SCREEN_HEIGHT, 1, 3, packed);
+  }
 }
