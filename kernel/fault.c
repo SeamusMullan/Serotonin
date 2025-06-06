@@ -4,7 +4,7 @@
 #include "fault.h"
 
 void fault_handler(int vector) {
-    printf("INT #%d RAISED\n", vector);
+    printfs(PRINT_STATUS_DEBUG,"INT #%d RAISED\n", vector);
 
     switch ((isr_vector_t)vector) {
         case ISR_DIVIDE_ERROR: 

@@ -41,6 +41,10 @@ extern void isr29(void);
 extern void isr30(void);
 extern void isr31(void);
 
+// lol2
+extern void irq0(void);
+extern void irq1(void);
+
 void idt_set_gate(uint8_t num, uint32_t base, uint16_t sel, uint8_t flags) {
     idt[num].offset_low = base & 0xFFFF;
     idt[num].selector   = sel;
@@ -56,14 +60,6 @@ void idt_load(struct idt_ptr* idtp) {
         : "r" (idtp)
         : "memory"
     );
-}
-
-// Division by zero exception interrupt handler
-void isr0_handler() {
-    printfs(PRINT_STATUS_ERROR,"Divide by zero exception!\n");
-
-    // For now just panic as we shouldn't be dividing by zero in kmode, will handle better in userland.
-    kernel_panic("exception - div by zero");
 }
 
 void init_idt() {
@@ -88,6 +84,8 @@ void init_idt() {
         idt_set_gate(i, (uint32_t)isrs[i], 0x08, 0x8E);
     }
 
+    idt_set_gate(32 + 0, (uint32_t)irq0, 0x08, 0x8E);
+    idt_set_gate(32 + 1, (uint32_t)irq1, 0x08, 0x8E);
 
     idt_load(&idtp);
 }

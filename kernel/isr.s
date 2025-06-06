@@ -255,3 +255,21 @@ isr31:
     call fault_handler
     add $4, %esp
     iret
+
+.global irq0
+irq0:
+    pusha
+    pushl $0
+    call irq_handler
+    add $4, %esp
+    popa
+    iret
+
+.global irq1
+irq1:
+    pusha
+    pushl $1
+    call irq_handler
+    add $4, %esp
+    popa
+    iret

@@ -7,6 +7,7 @@
 #include "stdlib/stdlib.h"
 #include "multiboot.h"
 #include "idt.h"
+#include "io/io.h"
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 0
@@ -40,11 +41,13 @@ uint32_t align(uint32_t size) {
  * It is not an efficient way to sleep, as it consumes CPU cycles while waiting.
  * @param mili The number of milliseconds to sleep.
  */
- void kernel_sleep(unsigned int mili)
-{
-    volatile unsigned int count = mili * 100000;
-    while (count--) {
-        asm volatile("nop"); 
+void kernel_sleep(unsigned int milliseconds) {
+    uint64_t start = timer_ticks;
+
+    unsigned int target_ticks = (milliseconds * 1000U) / 54945U;
+
+    while ((timer_ticks - start) < target_ticks) {
+        asm volatile ("hlt");
     }
 }
 
@@ -152,11 +155,16 @@ void kernel_main(unsigned long magic, unsigned long addr)
 	printf("serotonin kernel - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
     printf("kernel start: 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x\n",&kernel_main,KERNEL_HEAP_START,magic,addr);
     
+    pic_remap(0x20, 0x28);
+
     init_idt();
     struct idt_ptr idtp_read;
     asm volatile ("sidt %0" : "=m"(idtp_read));
     printfs(PRINT_STATUS_INFO,"IDT base:  0x%08x\n", idtp_read.base);
     printfs(PRINT_STATUS_INFO,"IDT limit: 0x%04x\n", idtp_read.limit);
+
+    // At this point, interrupts *should* be enabled, but it doesn't hurt.
+    asm volatile ("sti");
 
     if (magic != MULTIBOOT_BOOTLOADER_MAGIC)
     {
@@ -179,15 +187,8 @@ void kernel_main(unsigned long magic, unsigned long addr)
         kernel_panic("multiboot - unable to detect memory"); 
     }
 
-    
-    asm volatile (
-        "mov $0, %%eax\n\t"
-        "mov $0, %%ebx\n\t"
-        "div %%ebx\n\t"    // eax / ebx → divide by zero
-        :
-        :
-        : "eax", "ebx"
-    );
+
+    kernel_sleep(100000);
 
     /*
     printfs(PRINT_STATUS_DEBUG,"Test\n");
@@ -211,5 +212,5 @@ void kernel_main(unsigned long magic, unsigned long addr)
     }
     */
 
-    kernel_panic("end of kernel_main");
+    //kernel_panic("end of kernel_main");
 }
