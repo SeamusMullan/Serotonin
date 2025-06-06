@@ -26,6 +26,8 @@ static uint32_t heap_end = KERNEL_HEAP_START + KERNEL_HEAP_SIZE;
 static uint32_t current_heap = KERNEL_HEAP_START;
 static block_header_t *heap_list = NULL;
 
+#define CHECK_FLAG(flags,bit)   ((flags) & (1 << (bit)))
+
 uint32_t align(uint32_t size) {
     return (size + BLOCK_ALIGN - 1) & ~(BLOCK_ALIGN - 1);
 }
@@ -130,14 +132,6 @@ void kernel_free(void *ptr) {
 
     block_header_t *block = ((block_header_t *)ptr) - 1;
     block->free = 1;
-}
-
-void kernel_sleep(unsigned int mili)
-{
-    volatile unsigned int count = mili * 10000;
-    while (count--) {
-        asm volatile("nop"); 
-    }
 }
 
 /**
