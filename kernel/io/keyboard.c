@@ -1,5 +1,5 @@
 #include "../stdio/stdio.h"
-#include "../tty.h"
+#include "../video/vbe/vbe.h"
 #include <stdint.h>
 
 static const char scancode_map[128] = {
@@ -31,7 +31,7 @@ void handle_scancode(uint8_t scancode) {
     }
     else if (scancode == 0x0E) 
     {
-        tty_back();
+        vbe_terminal_back();
     }
     else 
     {
@@ -39,4 +39,5 @@ void handle_scancode(uint8_t scancode) {
         if (c)
             printf("%c", c);
     }
+    vbe_flip();
 }

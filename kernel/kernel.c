@@ -9,6 +9,8 @@
 #include "idt.h"
 #include "io/io.h"
 #include "paging.h"
+#include "video/vbe/vbe.h"
+#include "video/font.h"
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 0
@@ -172,6 +174,10 @@ void *kernel_malloc(uint32_t size) {
         curr = curr->next;
     }
 
+    if (size >= PAGE_SIZE) {
+        current_heap = PAGE_ALIGN(current_heap);
+    }
+
     // Allocate new block
     block_header_t *new_block = (block_header_t *)current_heap;
     current_heap += sizeof(block_header_t) + size;
@@ -208,13 +214,25 @@ void kernel_free(void *ptr) {
  */
 void kernel_main_high(unsigned long magic, unsigned long addr)
 {
+    if (magic != MULTIBOOT_BOOTLOADER_MAGIC)
+    {
+        kernel_panic("multiboot - invalid magic number");
+    }
+    multiboot_info_t *mbi = (multiboot_info_t *) addr;
+
     page_directory_t *page_dir = (page_directory_t*)page_dir_ptr;
+
+    vbe_init(mbi);
+
+    vbe_palette_init();
+
+    vbe_flip();
 
     uint32_t mem_lower;
     uint32_t mem_upper;
     uint32_t mem_total;
 
-	printf("serotonin kernel (higher half) - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
+	printf(" serotonin kernel (higher half) - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
     printf("kernel now (eip): 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x\n",kernel_current_eip(),HEAP_START,magic,addr);
     
     pic_remap(0x20, 0x28);
@@ -228,12 +246,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     // At this point, interrupts *should* be enabled, but it doesn't hurt.
     asm volatile ("sti");
 
-    if (magic != MULTIBOOT_BOOTLOADER_MAGIC)
-    {
-        kernel_panic("multiboot - invalid magic number");
-    }
-    printfs(PRINT_STATUS_SUCCESS,"Multiboot header loaded, mbi=0x%08x\n",addr);
-    multiboot_info_t *mbi = (multiboot_info_t *) addr;
     //printf("flags = 0x%x\n", (unsigned) mbi->flags);
 
     if (CHECK_FLAG (mbi->flags, 0))
@@ -248,6 +260,9 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     else {
         kernel_panic("multiboot - unable to detect memory"); 
     }
+
+    printf("fb addr=%p\n",mbi->framebuffer_addr);
+
 
     kernel_sleep(100000);
 
@@ -286,20 +301,13 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
  * @param arg2 The address of the multiboot information structure.
  */
 void kernel_main(unsigned long arg1, unsigned long arg2) {
+    multiboot_info_t *mbi = (multiboot_info_t *) arg2;
+
     unsigned long volatile saved_magic = arg1;
     unsigned long volatile saved_multiboot_info = arg2;
 
-    //asm volatile ("movl %%ebx, %0" : "=r"(saved_magic) : "r"(arg1));
-    //asm volatile ("movl %%eax, %0" : "=r"(saved_multiboot_info) : "r"(arg2));
-
-    //printf("%x, %x\n",arg1,arg2);
-
-    tty_initialize();
-
-    printf("serotonin is paging memory - if you are stuck here please reboot.\n");
-
-    paging_init();
+    paging_init((uintptr_t)mbi->framebuffer_addr);
     kernel_jump_to_higher_half(kernel_main_high,arg1,arg2);
 
-    panic("returned from higher half kernel!"); 
+    kernel_panic("returned from higher half kernel!"); 
 }

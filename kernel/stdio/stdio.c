@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "../string.h"
+#include "../video/vbe/vbe.h"
 
 /**
  * @brief Internal printf function.
@@ -19,21 +20,18 @@ void printf_internal(const char* p, void** arg_ptr) {
             p++;
             const char* fmt_start = p;
 
-            // --- Parse flags ---
             char pad_char = ' ';
             if (*p == '0') {
                 pad_char = '0';
                 p++;
             }
 
-            // --- Parse field width ---
             int width = 0;
             while (*p >= '0' && *p <= '9') {
                 width = width * 10 + (*p - '0');
                 p++;
             }
 
-            // --- Parse length modifier ---
             enum { LEN_NONE, LEN_HH, LEN_H, LEN_L, LEN_LL } length = LEN_NONE;
             if (*p == 'h') {
                 if (*(p + 1) == 'h') {
@@ -53,7 +51,6 @@ void printf_internal(const char* p, void** arg_ptr) {
                 }
             }
 
-            // Prepare buffer
             char* str = buffer;
 
             switch (*p) {
@@ -94,62 +91,57 @@ void printf_internal(const char* p, void** arg_ptr) {
                     }
                     utoa_hex(val, buffer);
 
-                    // Apply zero-padding if necessary
                     int len = strlen(buffer);
                     while (len < width) {
-                        tty_putchar(pad_char);
+                        vbe_terminal_putchar(pad_char);
                         width--;
                     }
                     break;
                 }
 
                 case 's':
-                    tty_writestring((char*)*arg_ptr++);
+                    vbe_terminal_puts((char*)*arg_ptr++);
                     break;
 
                 case 'c':
-                    buffer[0] = (char)(intptr_t)*arg_ptr++;
-                    buffer[1] = '\0';
-                    tty_writestring(buffer);
+                    vbe_terminal_putchar((char)(intptr_t)*arg_ptr++);
                     break;
 
                 case 'p': {
                     void* ptr = *arg_ptr++;
                     uintptr_t addr = (uintptr_t)ptr;
-                    tty_writestring("0x");
+                    vbe_terminal_puts("0x");
 
                     utoa_hex(addr, buffer);
 
                     int len = strlen(buffer);
                     while (len < width) {
-                        tty_putchar(pad_char);
+                        vbe_terminal_putchar(pad_char);
                         width--;
                     }
 
-                    tty_writestring(buffer);
+                    vbe_terminal_puts(buffer);
                     break;
                 }
 
-
                 default:
-                    tty_putchar('%');
-                    tty_putchar(*p);
+                    vbe_terminal_putchar('%');
+                    vbe_terminal_putchar(*p);
                     break;
             }
 
-            // Output formatted string
             if (*p == 'x' || *p == 'u' || *p == 'd') {
-                tty_writestring(buffer);
+                vbe_terminal_puts(buffer);
             }
 
         } else {
-            // Just a normal character
-            buffer[0] = *p;
-            buffer[1] = '\0';
-            tty_writestring(buffer);
+            // Output normal character fast
+            vbe_terminal_putchar(*p);
         }
         p++;
     }
+
+    vbe_flip();
 }
 
 /**
@@ -174,35 +166,35 @@ void printf(const char* fmt, ...)
  * @param status_type The status type to write.
  */
 void printfs_write_status(enum print_status_types status_type) {
-    tty_writestring("[");
+    vbe_terminal_puts("[");
     switch (status_type) {
         case PRINT_STATUS_DEBUG:
-            tty_setcolor(vga_entry_color(VGA_COLOR_WHITE,VGA_COLOR_LIGHT_BLUE));
-            tty_writestring("DDD");
+            vbe_setcolor_bg(vbe_palette[VBE_COLOR_LIGHT_BLUE]);
+            vbe_terminal_puts("DDD");
             break;
         case PRINT_STATUS_INFO:
-            tty_setcolor(vga_entry_color(VGA_COLOR_WHITE,VGA_COLOR_BLUE));
-            tty_writestring("III");
+            vbe_setcolor_bg(vbe_palette[VBE_COLOR_BLUE]);
+            vbe_terminal_puts("III");
             break;
         case PRINT_STATUS_WARNING:
-            tty_setcolor(vga_entry_color(VGA_COLOR_WHITE,VGA_COLOR_BROWN));
-            tty_writestring("WWW");
+            vbe_setcolor_bg(vbe_palette[VBE_COLOR_BROWN]);
+            vbe_terminal_puts("WWW");
             break;
         case PRINT_STATUS_ERROR:
-            tty_setcolor(vga_entry_color(VGA_COLOR_WHITE,VGA_COLOR_RED));
-            tty_writestring("EEE");
+            vbe_setcolor_bg(vbe_palette[VBE_COLOR_RED]);
+            vbe_terminal_puts("EEE");
             break;
         case PRINT_STATUS_FATAL:
-            tty_setcolor(vga_entry_color(VGA_COLOR_WHITE,VGA_COLOR_RED));
-            tty_writestring("!!!");
+            vbe_setcolor_bg(vbe_palette[VBE_COLOR_RED]);
+            vbe_terminal_puts("!!!");
             break;
         case PRINT_STATUS_SUCCESS:
-            tty_setcolor(vga_entry_color(VGA_COLOR_BLACK,VGA_COLOR_LIGHT_GREEN));
-            tty_writestring("SSS");
+            vbe_setcolor_bg(vbe_palette[VBE_COLOR_LIGHT_GREEN]);
+            vbe_terminal_puts("SSS");
             break;
     }
-    tty_setcolor(vga_entry_color(VGA_COLOR_WHITE,VGA_COLOR_BLACK));
-    tty_writestring("] ");
+    vbe_setcolor_bg(vbe_palette[VBE_COLOR_BLACK]);
+    vbe_terminal_puts("] ");
 }
 
 /**

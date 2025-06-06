@@ -1,7 +1,8 @@
 /* Declare constants for the multiboot header. */
 .set ALIGN,    1<<0             /* align loaded modules on page boundaries */
 .set MEMINFO,  1<<1             /* provide memory map */
-.set FLAGS,    ALIGN | MEMINFO  /* this is the Multiboot 'flag' field */
+.set VBE_MODE, 1<<2
+.set FLAGS,    ALIGN | MEMINFO | VBE_MODE  /* this is the Multiboot 'flag' field */
 .set MAGIC,    0x1BADB002       /* 'magic number' lets bootloader find the header */
 .set CHECKSUM, -(MAGIC + FLAGS) /* checksum of above, to prove we are multiboot */
 
@@ -17,6 +18,32 @@ forced to be within the first 8 KiB of the kernel file.
 .long MAGIC
 .long FLAGS
 .long CHECKSUM
+
+/* VBE mode parameters */
+.set MODE_TYPE, 0               /* 0 = VBE graphics mode */
+.set WIDTH,     1024
+.set HEIGHT,    768
+.set DEPTH,     32              /* bits per pixel: 8/15/16/24/32 */
+
+/* Multiboot header */
+.section .multiboot
+.align 4
+.long MAGIC
+.long FLAGS
+.long CHECKSUM
+
+/* These 5 fields are optional if loadable image is flat binary or ELF. Set to 0 */
+.long 0          /* header_addr */
+.long 0          /* load_addr */
+.long 0          /* load_end_addr */
+.long 0          /* bss_end_addr */
+.long 0          /* entry_addr */
+
+/* VBE mode request (required because VBE_MODE flag is set) */
+.long MODE_TYPE
+.long WIDTH
+.long HEIGHT
+.long DEPTH
 
 /*
 The multiboot standard does not define the value of the stack pointer register
