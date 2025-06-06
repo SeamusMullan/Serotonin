@@ -89,3 +89,21 @@ void fault_handler(int vector) {
     }
 }
 
+void page_fault_handler(uint32_t error_code) {
+    uint32_t faulting_address;
+    // Read CR2 to get faulting address
+    asm volatile ("mov %%cr2, %0" : "=r"(faulting_address));
+
+    printfs(PRINT_STATUS_ERROR," Page fault!\n");
+    printfs(PRINT_STATUS_ERROR,"     Faulting address = 0x%08x\n", faulting_address);
+    printfs(PRINT_STATUS_ERROR,"     Error code = 0x%08x\n", error_code);
+
+    // Decode the error code
+    printfs(PRINT_STATUS_ERROR,"     %s, %s, %s\n",
+           (error_code & 0x1) ? "protection violation" : "page not present",
+           (error_code & 0x2) ? "write access" : "read access",
+           (error_code & 0x4) ? "user mode" : "kernel mode");
+
+    kernel_panic("exception - page fault (#PF)");
+}
+

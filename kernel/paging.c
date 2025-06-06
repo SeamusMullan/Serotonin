@@ -33,9 +33,14 @@ void paging_init(void) {
     uintptr_t addr_pt1 = (uintptr_t)&first_page_table;
     uintptr_t addr_pt2 = (uintptr_t)&kernel_page_table;
 
+    uintptr_t addr_heap_ptr0 = (uintptr_t)&heap_page_table0;
+    uintptr_t addr_heap_ptr1 = (uintptr_t)&heap_page_table1;
+    uintptr_t addr_heap_ptr2 = (uintptr_t)&heap_page_table2;
+    uintptr_t addr_heap_ptr3 = (uintptr_t)&heap_page_table3;
+
     // Print where they live (must be < 4 MiB)
-    printf("PD @ %p\nPT1 @ %p\nPT2 @ %p\n",
-           (void*)addr_pd, (void*)addr_pt1, (void*)addr_pt2);
+    printf("PD @ %p, PT1 @ %p,PT2 (kernel) @ %p\nHEAP_PT0 (kernel) @ %p, HEAP_PT1 (kernel) @ %p,\nHEAP_PT2 (kernel) @ %p, HEAP_PT3 (kernel) @ %p\n",
+           (void*)addr_pd, (void*)addr_pt1, (void*)addr_pt2, (void*)addr_heap_ptr0,(void*)addr_heap_ptr1,(void*)addr_heap_ptr2,(void*)addr_heap_ptr3);
 
     // Build first_page_table: identity map first 4 MiB exactly
     for (uint32_t i = 0; i < PAGE_ENTRIES; i++) {

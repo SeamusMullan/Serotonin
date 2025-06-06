@@ -214,6 +214,11 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         kernel_panic("multiboot - unable to detect memory"); 
     }
 
+    printf("Forcing page fault by accessing unmapped address...\n");
+    volatile uint32_t *ptr = (uint32_t *)0xDEADBEEF;
+    uint32_t value = *ptr;
+    (void)value;  
+
     kernel_sleep(100000);
 
     /*
