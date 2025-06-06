@@ -6,13 +6,15 @@ export PATH="$PREFIX/bin:$PATH"
 cd ../kernel
 
 i686-elf-as boot.s -o boot.o
+i686-elf-as gdt_flush.s -o gdt_flush.o
 i686-elf-gcc -c tty.c -o tty.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
+i686-elf-gcc -c gdt.c -o gdt.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
 i686-elf-gcc -c string.c -o string.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
 i686-elf-gcc -c stdlib/stdlib.c -o stdlib/stdlib.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
 i686-elf-gcc -c stdlib/mem.c -o stdlib/mem.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
 i686-elf-gcc -c stdio/stdio.c -o stdio/stdio.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
 i686-elf-gcc -c kernel.c -o kernel.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
-i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o  
+i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt_flush.o gdt.o 
 
 cd ../build
 

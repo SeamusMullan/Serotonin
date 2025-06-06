@@ -11,8 +11,8 @@
 #define KERNEL_VERSION_MID 0
 #define KERNEL_VERSION_LOW 1 
 
-#define KERNEL_HEAP_START 0x100000 
-#define KERNEL_HEAP_SIZE  0x100000
+#define KERNEL_HEAP_START 0x00F000 
+#define KERNEL_HEAP_SIZE  0x300000
 #define BLOCK_ALIGN 8
 
 typedef struct block_header {
@@ -41,7 +41,7 @@ uint32_t align(uint32_t size) {
  */
  void kernel_sleep(unsigned int mili)
 {
-    volatile unsigned int count = mili * 10000;
+    volatile unsigned int count = mili * 100000;
     while (count--) {
         asm volatile("nop"); 
     }
@@ -149,13 +149,14 @@ void kernel_main(unsigned long magic, unsigned long addr)
     uint32_t mem_total;
 
 	printf("serotonin kernel - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
+    printf("kernel start: 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x\n",&kernel_main,KERNEL_HEAP_START,magic,addr);
     if (magic != MULTIBOOT_BOOTLOADER_MAGIC)
     {
         kernel_panic("multiboot - invalid magic number");
     }
     printfs(PRINT_STATUS_INFO,"Multiboot header loaded, mbi=0x%08x\n",addr);
     multiboot_info_t *mbi = (multiboot_info_t *) addr;
-    printf("flags = 0x%x\n", (unsigned) mbi->flags);
+    //printf("flags = 0x%x\n", (unsigned) mbi->flags);
 
     if (CHECK_FLAG (mbi->flags, 0))
     {
@@ -170,27 +171,8 @@ void kernel_main(unsigned long magic, unsigned long addr)
         kernel_panic("multiboot - unable to detect memory"); 
     }
 
-    uint8_t *a = kernel_malloc(32);
-    printf("allocated A: %p\n", a);
-    void *b = kernel_malloc(64);
-    printf("allocated B: %p\n", b);
-    void *c = kernel_malloc(128);
-    printf("allocated C: %p\n", c);
-
-    kernel_free(b);
-    printf("freed B\n");
-
-    void *d = kernel_malloc(48);
-    printf("allocated D: %p\n", d);
-
-    memset(a, 0xAA, 32);
-
-    for (uint32_t i = 0; i < 32; i++) {
-        printf("%02x ", a[i]);
-        if ((i + 1) % 16 == 0)
-            printf("\n");
-    }
-    printf("\n");
+    uint16_t cs;
+    asm volatile ("mov %%cs, %0" : "=r"(cs));
 
 
     /*

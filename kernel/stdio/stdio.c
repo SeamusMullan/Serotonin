@@ -185,7 +185,7 @@ void printfs_write_status(enum print_status_types status_type) {
             tty_writestring("III");
             break;
         case PRINT_STATUS_WARNING:
-            tty_setcolor(vga_entry_color(VGA_COLOR_WHITE,VGA_COLOR_LIGHT_RED));
+            tty_setcolor(vga_entry_color(VGA_COLOR_WHITE,VGA_COLOR_BROWN));
             tty_writestring("WWW");
             break;
         case PRINT_STATUS_ERROR:

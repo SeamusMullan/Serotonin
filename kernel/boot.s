@@ -75,8 +75,11 @@ _start:
 	C++ features such as global constructors and exceptions will require
 	runtime support to work as well.
 	*/
-	cli
-
+	push %ebx
+	push %eax
+	call init_gdt
+	pop %eax
+	pop %ebx
 
 	/*
 	Enter the high-level kernel. The ABI requires the stack is 16-byte
