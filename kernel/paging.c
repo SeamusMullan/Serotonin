@@ -26,6 +26,10 @@ page_table_t test_page_table;
 
 uintptr_t page_dir_ptr;
 
+/**
+ * @brief Initialize the paging system.
+ * 
+ */
 void paging_init(void) {
     uintptr_t addr_pd = (uintptr_t)&page_directory;
     uintptr_t addr_pt1 = (uintptr_t)&first_page_table;
@@ -93,6 +97,12 @@ void paging_init(void) {
     printf("CR0 now = 0x%08x\n", check_cr0);
 }
 
+/**
+ * @brief Convert a physical address to a virtual address.
+ *
+ * @param phys_addr The physical address to convert.
+ * @return void* The corresponding virtual address.
+ */
 void *phys_to_virt(uintptr_t phys_addr) {
     // Identity map (first 4 MiB)
     if (phys_addr < 0x00400000) {

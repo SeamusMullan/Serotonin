@@ -3,6 +3,11 @@
 #include "stdlib/stdlib.h"
 #include "fault.h"
 
+/**
+ * @brief Handle CPU exceptions.
+ * 
+ * @param vector The interrupt vector number.
+ */
 void fault_handler(int vector) {
     printfs(PRINT_STATUS_DEBUG,"INT #%d RAISED\n", vector);
 
@@ -89,6 +94,12 @@ void fault_handler(int vector) {
     }
 }
 
+/**
+ * @brief Handle page faults.
+ * 
+ * 
+ * @param error_code The error code associated with the page fault.
+ */
 void page_fault_handler(uint32_t error_code) {
     uint32_t faulting_address;
     // Read CR2 to get faulting address

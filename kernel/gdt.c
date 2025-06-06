@@ -20,6 +20,15 @@ static struct gdt_ptr gdtp;
 
 extern void gdt_flush(uint32_t);
 
+/**
+ * @brief Set a GDT (Global Descriptor Table) entry.
+ * 
+ * @param num The entry number.
+ * @param base The base address of the segment.
+ * @param limit The limit (size) of the segment.
+ * @param access The access flags for the segment.
+ * @param gran The granularity flags for the segment.
+ */
 static void gdt_set_gate(int num, uint32_t base, uint32_t limit, uint8_t access, uint8_t gran) {
     gdt[num].base_low    = base & 0xFFFF;
     gdt[num].base_middle = (base >> 16) & 0xFF;

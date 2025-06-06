@@ -9,6 +9,15 @@ static const char scancode_map[128] = {
     'z','x','c','v','b','n','m',',','.','/',   0, '*',  0, ' ',
 };
 
+/**
+ * @brief Handle keyboard scancodes.
+ * 
+ * This function processes the scancode received from the keyboard.
+ * It translates the scancode into a character and handles special keys
+ * like Enter and Backspace.
+ * 
+ * @param scancode The scancode received from the keyboard.
+ */
 void handle_scancode(uint8_t scancode) {
     if (scancode > 127)
         return;

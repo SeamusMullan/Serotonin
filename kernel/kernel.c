@@ -17,6 +17,12 @@
 #define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
 #define HEAP_SIZE   (KERNEL_HEAP_SIZE)
 
+/**
+ * @brief Block header for memory allocation.
+ * 
+ * contains the size and amount of free space, as well as a pointer to the next block.
+ * 
+ */
 typedef struct block_header {
     uint32_t size;
     uint8_t free;
@@ -30,10 +36,22 @@ static block_header_t *heap_list = NULL;
 
 #define CHECK_FLAG(flags,bit)   ((flags) & (1 << (bit)))
 
+/**
+ * @brief Align a size to the next block boundary.
+ * @param size The size to align.
+ * @return uint32_t The aligned size.
+ */
 uint32_t align(uint32_t size) {
     return (size + BLOCK_ALIGN - 1) & ~(BLOCK_ALIGN - 1);
 }
 
+/**
+ * @brief Jump to the higher half of the kernel address space.
+ *
+ * @param entry The entry point of the kernel.
+ * @param magic The magic number passed by the bootloader.
+ * @param multiboot_info The multiboot information structure.
+ */
 inline void kernel_jump_to_higher_half(void (*entry)(unsigned long, unsigned long), unsigned long magic, unsigned long multiboot_info) {
     uintptr_t flat_addr = (uintptr_t)entry;
     uintptr_t offset    = flat_addr - KERNEL_PHYS_BASE;
@@ -51,6 +69,11 @@ inline void kernel_jump_to_higher_half(void (*entry)(unsigned long, unsigned lon
     );
 }
 
+/**
+ * @brief Get the current instruction pointer (EIP).
+ * 
+ * @return void* The current instruction pointer.
+ */
 static inline void *kernel_current_eip(void) {
     void *eip;
     asm volatile (
@@ -120,6 +143,11 @@ void kernel_panic(char* str) {
     abort();
 }
 
+/**
+ * @brief Allocate memory from the kernel heap.
+ * @param size The size of memory to allocate.
+ * @return void* A pointer to the allocated memory, or NULL on failure.
+ */
 void *kernel_malloc(uint32_t size) {
     size = align(size);
     block_header_t *curr = heap_list;
@@ -160,6 +188,11 @@ void *kernel_malloc(uint32_t size) {
     return (void *)(new_block + 1);
 }
 
+/**
+ * @brief Free memory allocated from the kernel heap.
+ * 
+ * @param ptr A pointer to the memory to free.
+ */
 void kernel_free(void *ptr) {
     if (!ptr) return;
 
@@ -243,6 +276,15 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     //kernel_panic("end of kernel_main");
 }
 
+/**
+ * @brief The main entry point of the kernel.
+ *
+ * This function is called by the bootloader with the magic number and multiboot information.
+ * It initializes the kernel, sets up paging, and jumps to the higher half of the kernel.
+ *
+ * @param arg1 The magic number passed by the bootloader.
+ * @param arg2 The address of the multiboot information structure.
+ */
 void kernel_main(unsigned long arg1, unsigned long arg2) {
     unsigned long volatile saved_magic = arg1;
     unsigned long volatile saved_multiboot_info = arg2;

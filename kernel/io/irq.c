@@ -3,6 +3,11 @@
 
 volatile uint64_t timer_ticks = 0;
 
+/**
+ * @brief Handle IRQ (Interrupt Request) signals.
+ * 
+ * @param irq The IRQ number.
+ */
 void irq_handler(int irq) {
     //printfs(PRINT_STATUS_DEBUG,"IRQ %d received\n", irq);
 

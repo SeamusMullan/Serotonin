@@ -59,6 +59,14 @@ extern void irq13(void);
 extern void irq14(void);
 extern void irq15(void);
 
+/**
+ * @brief Set an IDT (Interrupt Descriptor Table) entry.
+ * 
+ * @param num The entry number.
+ * @param base The base address of the interrupt handler.
+ * @param sel The segment selector.
+ * @param flags The flags for the entry.
+ */
 void idt_set_gate(uint8_t num, uint32_t base, uint16_t sel, uint8_t flags) {
     idt[num].offset_low = base & 0xFFFF;
     idt[num].selector   = sel;
@@ -67,6 +75,11 @@ void idt_set_gate(uint8_t num, uint32_t base, uint16_t sel, uint8_t flags) {
     idt[num].offset_high = (base >> 16) & 0xFFFF;
 }
 
+/**
+ * @brief Load the IDT (Interrupt Descriptor Table).
+ * 
+ * @param idtp The IDT pointer structure.
+ */
 void idt_load(struct idt_ptr* idtp) {
     asm volatile (
         "lidt (%0)"     // Load IDT pointer from memory
@@ -76,6 +89,10 @@ void idt_load(struct idt_ptr* idtp) {
     );
 }
 
+/**
+ * @brief Initialize the IDT (Interrupt Descriptor Table).
+ * 
+ */
 void init_idt() {
     struct idt_ptr idtp;
 

@@ -1,5 +1,11 @@
 #include "io.h"
 
+/**
+ * @brief Remap the PIC (Programmable Interrupt Controller) to new vector offsets.
+ * 
+ * @param offset1 The new offset for the master PIC.
+ * @param offset2 The new offset for the slave PIC.
+ */
 void pic_remap(int offset1, int offset2) {
     uint8_t a1 = inb(0x21);  // Save master mask
     uint8_t a2 = inb(0xA1);  // Save slave mask
