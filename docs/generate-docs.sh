@@ -1,7 +1,17 @@
 #!/bin/bash
-
-# Documentation Generation Script for Serotonin Kernel
+# Cross-platform Documentation Generation Script for Serotonin Kernel
 # This script generates HTML documentation using Doxygen
+
+# Detect platform
+OS="$(uname -s 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+case "$OS" in
+    *mingw*|*msys*|*cygwin*)
+        IS_WINDOWS=1
+        ;;
+    *)
+        IS_WINDOWS=0
+        ;;
+esac
 
 set -e  # Exit on any error
 
@@ -9,40 +19,84 @@ set -e  # Exit on any error
 PROJECT_NAME="Serotonin"
 PROJECT_VERSION="0.0.3"
 PROJECT_BRIEF="An operating system written with C"
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DOCS_DIR="$PROJECT_ROOT/docs"
-OUTPUT_DIR="$DOCS_DIR/html"
-DOXYFILE="$DOCS_DIR/Doxyfile"
+
+if [ "$IS_WINDOWS" -eq 1 ]; then
+    # Use Windows path resolution
+    SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+    PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+    
+    # Convert to Windows-style paths for Doxygen
+    # Replace /c/ with C:/ and convert forward slashes to backslashes
+    PROJECT_ROOT_WIN=$(echo "$PROJECT_ROOT" | sed 's|^/c/|C:/|' | sed 's|/|\\|g')
+    KERNEL_PATH_WIN=$(echo "$PROJECT_ROOT/kernel" | sed 's|^/c/|C:/|' | sed 's|/|\\|g')
+    README_PATH_WIN=$(echo "$PROJECT_ROOT/README.md" | sed 's|^/c/|C:/|' | sed 's|/|\\|g')
+    DOCS_DIR_WIN="$PROJECT_ROOT_WIN\\docs"
+    
+    # Keep Unix paths for shell operations
+    DOCS_DIR="$PROJECT_ROOT/docs"
+    OUTPUT_DIR="$DOCS_DIR/html"
+    DOXYFILE="$DOCS_DIR/Doxyfile"
+else
+    PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    DOCS_DIR="$PROJECT_ROOT/docs"
+    OUTPUT_DIR="$DOCS_DIR/html"
+    DOXYFILE="$DOCS_DIR/Doxyfile"
+    
+    # For non-Windows, use the same paths
+    PROJECT_ROOT_WIN="$PROJECT_ROOT"
+    KERNEL_PATH_WIN="$PROJECT_ROOT/kernel"
+    README_PATH_WIN="$PROJECT_ROOT/README.md"
+    DOCS_DIR_WIN="$DOCS_DIR"
+fi
 
 echo "=== Serotonin Documentation Generator ==="
 echo "Project root: $PROJECT_ROOT"
 echo "Documentation output: $OUTPUT_DIR"
+if [ "$IS_WINDOWS" -eq 1 ]; then
+    echo "Windows paths for Doxygen:"
+    echo "  Project root: $PROJECT_ROOT_WIN"
+    echo "  Docs dir: $DOCS_DIR_WIN"
+fi
 echo
 
+# Create necessary directories
+echo "Creating documentation directories..."
+mkdir -p "$DOCS_DIR"
+mkdir -p "$OUTPUT_DIR"
+
 # Check if doxygen is installed
-if ! command -v doxygen &> /dev/null; then
+if ! command -v doxygen >/dev/null 2>&1; then
     echo "Error: Doxygen is not installed."
-    echo "Please install it using your package manager:"
-    echo "  Ubuntu/Debian: sudo apt-get install doxygen"
-    echo "  Fedora: sudo dnf install doxygen"
-    echo "  Arch: sudo pacman -S doxygen"
-    echo "  macOS: brew install doxygen"
+    if [ "$IS_WINDOWS" -eq 1 ]; then
+        echo "Please install Doxygen from: https://www.doxygen.nl/download.html"
+        echo "Or use Chocolatey: choco install doxygen"
+    else
+        echo "Please install it using your package manager:"
+        echo "  Ubuntu/Debian: sudo apt-get install doxygen"
+        echo "  Fedora: sudo dnf install doxygen"
+        echo "  Arch: sudo pacman -S doxygen"
+        echo "  macOS: brew install doxygen"
+    fi
     exit 1
 fi
 
 # Check if dot (Graphviz) is available for diagrams
 DOT_AVAILABLE="NO"
-if command -v dot &> /dev/null; then
+if command -v dot >/dev/null 2>&1; then
     DOT_AVAILABLE="YES"
     echo "Graphviz detected - will generate call graphs and diagrams"
 else
     echo "Graphviz not found - diagrams will be disabled"
-    echo "Install with: sudo apt-get install graphviz (or equivalent)"
+    if [ "$IS_WINDOWS" -eq 1 ]; then
+        echo "Install with: choco install graphviz"
+    else
+        echo "Install with: sudo apt-get install graphviz (or equivalent)"
+    fi
 fi
 
 echo "Creating Doxygen configuration file..."
 
-# Generate Doxyfile
+# Generate Doxyfile with Windows-compatible paths
 cat > "$DOXYFILE" << EOF
 # Doxyfile for Serotonin Kernel
 
@@ -53,7 +107,7 @@ PROJECT_NAME           = "$PROJECT_NAME"
 PROJECT_NUMBER         = "$PROJECT_VERSION"
 PROJECT_BRIEF          = "$PROJECT_BRIEF"
 PROJECT_LOGO           = 
-OUTPUT_DIRECTORY       = "$DOCS_DIR"
+OUTPUT_DIRECTORY       = "$DOCS_DIR_WIN"
 CREATE_SUBDIRS         = NO
 ALLOW_UNICODE_NAMES    = NO
 OUTPUT_LANGUAGE        = English
@@ -63,7 +117,7 @@ ABBREVIATE_BRIEF       =
 ALWAYS_DETAILED_SEC    = NO
 INLINE_INHERITED_MEMB  = NO
 FULL_PATH_NAMES        = YES
-STRIP_FROM_PATH        = "$PROJECT_ROOT"
+STRIP_FROM_PATH        = "$PROJECT_ROOT_WIN"
 STRIP_FROM_INC_PATH    = 
 SHORT_NAMES            = NO
 JAVADOC_AUTOBRIEF      = YES
@@ -150,8 +204,8 @@ WARN_LOGFILE           =
 #---------------------------------------------------------------------------
 # Configuration options related to the input files
 #---------------------------------------------------------------------------
-INPUT                  = "$PROJECT_ROOT/kernel" \\
-                         "$PROJECT_ROOT/README.md"
+INPUT                  = "$KERNEL_PATH_WIN" \\
+                         "$README_PATH_WIN"
 INPUT_ENCODING         = UTF-8
 FILE_PATTERNS          = *.c \\
                          *.h \\
@@ -297,7 +351,7 @@ ENABLE_PREPROCESSING   = YES
 MACRO_EXPANSION        = NO
 EXPAND_ONLY_PREDEF     = NO
 SEARCH_INCLUDES        = YES
-INCLUDE_PATH           = "$PROJECT_ROOT/kernel"
+INCLUDE_PATH           = "$KERNEL_PATH_WIN"
 INCLUDE_FILE_PATTERNS  = 
 PREDEFINED             = 
 EXPAND_AS_DEFINED      = 
@@ -362,15 +416,14 @@ if doxygen "$DOXYFILE"; then
     echo
     echo "=== Documentation generated successfully! ==="
     echo "Open the documentation with:"
-    echo "  xdg-open $OUTPUT_DIR/index.html"
-    echo "  or"
-    echo "  firefox $OUTPUT_DIR/index.html"
+    echo "  start \"\" \"$OUTPUT_DIR/index.html\""
+    echo "  or open $OUTPUT_DIR/index.html in your browser"
     echo
     echo "Documentation statistics:"
     if [ -f "$OUTPUT_DIR/index.html" ]; then
         echo "  - Main page: $OUTPUT_DIR/index.html"
-        echo "  - Size: $(du -sh "$OUTPUT_DIR" | cut -f1)"
-        echo "  - Files documented: $(find "$PROJECT_ROOT/kernel" -name "*.c" -o -name "*.h" | wc -l)"
+        FILES=$(find "$PROJECT_ROOT/kernel" -name "*.c" -o -name "*.h" 2>/dev/null | wc -l)
+        echo "  - Files documented: $FILES"
     fi
 else
     echo "Error: Doxygen failed to generate documentation"
@@ -379,5 +432,5 @@ fi
 
 echo
 echo "To serve the documentation locally:"
-echo "  cd $OUTPUT_DIR && python3 -m http.server 8080"
+echo "  cd $OUTPUT_DIR && python -m http.server 8080"
 echo "  Then open http://localhost:8080 in your browser"
