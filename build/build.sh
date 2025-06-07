@@ -26,7 +26,8 @@ i686-elf-gcc -c video/font.c -o video/font.o -std=gnu99 -ffreestanding -O2 -Wall
 i686-elf-gcc -c video/vbe/vbe.c -o video/vbe/vbe.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -mfpmath=sse
 i686-elf-gcc -c video/splash.c -o video/splash.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -mfpmath=sse
 i686-elf-gcc -c filesystem/vfs.c -o filesystem/vfs.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -mfpmath=sse
-i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt_flush.o gdt.o idt.o isr.o fault.o io/irq.o io/pic.o io/keyboard.o paging.o video/vbe/vbe.o video/font.o video/splash.o filesystem/vfs.o
+i686-elf-gcc -c filesystem/tmpfs/tmpfs.c -o filesystem/tmpfs/tmpfs.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -mfpmath=sse
+i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt_flush.o gdt.o idt.o isr.o fault.o io/irq.o io/pic.o io/keyboard.o paging.o video/vbe/vbe.o video/font.o video/splash.o filesystem/vfs.o filesystem/tmpfs/tmpfs.o
 
 cd ../build
 

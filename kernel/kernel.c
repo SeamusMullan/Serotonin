@@ -12,6 +12,8 @@
 #include "video/vbe/vbe.h"
 #include "video/font.h"
 #include "video/splash.h"
+#include "filesystem/vfs.h"
+#include "filesystem/tmpfs/tmpfs.h"
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 0
@@ -334,6 +336,61 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     else {
         kernel_panic("multiboot - unable to detect memory"); 
     }
+
+    vfs_init();
+    tmpfs_init();
+
+    printf("Mounting tmpfs on /\n");
+    vfs_mount(NULL, "/", "tmpfs");
+
+    // Open root
+    vfs_node_t *root = vfs_open("/");
+    if (!root) {
+        printf("Failed to open root directory!\n");
+        return;
+    }
+
+    // Create subdirectory
+    vfs_node_t *etc = tmpfs_create_dir(root, "etc");
+    printf("Created directory /etc\n");
+
+    // Create file in root
+    vfs_node_t *file = tmpfs_create_file(root, "hello.txt");
+    printf("Created file /hello.txt\n");
+
+    // Write to file
+    const char *message = "Hello tmpfs!";
+    vfs_write(file, 0, strlen(message), message);
+    printf("Wrote to /hello.txt: '%s'\n", message);
+
+    // Read back from file
+    char buf[128];
+    memset(buf, 0, sizeof(buf));
+    vfs_read(file, 0, sizeof(buf)-1, buf);
+    printf("Read from /hello.txt: '%s'\n", buf);
+
+    // Test finddir
+    vfs_node_t *found = vfs_open("/etc");
+    if (found && (found->flags & VFS_FLAG_DIRECTORY)) {
+        printf("Found directory /etc\n");
+    } else {
+        printf("Failed to find /etc\n");
+    }
+
+    // Test listing directory
+    printf("Listing root directory:\n");
+    for (uint32_t i = 0;; i++) {
+        vfs_node_t *child = root->ops->readdir(root, i);
+        if (!child) break;
+        printf("  %s %s\n",
+            (child->flags & VFS_FLAG_DIRECTORY) ? "[DIR] " : "[FILE]",
+            child->name);
+    }
+
+    // Close nodes
+    vfs_close(file);
+    vfs_close(found);
+    vfs_close(root);
 }
 
 /**
