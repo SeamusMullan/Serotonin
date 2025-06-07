@@ -69,23 +69,28 @@ void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
     unsigned char* dst = (unsigned char*) dstptr;
     const unsigned char* src = (const unsigned char*) srcptr;
 
-    // Align to 4 bytes (optional)
-    while (size > 0 && ((uintptr_t)dst & 3)) {
+    // Align to 16 bytes
+    while (size > 0 && ((uintptr_t)dst & 15)) {
         *dst++ = *src++;
         size--;
     }
 
-    // Copy 4 bytes at a time
-    uint32_t* dst32 = (uint32_t*)dst;
-    const uint32_t* src32 = (const uint32_t*)src;
-    while (size >= 4) {
-        *dst32++ = *src32++;
-        size -= 4;
+    // Copy 16 bytes at a time with SSE
+    while (size >= 16) {
+        asm volatile (
+            "movups (%0), %%xmm0\n"
+            "movups %%xmm0, (%1)\n"
+            :
+            : "r"(src), "r"(dst)
+            : "memory", "xmm0"
+        );
+
+        src += 16;
+        dst += 16;
+        size -= 16;
     }
 
-    // Copy any remaining bytes
-    dst = (unsigned char*)dst32;
-    src = (const unsigned char*)src32;
+    // Copy remaining bytes
     while (size > 0) {
         *dst++ = *src++;
         size--;
@@ -93,3 +98,4 @@ void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
 
     return dstptr;
 }
+
