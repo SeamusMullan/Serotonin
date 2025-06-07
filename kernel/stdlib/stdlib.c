@@ -986,3 +986,32 @@ char* strtok(char* str, const char* delim) {
     
     return token_start;
 }
+
+void ftoa(double n, char *res, int precision) {
+    if (n < 0) {
+        *res++ = '-';
+        n = -n;
+    }
+
+    // Extract integer part
+    uint32_t ipart = (uint32_t)n;
+
+    // Extract decimal part
+    double fpart = n - (double)ipart;
+
+    // Convert integer part
+    utoa(ipart, res);
+    while (*res != '\0') res++; // Move to end of integer string
+
+    *res++ = '.';
+
+    // Convert fractional part
+    for (int i = 0; i < precision; i++) {
+        fpart *= 10;
+        int digit = (int)fpart;
+        *res++ = '0' + digit;
+        fpart -= digit;
+    }
+
+    *res = '\0';
+}

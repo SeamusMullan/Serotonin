@@ -38,6 +38,7 @@ void ulltoa_hex(unsigned long long value, char* buffer);
 int atoi(const char* str);
 long atol(const char* str);
 long long atoll(const char* str);
+void ftoa(double n, char *res, int precision);
 
 /* Memory management functions */
 void* memmove(void* dstptr, const void* srcptr, size_t size);

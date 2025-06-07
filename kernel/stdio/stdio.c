@@ -124,6 +124,15 @@ void printf_internal(const char* p, void** arg_ptr) {
                     break;
                 }
 
+                case 'f': {
+                    double val = *(double*)arg_ptr;
+                    arg_ptr++;
+
+                    ftoa(val, buffer, 6); // 6 decimal places
+                    vbe_terminal_puts(buffer);
+                    break;
+                }
+
                 default:
                     vbe_terminal_putchar('%');
                     vbe_terminal_putchar(*p);

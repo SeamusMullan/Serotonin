@@ -48,6 +48,59 @@ uint32_t align(uint32_t size) {
     return (size + BLOCK_ALIGN - 1) & ~(BLOCK_ALIGN - 1);
 }
 
+static inline uint32_t kernel_read_cr0(void) {
+    uint32_t val;
+    asm volatile("mov %%cr0, %0" : "=r"(val));
+    return val;
+}
+
+static inline void kernel_write_cr0(uint32_t val) {
+    asm volatile("mov %0, %%cr0" : : "r"(val));
+}
+
+static inline uint32_t kernel_read_cr4(void) {
+    uint32_t val;
+    asm volatile("mov %%cr4, %0" : "=r"(val));
+    return val;
+}
+
+static inline void kernel_write_cr4(uint32_t val) {
+    asm volatile("mov %0, %%cr4" : : "r"(val));
+}
+
+
+static int kernel_cpu_has_sse(void) {
+    uint32_t eax, ebx, ecx, edx;
+
+    // CPUID function 1 returns feature bits in edx/ecx
+    asm volatile("cpuid"
+                 : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+                 : "a"(1));
+
+    // Bit 25 of EDX = SSE, Bit 26 = SSE2
+    return (edx & (1 << 25)) != 0;
+}
+
+void kernel_setup_fpu(void) {
+    // Enable FPU in CR0
+    uint32_t cr0 = kernel_read_cr0();
+    cr0 &= ~(1 << 2); // Clear EM → allow FPU instructions
+    cr0 |=  (1 << 1); // Set MP → required for FPU exceptions
+    cr0 &= ~(1 << 3); // Clear TS → don't disable FPU
+    kernel_write_cr0(cr0);
+
+    // Check for SSE support
+    if (kernel_cpu_has_sse()) {
+        uint32_t cr4 = kernel_read_cr4();
+        cr4 |= (1 << 9);  // OSFXSR → enable fxsave/fxrstor
+        cr4 |= (1 << 10); // OSXMMEXCPT → enable SSE exceptions (optional)
+        kernel_write_cr4(cr4);
+    }
+
+    // Initialize the FPU to default state
+    asm volatile("fninit");
+}
+
 /**
  * @brief Jump to the higher half of the kernel address space.
  *
@@ -295,6 +348,7 @@ void kernel_main(unsigned long arg1, unsigned long arg2) {
     unsigned long volatile saved_multiboot_info = arg2;
 
     paging_init((uintptr_t)mbi->framebuffer_addr);
+    kernel_setup_fpu();
     kernel_jump_to_higher_half(kernel_main_high,arg1,arg2);
 
     kernel_panic("returned from higher half kernel!"); 
