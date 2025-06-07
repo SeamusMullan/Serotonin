@@ -2,6 +2,7 @@ export DIR=$(pwd)
 export PREFIX="$DIR/../build-tools/bin"
 export TARGET=i686-elf
 export PATH="$PREFIX/bin:$PATH"
+OS_TYPE="$(uname)"
 
 cd ../kernel
 
@@ -29,6 +30,10 @@ i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib
 cd ../build
 
 rm -f serotonin.iso
-cp serotonin.bin iso/boot/serotonin.bin -v
-cp grub.cfg iso/boot/grub/grub.cfg -v
-grub-mkrescue -o serotonin.iso iso
+cp serotonin.bin iso/boot/serotonin.bin
+cp grub.cfg iso/boot/grub/grub.cfg
+if [[ "$OS_TYPE" == "Darwin" ]]; then
+    /opt/homebrew/Cellar/i686-elf-grub/2.12/bin/i686-elf-grub-mkrescue -o serotonin.iso iso
+elif [[ "$OS_TYPE" == "Linux" ]]; then
+    grub-mkrescue -o serotonin.iso iso
+fi

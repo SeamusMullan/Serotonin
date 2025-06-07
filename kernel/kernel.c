@@ -258,10 +258,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     printfs(PRINT_STATUS_INFO,"IDT base:  0x%08x\n", idtp_read.base);
     printfs(PRINT_STATUS_INFO,"IDT limit: 0x%04x\n", idtp_read.limit);
 
-    // At this point, interrupts *should* be enabled, but it doesn't hurt.
+    // Interrupts ready to be enabled
     asm volatile ("sti");
-
-    //printf("flags = 0x%x\n", (unsigned) mbi->flags);
 
     if (CHECK_FLAG (mbi->flags, 0))
     {
@@ -279,22 +277,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     kernel_sleep(1000);
 
     abort();
-
-    /*
-    for (int i = 0; i < 16; i++) {
-        tty_setcolor(i);
-        tty_writestring("a\n");
-        kernel_sleep(1000);
-    }
-
-    for (int i = 0; i < 16; i++) {
-        tty_setcolor(i);
-        tty_writestring("b\n");
-        kernel_sleep(1000);
-    }
-    */
-
-    //kernel_panic("end of kernel_main");
 }
 
 /**
