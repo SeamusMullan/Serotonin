@@ -122,6 +122,8 @@ void kernel_panic(char* str) {
     uint32_t eflags;
     uint16_t cs, ds, ss;
 
+    uint32_t cr0, cr2, cr3, cr4;
+
     asm volatile ("mov %%eax, %0" : "=r"(eax));
     asm volatile ("mov %%ebx, %0" : "=r"(ebx));
     asm volatile ("mov %%ecx, %0" : "=r"(ecx));
@@ -134,6 +136,11 @@ void kernel_panic(char* str) {
     asm volatile ("mov %%cs, %0" : "=r"(cs));
     asm volatile ("mov %%ds, %0" : "=r"(ds));
     asm volatile ("mov %%ss, %0" : "=r"(ss));
+    asm volatile ("mov %%cr0, %0" : "=r"(cr0));
+    asm volatile ("mov %%cr2, %0" : "=r"(cr2));
+    asm volatile ("mov %%cr3, %0" : "=r"(cr3));
+    asm volatile ("mov %%cr4, %0" : "=r"(cr4));
+
 
     printfs(PRINT_STATUS_FATAL, "Kernel panic. Please reboot your computer.\n");
     printfs(PRINT_STATUS_FATAL, "Reason: %s\n", str);
@@ -142,6 +149,8 @@ void kernel_panic(char* str) {
     printfs(PRINT_STATUS_FATAL, "EAX: 0x%08x  EBX: 0x%08x  ECX: 0x%08x  EDX: 0x%08x\n",(unsigned int)eax, (unsigned int)ebx, (unsigned int)ecx, (unsigned int)edx);
     printfs(PRINT_STATUS_FATAL, "ESI: 0x%08x  EDI: 0x%08x  EBP: 0x%08x  ESP: 0x%08x\n",(unsigned int)esi, (unsigned int)edi, (unsigned int)ebp, (unsigned int)esp);
     printfs(PRINT_STATUS_FATAL, "EFLAGS: 0x%08x  CS: 0x%04x  DS: 0x%04x  SS: 0x%04x\n",(unsigned int)eflags, (unsigned int)cs, (unsigned int)ds, (unsigned int)ss);
+    printfs(PRINT_STATUS_FATAL, "CR0: 0x%08x  CR2 (fault addr): 0x%08x  CR3 (page directory base): 0x%08x  CR4: 0x%08x\n",
+            (unsigned int)cr0, (unsigned int)cr2, (unsigned int)cr3, (unsigned int)cr4);
 
     abort();
 }
@@ -267,8 +276,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     else {
         kernel_panic("multiboot - unable to detect memory"); 
     }
-
-    kernel_sleep(1000);
 }
 
 /**
