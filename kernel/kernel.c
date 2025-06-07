@@ -96,6 +96,10 @@ void kernel_setup_fpu(void) {
         cr4 |= (1 << 10); // OSXMMEXCPT → enable SSE exceptions (optional)
         kernel_write_cr4(cr4);
     }
+    else {
+        // SSE should be supported
+        kernel_panic("SSE not supported");
+    }
 
     // Initialize the FPU to default state
     asm volatile("fninit");
