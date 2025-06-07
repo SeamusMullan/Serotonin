@@ -25,6 +25,12 @@ static inline void io_wait(void)
     outb(0x80, 0);
 }
 
+static inline uint16_t inw(uint16_t port) {
+    uint16_t ret;
+    __asm__ volatile ("inw %1, %0" : "=a"(ret) : "Nd"(port));
+    return ret;
+}
+
 void irq_handler(int irq);
 void pic_remap(int offset1, int offset2);
 void handle_scancode(uint8_t scancode);
