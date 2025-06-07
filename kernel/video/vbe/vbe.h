@@ -8,8 +8,8 @@
 #define VBE_FONT_WIDTH  8
 #define VBE_FONT_HEIGHT 20
 
-#define SCREEN_WIDTH 1024
-#define SCREEN_HEIGHT 768
+#define SCREEN_WIDTH 1280
+#define SCREEN_HEIGHT 800
 
 static uint32_t term_cursor_col = 0;
 static uint32_t term_cursor_row = 0;

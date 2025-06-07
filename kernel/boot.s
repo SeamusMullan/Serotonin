@@ -21,8 +21,8 @@ forced to be within the first 8 KiB of the kernel file.
 
 /* VBE mode parameters */
 .set MODE_TYPE, 0               /* 0 = VBE graphics mode */
-.set WIDTH,     1024
-.set HEIGHT,    768
+.set WIDTH,     1280
+.set HEIGHT,    800
 .set DEPTH,     32              /* bits per pixel: 8/15/16/24/32 */
 
 /* Multiboot header */

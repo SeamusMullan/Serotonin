@@ -248,6 +248,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
 	printf(" serotonin kernel (higher half) - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
     printf("kernel now (eip): 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x\n",kernel_current_eip(),HEAP_START,magic,addr);
+    printfs(PRINT_STATUS_INFO,"Running in VESA VBE Graphics Mode: %dx%dx%d, pitch: %d\n",vbe_info.width,vbe_info.height,vbe_info.bpp,vbe_info.pitch);
 
     pic_remap(0x20, 0x28);
 
@@ -270,7 +271,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         mem_upper = (unsigned) mbi->mem_upper;
         mem_total = mem_lower+mem_upper;
         printfs(PRINT_STATUS_INFO,"Detected lower memory: %uKB\n", mem_lower);
-        printfs(PRINT_STATUS_INFO,"Detected upper memory: %uKB\n", mem_upper);
+        printfs(PRINT_STATUS_INFO,"Detected extended memory: %uKB\n", mem_upper);
         printfs(PRINT_STATUS_INFO,"Total memory detected: %uKB\n", mem_total);
     }
     else {

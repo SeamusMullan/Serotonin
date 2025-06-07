@@ -7924,6 +7924,6 @@ void create_color_render() {
                     | ((uint32_t)r << 16) 
                     | ((uint32_t)g << 8) 
                     | (uint32_t)b;
-    vbe_fillrect(1*i, SCREEN_HEIGHT, 1, 3, packed);
+    vbe_fillrect(1*i, 768, 1, 3, packed);
   }
 }
