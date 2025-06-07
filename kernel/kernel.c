@@ -98,7 +98,7 @@ void kernel_setup_fpu(void) {
     }
     else {
         // SSE should be supported
-        kernel_panic("SSE not supported");
+        abort();
     }
 
     // Initialize the FPU to default state
