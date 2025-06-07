@@ -27,6 +27,9 @@ static uint32_t fb_size_bytes;
 
 uint32_t vbe_palette[256];
 
+#define DIRTY_BITMAP_SIZE ((SCREEN_WIDTH * SCREEN_HEIGHT + 7) / 8)
+uint8_t dirty_bitmap[DIRTY_BITMAP_SIZE];
+
 uint32_t vbe_colors[16] = {
     0xFF000000, // BLACK
     0xFF0000AA, // BLUE
@@ -65,6 +68,13 @@ static uint32_t term_max_rows(void) {
 }
 
 /**
+  * @brief Clear dirty bitmap
+ */
+void vbe_clear_dirty_bitmap(void) {
+    memset(dirty_bitmap, 0, DIRTY_BITMAP_SIZE);
+}
+
+/**
  * @brief Initialize the VBE (VESA BIOS Extensions) for graphics mode.
  *
  * This function sets up the VBE for use with the framebuffer.
@@ -98,12 +108,6 @@ void vbe_init(multiboot_info_t *mbi) {
 
     memset(vbe_info.backbuffer, 0, fb_size_bytes);
 
-    dirty_min_x = 0;
-    dirty_min_y = 0;
-    dirty_max_x = vbe_info.width - 1;
-    dirty_max_y = vbe_info.height - 1;
-    vbe_any_dirty = 1;
-
     {
         uintptr_t back_start = (uintptr_t)vbe_info.backbuffer;
         uintptr_t back_end   = back_start + fb_size_bytes;
@@ -111,6 +115,20 @@ void vbe_init(multiboot_info_t *mbi) {
             kernel_panic("vbe_init: backbuffer out of heap bounds");
         }
     }
+
+    vbe_clear_dirty_bitmap();
+}
+
+/**
+  * @brief Mark pixel as dirty
+  *
+  * @param x X-coordinate.
+  * @param y Y-coordinate.
+ */
+static inline void vbe_mark_pixel_dirty(uint32_t x, uint32_t y) {
+    if (x >= SCREEN_WIDTH || y >= SCREEN_HEIGHT) return;
+    uint32_t index = y * SCREEN_WIDTH + x;
+    dirty_bitmap[index / 8] |= (1 << (index % 8));
 }
 
 /**
@@ -125,37 +143,7 @@ void vbe_putpixel(uint32_t x, uint32_t y, uint32_t color) {
     uint8_t *row_start = (uint8_t *)vbe_info.backbuffer + (y * vbe_info.pitch);
     uint32_t *dest = (uint32_t *)(row_start + (x * 4));
     *dest = color;
-    vbe_fast_mark_dirty(x, y, 1, 1);
-}
-
-/**
- * @brief Mark a rectangular region as dirty.
- * 
- * @param x The x-coordinate of the region.
- * @param y The y-coordinate of the region.
- * @param w Width of the region.
- * @param h Height of the region.
- */
-void vbe_fast_mark_dirty(uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
-    if (w == 0 || h == 0) return;
-
-    uint32_t max_x = x + w - 1;
-    uint32_t max_y = y + h - 1;
-
-    // Clamp to framebuffer size
-    if (max_x >= vbe_info.width)  max_x = vbe_info.width - 1;
-    if (max_y >= vbe_info.height) max_y = vbe_info.height - 1;
-
-    if (!vbe_any_dirty) {
-        dirty_min_x = x;    dirty_min_y = y;
-        dirty_max_x = x+w-1; dirty_max_y = y+h-1;
-        vbe_any_dirty = 1;
-    } else {
-        if (x             < dirty_min_x) dirty_min_x = x;
-        if (y             < dirty_min_y) dirty_min_y = y;
-        if (x + w - 1     > dirty_max_x) dirty_max_x = x + w - 1;
-        if (y + h - 1     > dirty_max_y) dirty_max_y = y + h - 1;
-    }
+    vbe_mark_pixel_dirty(x, y);
 }
 
 /**
@@ -173,17 +161,20 @@ void vbe_fast_draw_hline(uint32_t *buf, uint32_t pitch, uint32_t x, uint32_t y, 
     uint32_t *dst = ((uint32_t *)row) + x;
     for (uint32_t i = 0; i < w; i++) {
         dst[i] = color;
+        vbe_mark_pixel_dirty(x + i, y); 
     }
 }
 
 /**
- * @brief Fill a rectangle on the screen with a specific color.
- * 
- * @param x X-coordinate of the top-left corner.
- * @param y Y-coordinate of the top-left corner.
+ * @brief Fill a rectangle on the backbuffer with a specific color.
+ *
+ * All pixels in the rectangle are marked dirty in the dirty bitmap.
+ *
+ * @param x Top-left x-coordinate of the rectangle.
+ * @param y Top-left y-coordinate of the rectangle.
  * @param w Width of the rectangle.
  * @param h Height of the rectangle.
- * @param color Fill color.
+ * @param color The fill color.
  */
 void vbe_fillrect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
     if (x + w  > vbe_info.width)  w = vbe_info.width  - x;
@@ -191,7 +182,7 @@ void vbe_fillrect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color
     for (uint32_t row = 0; row < h; row++) {
         vbe_fast_draw_hline(vbe_info.backbuffer, vbe_info.pitch, x, y + row, w, color);
     }
-    vbe_fast_mark_dirty(x, y, w, h);
+    //vbe_fast_mark_dirty(x, y, w, h);
 }
 
 /**
@@ -216,68 +207,90 @@ inline void fast_putpixel(uint32_t *buf, uint32_t pitch, uint32_t width, uint32_
  * @brief Copy the backbuffer contents to the framebuffer.
  */
 void vbe_flip(void) {
-    // just cpy for now
-    memcpy(vbe_info.framebuffer,vbe_info.backbuffer,fb_size_bytes);
-    return;
 
-    // todo: fix this shit
-    if (!vbe_any_dirty) return;
+    uint32_t stride = vbe_info.pitch / sizeof(uint32_t);
+    uint32_t *src_buf = vbe_info.backbuffer;
+    uint32_t *dst_buf = vbe_info.framebuffer;
 
-    if (dirty_min_x >= vbe_info.width) dirty_min_x = vbe_info.width - 1;
-    if (dirty_max_x >= vbe_info.width) dirty_max_x = vbe_info.width - 1;
-    if (dirty_min_y >= vbe_info.height) dirty_min_y = vbe_info.height - 1;
-    if (dirty_max_y >= vbe_info.height) dirty_max_y = vbe_info.height - 1;
+    for (uint32_t y = 0; y < SCREEN_HEIGHT; y++) {
+        for (uint32_t x = 0; x < SCREEN_WIDTH; x++) {
+            uint32_t index = y * SCREEN_WIDTH + x;
+            uint8_t byte = dirty_bitmap[index / 8];
+            uint8_t mask = (1 << (index % 8));
 
-    uint32_t bytes_per_pixel = vbe_info.bpp / 8;
-
-    // Safe fallback: copy entire rows regardless of dirty_min_x
-    for (uint32_t y = dirty_min_y; y <= dirty_max_y; y++) {
-        uint8_t *src = (uint8_t*)vbe_info.backbuffer + y * vbe_info.pitch;
-        uint8_t *dst = (uint8_t*)vbe_info.framebuffer + y * vbe_info.pitch;
-
-        // *** FULL ROW COPY ***
-        memcpy(dst, src, vbe_info.pitch);
+            if (byte & mask) {
+                uint32_t offset = y * stride + x;
+                dst_buf[offset] = src_buf[offset];
+            }
+        }
     }
 
-    vbe_any_dirty = 0;
-    dirty_min_x = dirty_min_y = 0;
-    dirty_max_x = dirty_max_y = 0;
+    vbe_clear_dirty_bitmap();
 }
 
 /**
  * @brief Draw a font glyph at a given position with a given color.
  *
+ * The glyph is drawn as an 8x16 rectangle starting at (x, y).
+ * The glyph data is 8 bits per row (one byte), each bit is one pixel.
+ *
  * @param glyph The font glyph to draw.
- * @param x X-coordinate of the glyph.
- * @param y Y-coordinate of the glyph.
- * @param color Color to draw the glyph.
+ * @param x X-coordinate of the glyph's top-left corner.
+ * @param y Y-coordinate of the glyph's top-left corner.
+ * @param color The foreground color to draw the glyph.
  */
 void vbe_drawglyph(FontGlyph *glyph, uint32_t x, uint32_t y, uint32_t color) {
     if (!glyph) return;
+
+    uint32_t stride = vbe_info.pitch / sizeof(uint32_t);
+    uint32_t *dst_buf = vbe_info.backbuffer;
+
     for (uint32_t row = 0; row < VBE_FONT_HEIGHT; row++) {
         uint8_t bits = glyph->data[row];
-        uint8_t *rowptr = (uint8_t *)vbe_info.backbuffer + (y+row)*vbe_info.pitch;
-        uint32_t *dst = (uint32_t *)(rowptr + x*4);
+        uint32_t dst_index = (y + row) * stride + x;
+        uint32_t *dst = dst_buf + dst_index;
 
-        uint32_t m0 = -(uint32_t)((bits >> 7) & 1);
-        uint32_t m1 = -(uint32_t)((bits >> 6) & 1);
-        uint32_t m2 = -(uint32_t)((bits >> 5) & 1);
-        uint32_t m3 = -(uint32_t)((bits >> 4) & 1);
-        uint32_t m4 = -(uint32_t)((bits >> 3) & 1);
-        uint32_t m5 = -(uint32_t)((bits >> 2) & 1);
-        uint32_t m6 = -(uint32_t)((bits >> 1) & 1);
-        uint32_t m7 = -(uint32_t)((bits >> 0) & 1);
-
-        dst[0] = (color & m0) | (dst[0] & ~m0);
-        dst[1] = (color & m1) | (dst[1] & ~m1);
-        dst[2] = (color & m2) | (dst[2] & ~m2);
-        dst[3] = (color & m3) | (dst[3] & ~m3);
-        dst[4] = (color & m4) | (dst[4] & ~m4);
-        dst[5] = (color & m5) | (dst[5] & ~m5);
-        dst[6] = (color & m6) | (dst[6] & ~m6);
-        dst[7] = (color & m7) | (dst[7] & ~m7);
+        for (uint32_t bit = 0; bit < VBE_FONT_WIDTH; bit++) {
+            if (bits & (1 << (7 - bit))) {
+                dst[bit] = color;
+                vbe_mark_pixel_dirty(x + bit, y + row);
+            }
+        }
     }
-    vbe_fast_mark_dirty(x, y, VBE_FONT_WIDTH, VBE_FONT_HEIGHT);
+}
+
+/**
+ * @brief Shift the dirty bitmap up by the given number of rows.
+ *        Used when the terminal scrolls.
+ * 
+ * @param num_rows Number of rows to scroll up.
+ */
+void vbe_shift_dirty_bitmap_up(uint32_t num_rows) {
+    if (num_rows >= SCREEN_HEIGHT) {
+        vbe_clear_dirty_bitmap();
+        return;
+    }
+
+    uint32_t total_pixels = SCREEN_WIDTH * SCREEN_HEIGHT;
+    uint32_t scroll_pixels = num_rows * SCREEN_WIDTH;
+
+    for (uint32_t i = 0; i < total_pixels - scroll_pixels; i++) {
+        uint32_t src_index = i + scroll_pixels;
+        uint32_t dst_index = i;
+
+        uint8_t src_bit = (dirty_bitmap[src_index / 8] >> (src_index % 8)) & 1;
+        if (src_bit)
+            dirty_bitmap[dst_index / 8] |= (1 << (dst_index % 8));
+        else
+            dirty_bitmap[dst_index / 8] &= ~(1 << (dst_index % 8));
+    }
+
+    // Clear the bottom num_rows rows in the bitmap:
+    for (uint32_t i = total_pixels - scroll_pixels; i < total_pixels; i++) {
+        dirty_bitmap[i / 8] &= ~(1 << (i % 8));
+    }
+
+    vbe_fast_mark_dirty(0,0,SCREEN_WIDTH,SCREEN_HEIGHT-num_rows);
 }
 
 /**
@@ -313,6 +326,7 @@ void vbe_terminal_putchar(char c) {
         memmove(vbe_info.backbuffer,
                 (uint8_t *)vbe_info.backbuffer + bytes_per_row,
                 visible_rows * vbe_info.pitch);
+        vbe_shift_dirty_bitmap_up(5);
         vbe_fillrect(0, visible_rows, vbe_info.width, VBE_FONT_HEIGHT, term_bg_color);
         term_cursor_row = term_max_rows() - 1;
         vbe_fast_mark_dirty(0, 0, vbe_info.width, vbe_info.height);
@@ -428,5 +442,28 @@ void vbe_fast_putpixel(uint32_t x, uint32_t y, uint32_t color) {
                   vbe_info.width,
                   vbe_info.height,
                   x, y, color);
-    vbe_fast_mark_dirty(x, y, 1, 1);
+    vbe_mark_pixel_dirty(x, y);
+}
+
+/**
+  * @brief Mark rectangular section as dirty.
+  *
+  * @param x X-coordinate.
+  * @param y Y-coordinate.
+ */
+void vbe_fast_mark_dirty(uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
+    if (w == 0 || h == 0) return;
+
+    uint32_t index = y * SCREEN_WIDTH + x;
+    dirty_bitmap[index / 8] |= (1 << (index % 8));
+
+
+    if (x + w > SCREEN_WIDTH)  w = SCREEN_WIDTH - x;
+    if (y + h > SCREEN_HEIGHT) h = SCREEN_HEIGHT - y;
+
+    for (uint32_t dy = 0; dy < h; dy++) {
+        for (uint32_t dx = 0; dx < w; dx++) {
+            vbe_mark_pixel_dirty(x + dx, y + dy);
+        }
+    }
 }

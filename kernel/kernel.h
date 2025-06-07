@@ -6,5 +6,6 @@
 void kernel_panic(char* str);
 void *kernel_malloc(uint32_t size);
 void kernel_free(void *ptr);
+void kernel_sleep(unsigned int milliseconds);
 
 #endif
