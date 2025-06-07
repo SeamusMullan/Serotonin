@@ -347,8 +347,8 @@ void kernel_main(unsigned long arg1, unsigned long arg2) {
     unsigned long volatile saved_magic = arg1;
     unsigned long volatile saved_multiboot_info = arg2;
 
-    paging_init((uintptr_t)mbi->framebuffer_addr);
     kernel_setup_fpu();
+    paging_init((uintptr_t)mbi->framebuffer_addr);
     kernel_jump_to_higher_half(kernel_main_high,arg1,arg2);
 
     kernel_panic("returned from higher half kernel!"); 
