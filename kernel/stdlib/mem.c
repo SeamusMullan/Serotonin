@@ -66,9 +66,30 @@ void* memset(void* bufptr, int value, size_t size) {
  * @return void* Pointer to the destination.
  */
 void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
-	unsigned char* dst = (unsigned char*) dstptr;
-	const unsigned char* src = (const unsigned char*) srcptr;
-	for (size_t i = 0; i < size; i++)
-		dst[i] = src[i];
-	return dstptr;
+    unsigned char* dst = (unsigned char*) dstptr;
+    const unsigned char* src = (const unsigned char*) srcptr;
+
+    // Align to 4 bytes (optional)
+    while (size > 0 && ((uintptr_t)dst & 3)) {
+        *dst++ = *src++;
+        size--;
+    }
+
+    // Copy 4 bytes at a time
+    uint32_t* dst32 = (uint32_t*)dst;
+    const uint32_t* src32 = (const uint32_t*)src;
+    while (size >= 4) {
+        *dst32++ = *src32++;
+        size -= 4;
+    }
+
+    // Copy any remaining bytes
+    dst = (unsigned char*)dst32;
+    src = (const unsigned char*)src32;
+    while (size > 0) {
+        *dst++ = *src++;
+        size--;
+    }
+
+    return dstptr;
 }

@@ -37,8 +37,6 @@ static uint32_t heap_end = (uint32_t)(KERNEL_HEAP_VMA + KERNEL_HEAP_SIZE);
 static uint32_t current_heap = (uint32_t)KERNEL_HEAP_VMA;
 static block_header_t *heap_list = NULL;
 
-int terminal_dirty = 0;
-
 #define CHECK_FLAG(flags,bit)   ((flags) & (1 << (bit)))
 
 /**
@@ -226,17 +224,9 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     page_directory_t *page_dir = (page_directory_t*)page_dir_ptr;
 
     vbe_init(mbi);
-
     vbe_palette_init();
-
     vbe_flip();
-
-    uint32_t mem_lower;
-    uint32_t mem_upper;
-    uint32_t mem_total;
-
     splash_render(0,SCREEN_HEIGHT-300);
-
     create_color_render();
 
     printf("   _____                _              _       \n");
@@ -249,7 +239,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
 	printf(" serotonin kernel (higher half) - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
     printf("kernel now (eip): 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x\n",kernel_current_eip(),HEAP_START,magic,addr);
-    
+
     pic_remap(0x20, 0x28);
 
     init_idt();
@@ -260,6 +250,10 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     // Interrupts ready to be enabled
     asm volatile ("sti");
+
+    uint32_t mem_lower;
+    uint32_t mem_upper;
+    uint32_t mem_total;
 
     if (CHECK_FLAG (mbi->flags, 0))
     {
@@ -275,8 +269,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     }
 
     kernel_sleep(1000);
-
-    abort();
 }
 
 /**

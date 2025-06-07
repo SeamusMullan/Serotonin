@@ -11,8 +11,6 @@
 #define SCREEN_WIDTH 1024
 #define SCREEN_HEIGHT 768
 
-extern int terminal_dirty;
-
 static uint32_t term_cursor_col = 0;
 static uint32_t term_cursor_row = 0;
 
@@ -40,6 +38,8 @@ typedef enum {
 extern uint32_t vbe_colors[16];
 
 static uint32_t term_color = 0xFFFFFF;
+
+static int vbe_any_dirty;
 
 // We only need width, height, pitch, bpp, and backbuffer pointer here:
 typedef struct {
@@ -69,5 +69,8 @@ void vbe_setcolor_bg(uint8_t color);
 void vbe_palette_init(void);
 void vbe_setcolor_fg_palette(vbe_color_t color);
 void vbe_setcolor_bg_palette(vbe_color_t color);
+void vbe_fast_draw_hline(uint32_t *buf, uint32_t pitch, uint32_t x, uint32_t y, uint32_t w, uint32_t color);
+void vbe_fast_putpixel(uint32_t x, uint32_t y, uint32_t color);
+void vbe_fast_mark_dirty(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 
 #endif

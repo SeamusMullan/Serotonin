@@ -7854,7 +7854,7 @@ void splash_render(int offset_x,int offset_y) {
 
           pixel_value = (0xFF << 24) | (r << 16) | (g << 8) | b;
 
-          vbe_putpixel(x+offset_x,y+offset_y,pixel_value);
+          vbe_fast_putpixel(x+offset_x,y+offset_y,pixel_value);
       }
   }
   vbe_flip();
