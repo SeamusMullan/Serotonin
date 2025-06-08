@@ -54,6 +54,7 @@ vfs_node_t *vfs_open(const char *path);
 int vfs_read(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer);
 int vfs_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer);
 void vfs_close(vfs_node_t *node);
+void vfs_list_dir(const char *path);
 
 vfs_node_t *vfs_resolve_path(const char *path);
 

@@ -106,3 +106,33 @@ void vfs_close(vfs_node_t *node) {
         node->refcount--;
     }
 }
+
+void vfs_list_dir(const char *path) {
+    vfs_node_t *dir = vfs_open(path);
+    if (!dir) {
+        printf("vfs_list_dir: cannot open directory %s\n", path);
+        return;
+    }
+
+    if (!(dir->flags & VFS_FLAG_DIRECTORY)) {
+        printf("vfs_list_dir: %s is not a directory\n", path);
+        vfs_close(dir);
+        return;
+    }
+
+    printf("Listing directory: %s\n", path);
+
+    for (uint32_t i = 0;; i++) {
+        vfs_node_t *child = dir->ops->readdir(dir, i);
+        if (!child) break;
+
+        printf("  %s %s (%u bytes)\n",
+            (child->flags & VFS_FLAG_DIRECTORY) ? "[DIR] " : "[FILE]",
+            child->name,
+            child->size);
+
+        vfs_close(child);
+    }
+
+    vfs_close(dir);
+}

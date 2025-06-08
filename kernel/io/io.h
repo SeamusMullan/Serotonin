@@ -27,9 +27,14 @@ static inline void io_wait(void)
 
 static inline uint16_t inw(uint16_t port) {
     uint16_t ret;
-    __asm__ volatile ("inw %1, %0" : "=a"(ret) : "Nd"(port));
+    asm volatile ("inw %1, %0" : "=a"(ret) : "Nd"(port));
     return ret;
 }
+
+static inline void outw(uint16_t port, uint16_t val) {
+    asm volatile ("outw %0, %1" : : "a"(val), "Nd"(port));
+}
+
 
 void irq_handler(int irq);
 void pic_remap(int offset1, int offset2);

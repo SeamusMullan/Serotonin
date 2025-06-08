@@ -2,21 +2,8 @@
 #include "../io/io.h"
 #include "../stdio/stdio.h"
 
-#define ATA_PRIMARY_IO 0x1F0
-#define ATA_PRIMARY_CTRL 0x3F6
-
-#define ATA_MASTER 0xE0
-#define ATA_SLAVE  0xF0
-
-#define ATA_CMD_IDENTIFY      0xEC
-#define ATA_CMD_READ_SECTORS  0x20
-
-#define ATA_STATUS_BSY  0x80
-#define ATA_STATUS_DRQ  0x08
-#define ATA_STATUS_ERR  0x01
-
 // Wait until (status & mask) == value, or timeout
-static int ide_wait(uint8_t mask, uint8_t value, int timeout) {
+int ide_wait(uint8_t mask, uint8_t value, int timeout) {
     while (timeout-- > 0) {
         uint8_t status = inb(ATA_PRIMARY_IO + 7);
         if ((status & mask) == value) return 0;

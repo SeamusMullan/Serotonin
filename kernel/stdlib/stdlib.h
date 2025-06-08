@@ -91,6 +91,7 @@ size_t strspn(const char* str1, const char* str2);
 size_t strcspn(const char* str1, const char* str2);
 char* strpbrk(const char* str1, const char* str2);
 char* strtok(char* str, const char* delim);
+int strcasecmp(const char *s1, const char *s2);
 
 /* Utility functions */
 void qsort(void* base, size_t num, size_t size, int (*compare)(const void*, const void*));

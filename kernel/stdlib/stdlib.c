@@ -1015,3 +1015,21 @@ void ftoa(double n, char *res, int precision) {
 
     *res = '\0';
 }
+
+int strcasecmp(const char *s1, const char *s2) {
+    unsigned char c1, c2;
+
+    while (*s1 != '\0' && *s2 != '\0') {
+        c1 = tolower((unsigned char) *s1);
+        c2 = tolower((unsigned char) *s2);
+
+        if (c1 != c2) {
+            return c1 - c2;
+        }
+
+        s1++;
+        s2++;
+    }
+
+    return tolower((unsigned char) *s1) - tolower((unsigned char) *s2);
+}
