@@ -124,3 +124,57 @@ int ide_read_sectors(uint8_t drive, uint32_t lba, uint8_t count, uint8_t *buffer
     }
     return 0;
 }
+
+int ide_write_sector(uint8_t drive, uint32_t lba, const uint8_t *buffer) {
+    if (drive > 1) return -1;
+
+    uint8_t drive_sel = (drive == 0 ? ATA_MASTER : ATA_SLAVE) | ((lba >> 24) & 0x0F);
+
+    // 1: select drive
+    outb(ATA_PRIMARY_IO + 6, drive_sel);
+    io_wait();
+
+    // 2: setup count + LBA registers
+    outb(ATA_PRIMARY_IO + 1, 0x00);      // features
+    outb(ATA_PRIMARY_IO + 2, 1);         // sector count = 1
+    outb(ATA_PRIMARY_IO + 3, (uint8_t)(lba & 0xFF));
+    outb(ATA_PRIMARY_IO + 4, (uint8_t)((lba>>8) & 0xFF));
+    outb(ATA_PRIMARY_IO + 5, (uint8_t)((lba>>16)&0xFF));
+
+    // 3: send WRITE SECTORS
+    outb(ATA_PRIMARY_IO + 7, ATA_CMD_WRITE_SECTORS);
+    io_wait();
+
+    // 4: wait BSY=0
+    if (ide_wait(0x80, 0, 100000) != 0) {
+        printf("IDE write: BSY timeout\n");
+        return -1;
+    }
+
+    // 5: wait DRQ=1
+    if (ide_wait(0x08, 0x08, 100000) != 0) {
+        printf("IDE write: DRQ timeout\n");
+        return -1;
+    }
+
+    // 6: write 256 words (512 bytes)
+    for (int i = 0; i < 256; i++) {
+        uint16_t word = (uint16_t)buffer[i*2] 
+                      | ((uint16_t)buffer[i*2+1] << 8);
+        outw(ATA_PRIMARY_IO, word);
+    }
+
+    // 7: flush cache? some drives need CACHE FLUSH command (0xE7)
+    //    but for now we’ll assume the BIOS flushes on close.
+
+    return 0;
+}
+
+int ide_write_sectors(uint8_t drive, uint32_t lba, uint8_t count, const uint8_t *buffer) {
+    for (uint8_t i = 0; i < count; i++) {
+        if (ide_write_sector(drive, lba + i, buffer + (i * 512)) != 0)
+            return -1;
+    }
+    return 0;
+}
+

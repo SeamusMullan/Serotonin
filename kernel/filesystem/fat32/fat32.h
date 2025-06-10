@@ -97,15 +97,21 @@ static vfs_node_t *fat32_finddir(vfs_node_t *node, const char *name);
 static int fat32_read(vfs_node_t *node,uint32_t offset,uint32_t size,char *buffer);
 static int fat32_open(vfs_node_t *node);
 static int fat32_close(vfs_node_t *node);
+static int fat32_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer);
+static vfs_node_t *fat32_create(vfs_node_t *parent, const char *name);
+static vfs_node_t *fat32_mkdir(vfs_node_t *parent, const char *name);
 
 static vfs_ops_t fat32_ops = {
-    .read = fat32_read,
-    .write = NULL,
-    .open = fat32_open,
-    .close = fat32_close,
+    .read    = fat32_read,
+    .write   = fat32_write,
+    .open    = fat32_open,
+    .close   = fat32_close,
     .readdir = fat32_readdir,
-    .finddir = fat32_finddir
+    .finddir = fat32_finddir,
+    .create  = fat32_create,
+    .mkdir   = fat32_mkdir
 };
+
 
 extern filesystem_t fat32_fs;
 

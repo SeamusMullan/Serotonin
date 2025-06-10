@@ -13,15 +13,19 @@ static int tmpfs_open(vfs_node_t *node);
 static int tmpfs_close(vfs_node_t *node);
 static vfs_node_t *tmpfs_readdir(vfs_node_t *node, uint32_t index);
 static vfs_node_t *tmpfs_finddir(vfs_node_t *node, const char *name);
+vfs_node_t *tmpfs_create_file(vfs_node_t *parent, const char *name);
+vfs_node_t *tmpfs_create_dir(vfs_node_t *parent, const char *name);
 
 // VFS ops
 static vfs_ops_t tmpfs_ops = {
-    .read = tmpfs_read,
-    .write = tmpfs_write,
-    .open = tmpfs_open,
-    .close = tmpfs_close,
+    .read    = tmpfs_read,
+    .write   = tmpfs_write,
+    .open    = tmpfs_open,
+    .close   = tmpfs_close,
     .readdir = tmpfs_readdir,
-    .finddir = tmpfs_finddir
+    .finddir = tmpfs_finddir,
+    .create  = tmpfs_create_file,
+    .mkdir   = tmpfs_create_dir
 };
 
 // Filesystem registration

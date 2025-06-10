@@ -20,7 +20,5 @@ typedef struct tmpfs_dir {
 
 void tmpfs_init(void);
 
-vfs_node_t *tmpfs_create_file(vfs_node_t *parent, const char *name);
-vfs_node_t *tmpfs_create_dir(vfs_node_t *parent, const char *name);
 
 #endif

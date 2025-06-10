@@ -363,17 +363,9 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     vfs_mount("1", "/", "fat32");
 
     vfs_list_dir("/");
-
-    vfs_node_t *f = vfs_open("/HELLO   TXT");
-    if (!f) {
-        printf("fat32_test: failed to open /hello.txt\n");
-    } else {
-        char buf[64] = {0};
-        int n = vfs_read(f, 0, sizeof(buf)-1, buf);
-        printf("Read %d bytes: '%s'\n", n, buf);
-        vfs_close(f);
-    }
     */
+
+    abort();
 }
 
 /**

@@ -136,3 +136,49 @@ void vfs_list_dir(const char *path) {
 
     vfs_close(dir);
 }
+
+static void split_path(const char *path, char *parent, char *name) {
+    char tmp[256];
+    strncpy(tmp, path, sizeof(tmp));
+    tmp[255] = 0;
+    char *slash = strrchr(tmp, '/');
+    if (!slash || slash == tmp) {
+        // root or immediate child of /
+        strcpy(parent, "/");
+        strcpy(name, slash ? slash+1 : tmp);
+    } else {
+        *slash = 0;
+        strcpy(parent, tmp);
+        strcpy(name, slash+1);
+    }
+}
+
+vfs_node_t *vfs_create(const char *path) {
+    char parent_path[256], name[256];
+    split_path(path, parent_path, name);
+
+    vfs_node_t *dir = vfs_open(parent_path);
+    if (!dir || !dir->ops->create) {
+        if (dir) vfs_close(dir);
+        return NULL;
+    }
+
+    vfs_node_t *newnode = dir->ops->create(dir, name);
+    vfs_close(dir);
+    return newnode;
+}
+
+int vfs_mkdir(const char *path) {
+    char parent_path[256], name[256];
+    split_path(path, parent_path, name);
+
+    vfs_node_t *dir = vfs_open(parent_path);
+    if (!dir || !dir->ops->mkdir) {
+        if (dir) vfs_close(dir);
+        return -1;
+    }
+
+    vfs_node_t *newdir = dir->ops->mkdir(dir, name);
+    vfs_close(dir);
+    return newdir ? 0 : -1;
+}

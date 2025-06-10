@@ -39,6 +39,8 @@ typedef struct vfs_ops {
     int (*close)(vfs_node_t *node);
     struct vfs_node *(*readdir)(vfs_node_t *node, uint32_t index);
     vfs_node_t *(*finddir)(vfs_node_t *node, const char *name);
+    vfs_node_t *(*create)(vfs_node_t *parent, const char *name);
+    vfs_node_t *(*mkdir)(vfs_node_t *parent, const char *name);
 } vfs_ops_t;
 
 typedef struct filesystem {
@@ -55,6 +57,8 @@ int vfs_read(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer);
 int vfs_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer);
 void vfs_close(vfs_node_t *node);
 void vfs_list_dir(const char *path);
+vfs_node_t *vfs_create(const char *path);
+int vfs_mkdir(const char *path);
 
 vfs_node_t *vfs_resolve_path(const char *path);
 
