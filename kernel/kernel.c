@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <cpuid.h>
 #include "tty.h"
 #include "string.h"
 #include "stdio/stdio.h"
@@ -74,15 +75,48 @@ static inline void kernel_write_cr4(uint32_t val) {
 
 
 static int kernel_cpu_has_sse(void) {
-    uint32_t eax, ebx, ecx, edx;
+    unsigned int eax, ebx, ecx, edx;
+    unsigned int ret;
 
-    // CPUID function 1 returns feature bits in edx/ecx
-    asm volatile("cpuid"
-                 : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
-                 : "a"(1));
+    ret = __get_cpuid(1, &eax, &ebx, &ecx, &edx);
+    if (ret != 1) {
+        abort();
+    }
 
     // Bit 25 of EDX = SSE, Bit 26 = SSE2
     return (edx & (1 << 25)) != 0;
+}
+
+static int kernel_hypervisor_present(void) {
+    unsigned int eax, ebx, ecx, edx;
+    unsigned int ret;
+
+    ret = __get_cpuid(1, &eax, &ebx, &ecx, &edx);
+    if (ret != 1) {
+        abort();
+    }
+
+    // Bit 31 of ECX indicates a presence of a hypervisor
+    return (ecx & (1 << 31)) != 0;
+}
+
+static char* kernel_get_cpu_manufacturer(void) {
+    unsigned int eax, ebx, ecx, edx;
+    unsigned int ret;
+
+    ret = __get_cpuid(0, &eax, &ebx, &ecx, &edx);
+    if (ret != 1) {
+        abort();
+    }
+
+    // Build manufacturer string, should be 12 chars long unless a hypervisor defies the laws of x86
+    static char manufacturer[13];
+    *(uint32_t *)&manufacturer[0] = ebx;
+    *(uint32_t *)&manufacturer[4] = edx;
+    *(uint32_t *)&manufacturer[8] = ecx;
+    manufacturer[12] = '\0';
+
+    return manufacturer;
 }
 
 void kernel_setup_fpu(void) {
@@ -337,6 +371,11 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     }
     else {
         kernel_panic("multiboot - unable to detect memory"); 
+    }
+
+    if (kernel_hypervisor_present()) {
+        char* cpu_manufacturer = kernel_get_cpu_manufacturer();
+        printfs(PRINT_STATUS_INFO,"A hypervisor is present. CPU Manufacturer: %s\n", cpu_manufacturer);
     }
 
     /*
