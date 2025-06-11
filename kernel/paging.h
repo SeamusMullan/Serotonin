@@ -16,9 +16,9 @@ typedef page_directory_entry_t page_directory_t[PAGE_ENTRIES];
 #define KERNEL_PHYS_BASE 0x00200000U   // linked at physical 2 MiB
 #define KERNEL_VMA_BASE  0xC0000000U   // where code/data live after paging
 
-#define KERNEL_HEAP_VMA   0xC0400000U   // virtual base of heap
-#define KERNEL_HEAP_PHYS  0x00800000U   // physical base of heap (8 MiB)
-#define KERNEL_HEAP_SIZE ((uint32_t)(16 * 1024 * 1024U))  // 16 MiB heap
+#define KERNEL_HEAP_VMA   0xD0000000U   // heap virtual base (after 256MB kernel)
+#define KERNEL_HEAP_PHYS  0x10200000U   // heap physical base (after 256MB kernel phys)
+#define KERNEL_HEAP_SIZE ((uint32_t)(256 * 1024 * 1024U)) // 256 MB heap
 
 #define FB_VMA_BASE      0x02800000U   // virtual base for the framebuffer mapping
 

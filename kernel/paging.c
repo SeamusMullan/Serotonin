@@ -9,16 +9,10 @@ __attribute__((aligned(PAGE_SIZE)))
 page_table_t first_page_table;
 
 __attribute__((aligned(PAGE_SIZE)))
-page_table_t kernel_page_table;
+page_table_t kernel_page_tables[64];
 
 __attribute__((aligned(PAGE_SIZE)))
-page_table_t heap_page_table0;
-__attribute__((aligned(PAGE_SIZE)))
-page_table_t heap_page_table1;
-__attribute__((aligned(PAGE_SIZE)))
-page_table_t heap_page_table2;
-__attribute__((aligned(PAGE_SIZE)))
-page_table_t heap_page_table3;
+page_table_t heap_page_tables[64];
 
 __attribute__((aligned(PAGE_SIZE)))
 page_table_t fb_page_table;
@@ -38,60 +32,49 @@ void paging_init(uintptr_t fb_phys_base) {
     fb_addr_ptr = fb_phys_base;
 
     uintptr_t pd_phys    = (uintptr_t)&page_directory;
-    uintptr_t pt0_phys   = (uintptr_t)&first_page_table;
-    uintptr_t kpt_phys   = (uintptr_t)&kernel_page_table;
-    uintptr_t heap0_phys = (uintptr_t)&heap_page_table0;
-    uintptr_t heap1_phys = (uintptr_t)&heap_page_table1;
-    uintptr_t heap2_phys = (uintptr_t)&heap_page_table2;
-    uintptr_t heap3_phys = (uintptr_t)&heap_page_table3;
-    uintptr_t fbpt_phys  = (uintptr_t)&fb_page_table;
     page_dir_ptr = pd_phys;
 
-    // 1) Identity‐map first 4 MiB (0 … 0x003FFFFF)
+    // 1) Zero out entire page directory
+    for (uint32_t i = 0; i < PAGE_ENTRIES; i++) {
+        page_directory[i] = 0;
+    }
+
+    // 2) Identity‐map first 4 MiB (0 … 0x003FFFFF)
     for (uint32_t i = 0; i < PAGE_ENTRIES; i++) {
         first_page_table[i] = (i * PAGE_SIZE) | PAGE_FLAGS;
     }
 
-    // 2) Map kernel’s first 4 MiB → virtual 0xC0000000 … 
-    //    (iterator i covers one 4 KiB page each)
-    for (uint32_t i = 0; i < PAGE_ENTRIES; i++) {
-        kernel_page_table[i] = (KERNEL_PHYS_BASE + i * PAGE_SIZE) | PAGE_FLAGS;
+    // 3) Map kernel space: 256 MB → 64 page tables → PDE[768..831]
+    for (uint32_t pd_idx = 0; pd_idx < 64; pd_idx++) {
+        for (uint32_t i = 0; i < PAGE_ENTRIES; i++) {
+            kernel_page_tables[pd_idx][i] = (KERNEL_PHYS_BASE + (pd_idx * 0x400000) + i * PAGE_SIZE) | PAGE_FLAGS;
+        }
+
+        page_directory[768 + pd_idx] = ((uint32_t)&kernel_page_tables[pd_idx]) | PAGE_FLAGS;
     }
 
-    // 3) Map exactly 4 MiB worth of framebuffer pages:
+    // 4) Map exactly 4 MiB worth of framebuffer pages:
     //    from fb_phys_base … fb_phys_base + 0x003FFFFF → to FB_VMA_BASE … (FB_VMA_BASE+4 MiB−1)
     for (uint32_t i = 0; i < PAGE_ENTRIES; i++) {
         fb_page_table[i] = (fb_phys_base + i * PAGE_SIZE) | PAGE_FLAGS;
     }
 
-    // 4) Map heap (16 MiB = 4 page tables) at virtual 0xC0400000 … 0xC13FFFFF
-    //    Physical heap is KERNEL_HEAP_PHYS (0x00800000) … 0x017FFFFF
-    for (uint32_t i = 0; i < PAGE_ENTRIES; i++) {
-        heap_page_table0[i] = ((KERNEL_HEAP_PHYS + 0 * 0x00400000U) + i * PAGE_SIZE) | PAGE_FLAGS;
-        heap_page_table1[i] = ((KERNEL_HEAP_PHYS + 1 * 0x00400000U) + i * PAGE_SIZE) | PAGE_FLAGS;
-        heap_page_table2[i] = ((KERNEL_HEAP_PHYS + 2 * 0x00400000U) + i * PAGE_SIZE) | PAGE_FLAGS;
-        heap_page_table3[i] = ((KERNEL_HEAP_PHYS + 3 * 0x00400000U) + i * PAGE_SIZE) | PAGE_FLAGS;
+    // Map heap space: 256 MB → 64 page tables → PDE[832..895]
+    for (uint32_t pd_idx = 0; pd_idx < 64; pd_idx++) {
+        for (uint32_t i = 0; i < PAGE_ENTRIES; i++) {
+            heap_page_tables[pd_idx][i] = (KERNEL_HEAP_PHYS + (pd_idx * 0x400000) + i * PAGE_SIZE) | PAGE_FLAGS;
+        }
+
+        page_directory[832 + pd_idx] = ((uint32_t)&heap_page_tables[pd_idx]) | PAGE_FLAGS;
     }
 
-    // 5) Zero out entire page directory
-    for (uint32_t i = 0; i < PAGE_ENTRIES; i++) {
-        page_directory[i] = 0;
-    }
-
-    // 6) Install PDEs:
+    // 5) Install PDEs:
     //    PDE[0] → first_page_table (identity 0…4 MiB)
     page_directory[0]   = ((uint32_t)&first_page_table) | PAGE_FLAGS;
     //    PDE[10] → fb_page_table  (0x02800000/0x00400000 = 10)
     page_directory[10]  = ((uint32_t)&fb_page_table) | PAGE_FLAGS;
-    //    PDE[768] → kernel_page_table  (0xC0000000/0x00400000 = 768)
-    page_directory[768] = ((uint32_t)&kernel_page_table) | PAGE_FLAGS;
-    //    PDE[769..772] → heap_page_table0..3
-    page_directory[769] = ((uint32_t)&heap_page_table0) | PAGE_FLAGS;
-    page_directory[770] = ((uint32_t)&heap_page_table1) | PAGE_FLAGS;
-    page_directory[771] = ((uint32_t)&heap_page_table2) | PAGE_FLAGS;
-    page_directory[772] = ((uint32_t)&heap_page_table3) | PAGE_FLAGS;
 
-    // 7) Load CR3 and enable paging
+    // 6) Load CR3 and enable paging
     asm volatile (
         "mov %0, %%cr3      \n\t"
         "mov %%cr0, %%eax   \n\t"
@@ -127,12 +110,12 @@ void *phys_to_virt(uintptr_t pa) {
     }
 
     // Kernel higher half (first 4 MiB of kernel text/data):
-    if (pa >= KERNEL_PHYS_BASE && pa < (KERNEL_PHYS_BASE + 4 * 1024 * 1024U)) {
+    if (pa >= KERNEL_PHYS_BASE && pa < (KERNEL_PHYS_BASE + (256 * 1024 * 1024U))) {
         return (void *)(KERNEL_VMA_BASE + (pa - KERNEL_PHYS_BASE));
     }
 
     // Kernel heap (16 MiB):
-    if (pa >= KERNEL_HEAP_PHYS && pa < (KERNEL_HEAP_PHYS + KERNEL_HEAP_SIZE)) {
+    if (pa >= KERNEL_HEAP_PHYS && pa < (KERNEL_HEAP_PHYS + (256 * 1024 * 1024U))) {
         return (void *)(KERNEL_HEAP_VMA + (pa - KERNEL_HEAP_PHYS));
     }
 

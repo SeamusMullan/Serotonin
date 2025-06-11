@@ -379,9 +379,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         printfs(PRINT_STATUS_INFO,"A hypervisor is present.\n");
     }
 
-    int *p = (int*)0xDEADBEEF;
-    *p = 100;
-
     /*
     vfs_init();
     ide_init();
