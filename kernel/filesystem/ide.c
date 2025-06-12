@@ -31,13 +31,13 @@ void ide_init(void) {
 
         uint8_t status = inb(ATA_PRIMARY_IO + 7);
         if (status == 0) {
-            printf("IDE drive %u: No device.\n", drive);
+            printfs(PRINT_STATUS_WARNING,"IDE drive %u: No device.\n", drive);
             continue;
         }
 
         // Wait for BSY = 0
         if (ide_wait(ATA_STATUS_BSY, 0, 100000) != 0) {
-            printf("IDE drive %u: BSY timeout.\n", drive);
+            printfs(PRINT_STATUS_WARNING,"IDE drive %u: BSY timeout.\n", drive);
             continue;
         }
 
@@ -46,13 +46,13 @@ void ide_init(void) {
         uint8_t ch = inb(ATA_PRIMARY_IO + 5);
 
         if (cl == 0x14 && ch == 0xEB) {
-            printf("IDE drive %u: ATAPI device detected (CDROM).\n", drive);
+            printfs(PRINT_STATUS_DEBUG,"IDE drive %u: ATAPI device detected (CDROM).\n", drive);
             continue;
         }
 
         // Wait for DRQ = 1
         if (ide_wait(ATA_STATUS_DRQ, ATA_STATUS_DRQ, 100000) != 0) {
-            printf("IDE drive %u: DRQ timeout.\n", drive);
+            printfs(PRINT_STATUS_WARNING,"IDE drive %u: DRQ timeout.\n", drive);
             continue;
         }
 
@@ -70,7 +70,7 @@ void ide_init(void) {
         }
         model[40] = '\0';
 
-        printf("IDE drive %u detected. Model: %s\n", drive, model);
+        printfs(PRINT_STATUS_DEBUG,"IDE drive %u detected. Model: %s\n", drive, model);
     }
 }
 
@@ -97,13 +97,13 @@ int ide_read_sector(uint8_t drive, uint32_t lba, uint8_t *buffer) {
 
     // Wait for BSY = 0
     if (ide_wait(ATA_STATUS_BSY, 0, 100000) != 0) {
-        printf("IDE: BSY timeout!\n");
+        printfs(PRINT_STATUS_WARNING,"IDE: BSY timeout!\n");
         return -1;
     }
 
     // Wait for DRQ = 1
     if (ide_wait(ATA_STATUS_DRQ, ATA_STATUS_DRQ, 100000) != 0) {
-        printf("IDE: DRQ timeout!\n");
+        printfs(PRINT_STATUS_WARNING,"IDE: DRQ timeout!\n");
         return -1;
     }
 
@@ -147,13 +147,13 @@ int ide_write_sector(uint8_t drive, uint32_t lba, const uint8_t *buffer) {
 
     // 4: wait BSY=0
     if (ide_wait(0x80, 0, 100000) != 0) {
-        printf("IDE write: BSY timeout\n");
+        printfs(PRINT_STATUS_WARNING,"IDE write: BSY timeout\n");
         return -1;
     }
 
     // 5: wait DRQ=1
     if (ide_wait(0x08, 0x08, 100000) != 0) {
-        printf("IDE write: DRQ timeout\n");
+        printfs(PRINT_STATUS_WARNING,"IDE write: DRQ timeout\n");
         return -1;
     }
 

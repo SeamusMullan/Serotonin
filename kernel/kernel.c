@@ -379,7 +379,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         printfs(PRINT_STATUS_INFO,"A hypervisor is present.\n");
     }
 
-    /*
     vfs_init();
     ide_init();
     fat32_init();
@@ -387,23 +386,19 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     uint8_t mbr[512];
     ide_read_sector(1, 0, mbr);
 
-    printf("MBR signature: %02x %02x\n", mbr[510], mbr[511]);
-
-    // Parse partition 1 start LBA:
-    uint32_t partition1_lba = mbr[454] | (mbr[455] << 8) | (mbr[456] << 16) | (mbr[457] << 24);
-
-    printf("Partition 1 starts at LBA: %u\n", partition1_lba);
-
-    // Now read boot sector of partition:
-    uint8_t boot_sector[512];
-    ide_read_sector(1, partition1_lba, boot_sector);
-
-    printf("Boot sector signature: %02x %02x\n", boot_sector[510], boot_sector[511]);
-
     vfs_mount("1", "/", "fat32");
 
     vfs_list_dir("/");
-    */
+    vfs_node_t *f = vfs_open("/hello.txt");
+    if (!f) {
+        printf("vfs_open failed!\n");
+    } else {
+        char buf[64];
+        int n = vfs_read(f, 0, sizeof(buf)-1, buf);
+        buf[n] = '\0';
+        printf("Read %d bytes: '%s'\n", n, buf);
+        vfs_close(f);
+    }
 
     abort();
 }
