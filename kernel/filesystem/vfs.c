@@ -13,16 +13,34 @@
 vfs_node_t *vfs_root = NULL;
 filesystem_t *registered_filesystems = NULL;
 
+/**
+ * @brief Initializes the Virtual Filesystem (VFS).
+ *
+ * This function initializes the global VFS state.
+ */
 void vfs_init(void) {
     vfs_root = NULL;
     registered_filesystems = NULL;
 }
 
+/**
+ * @brief Registers a filesystem with the VFS.
+ *
+ * @param fs Pointer to the filesystem to register.
+ */
 void vfs_register_fs(filesystem_t *fs) {
     fs->next = registered_filesystems;
     registered_filesystems = fs;
 }
 
+/**
+ * @brief Mounts a filesystem at the specified mount point.
+ *
+ * @param device The device identifier.
+ * @param mountpoint The mount point (e.g., "/").
+ * @param fs_type The filesystem type to mount.
+ * @return 0 on success, -1 if mount failed, -2 if non-root mounting not implemented, -3 if filesystem type not found.
+ */
 int vfs_mount(const char *device, const char *mountpoint, const char *fs_type) {
     filesystem_t *fs = registered_filesystems;
 
@@ -44,6 +62,12 @@ int vfs_mount(const char *device, const char *mountpoint, const char *fs_type) {
     return -3; // Filesystem not found
 }
 
+/**
+ * @brief Resolves a path to a VFS node.
+ *
+ * @param path The absolute path to resolve.
+ * @return Pointer to the corresponding VFS node, or NULL if not found.
+ */
 vfs_node_t *vfs_resolve_path(const char *path) {
     if (!vfs_root || !path || path[0] != '/') return NULL;
 
@@ -71,6 +95,12 @@ vfs_node_t *vfs_resolve_path(const char *path) {
     return current;
 }
 
+/**
+ * @brief Opens a file or directory at the specified path.
+ *
+ * @param path The absolute path to open.
+ * @return Pointer to the opened VFS node, or NULL on failure.
+ */
 vfs_node_t *vfs_open(const char *path) {
     vfs_node_t *node = vfs_resolve_path(path);
     if (!node) return NULL;
@@ -85,16 +115,40 @@ vfs_node_t *vfs_open(const char *path) {
     return node;
 }
 
+/**
+ * @brief Reads data from a VFS node.
+ *
+ * @param node Pointer to the VFS node to read from.
+ * @param offset Offset in the file to start reading.
+ * @param size Number of bytes to read.
+ * @param buffer Buffer to store read data.
+ * @return Number of bytes read, or -1 on failure.
+ */
 int vfs_read(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer) {
     if (!node || !node->ops || !node->ops->read) return -1;
     return node->ops->read(node, offset, size, buffer);
 }
 
+
+/**
+ * @brief Writes data to a VFS node.
+ *
+ * @param node Pointer to the VFS node to write to.
+ * @param offset Offset in the file to start writing.
+ * @param size Number of bytes to write.
+ * @param buffer Buffer containing data to write.
+ * @return Number of bytes written, or -1 on failure.
+ */
 int vfs_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer) {
     if (!node || !node->ops || !node->ops->write) return -1;
     return node->ops->write(node, offset, size, buffer);
 }
 
+/**
+ * @brief Closes a previously opened VFS node.
+ *
+ * @param node Pointer to the VFS node to close.
+ */
 void vfs_close(vfs_node_t *node) {
     if (!node) return;
 
@@ -107,6 +161,11 @@ void vfs_close(vfs_node_t *node) {
     }
 }
 
+/**
+ * @brief Lists the contents of a directory.
+ *
+ * @param path Path to the directory to list.
+ */
 void vfs_list_dir(const char *path) {
     vfs_node_t *dir = vfs_open(path);
     if (!dir) {
@@ -153,6 +212,12 @@ static void split_path(const char *path, char *parent, char *name) {
     }
 }
 
+/**
+ * @brief Creates a file at the specified path.
+ *
+ * @param path The path where the file will be created.
+ * @return Pointer to the newly created VFS node, or NULL on failure.
+ */
 vfs_node_t *vfs_create(const char *path) {
     char parent_path[256], name[256];
     split_path(path, parent_path, name);
@@ -168,6 +233,12 @@ vfs_node_t *vfs_create(const char *path) {
     return newnode;
 }
 
+/**
+ * @brief Creates a directory at the specified path.
+ *
+ * @param path The path where the directory will be created.
+ * @return 0 on success, -1 on failure.
+ */
 int vfs_mkdir(const char *path) {
     char parent_path[256], name[256];
     split_path(path, parent_path, name);
