@@ -354,42 +354,40 @@ static vfs_node_t *fat32_finddir(vfs_node_t *dir, const char *name) {
 
 static int fat32_write_fat_entry(fat32_fs_info_t *fs, uint32_t cluster, uint32_t value)
 {
-    uint32_t fat_offset       = cluster * 4;
-    uint32_t fat_sector       = fs->fat_start_lba
-                              + (fat_offset / fs->bytes_per_sector);
-    uint32_t offset_in_sector = fat_offset % fs->bytes_per_sector;
+    // mask to 28 bits
+    value &= 0x0FFFFFFF;
 
-    // read the sector
-    uint8_t *sector = kernel_malloc(fs->bytes_per_sector);
-    ide_read_sector(fs->drive, fat_sector, sector);
+    uint32_t off    = cluster * 4;
+    uint32_t sector = off / fs->bytes_per_sector;
+    uint32_t idx    = off % fs->bytes_per_sector;
+    uint8_t  buf[512];
 
-    // update the 4-byte entry
-    uint32_t *entry = (uint32_t*)(sector + offset_in_sector);
-    *entry = (*entry & 0xF0000000) | (value & 0x0FFFFFFF);
-
-    // write it back
-    for (uint16_t i = 0; i < fs->bytes_per_sector / 2; i++) {
-        // write 16-bit words
-        uint16_t w = ((uint16_t*)sector)[i];
-        // we need outw support; assume you have outw()
-        outw(ATA_PRIMARY_IO, w);
+    for (int copy = 0; copy < fs->table_count; copy++) {
+        uint32_t lba = fs->fat_start_lba
+                     + copy * fs->fat_size
+                     + sector;
+        // 1: read
+        ide_read_sector(fs->drive, lba, buf);
+        // 2: patch
+        *(uint32_t *)(buf + idx) = value;
+        // 3: write back
+        ide_write_sector(fs->drive, lba, buf);
     }
-    kernel_free(sector);
     return 0;
 }
 
 static uint32_t fat32_allocate_cluster(fat32_fs_info_t *fs)
 {
     // scan the FAT looking for a zero entry
-    uint32_t total_clusters = fs->fat_size * fs->bytes_per_sector / 4;
-    for (uint32_t cl = 2; cl < total_clusters; cl++) {
+    uint32_t total = (fs->fat_size * fs->bytes_per_sector) / 4;
+    for (uint32_t cl = 2; cl < total; cl++) {
         if (fat32_read_fat_entry(fs, cl) == 0) {
-            // mark end-of-chain
+            // mark EOC
             fat32_write_fat_entry(fs, cl, FAT32_CLUSTER_END);
             return cl;
         }
     }
-    return 0; // no free cluster
+    return 0;
 }
 
 static void fat32_write_cluster(fat32_fs_info_t *fs, uint32_t cluster, const uint8_t *buffer)
@@ -516,76 +514,61 @@ static fat_dir_entry_t *locate_free_entry(fat32_fs_info_t *fs, uint32_t parent_c
 static vfs_node_t *fat32_create(vfs_node_t *parent, const char *name) {
     fat32_node_info_t *pni = parent->fs_data;
     fat32_fs_info_t   *fs  = pni->fs_info;
-    uint32_t           parent_cluster = pni->cluster_number;
+    uint32_t cluster = pni->cluster_number;
+    uint32_t csize   = fs->bytes_per_sector * fs->sectors_per_cluster;
+    uint8_t *buf     = kernel_malloc(csize);
 
+    // build the 11-byte raw name key
     uint8_t key[11];
     fat32_build_name_key(name, key);
 
-    // load cluster and find free slot
-    uint32_t cluster = parent_cluster;
-    uint32_t cluster_size = fs->bytes_per_sector * fs->sectors_per_cluster;
-    uint8_t *buf = kernel_malloc(cluster_size);
+    // 1: find or extend parent directory cluster for a free slot
     fat_dir_entry_t *slot = NULL;
-
-    // locate_free_entry simplified inline:
-    {
-        uint32_t entries_per_cl = cluster_size / sizeof(fat_dir_entry_t);
-        while (!slot) {
-            fat32_read_cluster(fs, cluster, buf);
-            fat_dir_entry_t *ents = (fat_dir_entry_t*)buf;
-            for (uint32_t i=0; i<entries_per_cl; i++) {
-                if (ents[i].name[0]==0x00 || ents[i].name[0]==0xE5) {
-                    slot = &ents[i];
-                    break;
-                }
-            }
-            if (!slot) {
-                uint32_t next = fat32_read_fat_entry(fs, cluster);
-                if (next >= FAT32_CLUSTER_END) {
-                    next = fat32_allocate_cluster(fs);
-                    if (!next) { kernel_free(buf); return NULL; }
-                    fat32_write_fat_entry(fs, cluster, next);
-                    memset(buf,0,cluster_size);
-                    fat32_write_cluster(fs, next, buf);
-                    cluster = next;
-                } else {
-                    cluster = next;
-                }
+    uint32_t entries = csize / sizeof(fat_dir_entry_t);
+    while (!slot) {
+        fat32_read_cluster(fs, cluster, buf);
+        fat_dir_entry_t *ents = (void*)buf;
+        for (uint32_t i = 0; i < entries; i++) {
+            if (ents[i].name[0] == 0x00 || ents[i].name[0] == 0xE5) {
+                slot = &ents[i];
+                goto got_slot;
             }
         }
+        // no slot, chain‐extend parent dir
+        uint32_t next = fat32_read_fat_entry(fs, cluster);
+        if (next >= FAT32_CLUSTER_END) {
+            next = fat32_allocate_cluster(fs);
+            fat32_write_fat_entry(fs, cluster, next);
+            memset(buf, 0, csize);
+            fat32_write_cluster(fs, next, buf);
+        }
+        cluster = next;
     }
+got_slot:
+    // 2: allocate a data cluster for the new file
+    uint32_t newcl = fat32_allocate_cluster(fs);
 
-    // fill the slot
+    // 3: fill the directory‐entry
     memcpy(slot->name, key, 11);
-    slot->attr  = 0x20;         // archive bit
-    slot->reserved = 0;
-    slot->creation_time_tenths = 0;
-    slot->creation_time  = 0;
-    slot->creation_date  = 0;
-    slot->last_access_date = 0;
-    slot->first_cluster_high = 0;
-    slot->write_time   = 0;
-    slot->write_date   = 0;
-    slot->first_cluster_low  = 0;
-    slot->file_size    = 0;
+    slot->attr = 0x20;               // archive
+    slot->first_cluster_high = newcl >> 16;
+    slot->first_cluster_low  = newcl & 0xFFFF;
+    slot->file_size = 0;
 
-    // commit
+    // 4: commit parent-dir cluster
     fat32_write_cluster(fs, cluster, buf);
     kernel_free(buf);
 
-    // now build a VFS node for it
+    // 5: create the VFS node pointing at newcl
     vfs_node_t *child = kernel_malloc(sizeof(*child));
-    memset(child,0,sizeof(*child));
+    memset(child, 0, sizeof(*child));
     strcpy(child->name, name);
-    child->inode    = (uint32_t)child;
-    child->flags    = VFS_FLAG_FILE;
-    child->size     = 0;
+    child->flags = VFS_FLAG_FILE;
     child->refcount = 1;
-    child->ops      = &fat32_ops;
-
+    child->ops  = &fat32_ops;
     fat32_node_info_t *cni = kernel_malloc(sizeof(*cni));
     cni->fs_info        = fs;
-    cni->cluster_number = 0;  // no data cluster yet
+    cni->cluster_number = newcl;
     child->fs_data      = cni;
     return child;
 }
@@ -593,87 +576,91 @@ static vfs_node_t *fat32_create(vfs_node_t *parent, const char *name) {
 static vfs_node_t *fat32_mkdir(vfs_node_t *parent, const char *name) {
     fat32_node_info_t *pni = parent->fs_data;
     fat32_fs_info_t   *fs  = pni->fs_info;
-    uint32_t           parent_cluster = pni->cluster_number;
+    uint32_t parent_cl = pni->cluster_number;
+    uint32_t cluster_size = fs->bytes_per_sector * fs->sectors_per_cluster;
 
-    uint8_t key[11];
-    fat32_build_name_key(name, key);
-
-    // allocate a new cluster for the directory itself
+    // 1) Allocate a cluster for the new directory itself
     uint32_t newcl = fat32_allocate_cluster(fs);
     if (!newcl) return NULL;
 
-    // init its cluster with . and .. entries
-    uint32_t cluster_size = fs->bytes_per_sector * fs->sectors_per_cluster;
+    // 2: Build and write the "." / ".." entries into newcl
     uint8_t *buf = kernel_malloc(cluster_size);
-    memset(buf,0,cluster_size);
+    memset(buf, 0, cluster_size);
+    fat_dir_entry_t *ents = (fat_dir_entry_t *)buf;
 
-    fat_dir_entry_t *ents = (fat_dir_entry_t*)buf;
     // "." entry
-    memcpy(ents[0].name, key, 11);   // actually name="." → raw ".       "
-    memset(ents[0].name,' ',11);
+    memset(ents[0].name, ' ', 11);
     ents[0].name[0] = '.';
-    ents[0].attr = FAT32_ATTR_DIRECTORY;
+    ents[0].attr   = FAT32_ATTR_DIRECTORY;
     ents[0].first_cluster_high = (newcl >> 16) & 0xFFFF;
     ents[0].first_cluster_low  = newcl & 0xFFFF;
-    ents[0].file_size = 0;
+
     // ".." entry
-    memset(ents[1].name,' ',11);
-    ents[1].name[0] = '.';
-    ents[1].name[1] = '.';
-    ents[1].attr = FAT32_ATTR_DIRECTORY;
-    ents[1].first_cluster_high = (parent_cluster >> 16) & 0xFFFF;
-    ents[1].first_cluster_low  = parent_cluster & 0xFFFF;
-    ents[1].file_size = 0;
+    memset(ents[1].name, ' ', 11);
+    ents[1].name[0] = '.';  ents[1].name[1] = '.';
+    ents[1].attr   = FAT32_ATTR_DIRECTORY;
+    ents[1].first_cluster_high = (parent_cl >> 16) & 0xFFFF;
+    ents[1].first_cluster_low  = parent_cl & 0xFFFF;
 
     fat32_write_cluster(fs, newcl, buf);
     kernel_free(buf);
 
-    // now add its entry into the parent dir (reuse fat32_create logic, but with DIR attr)
-    // so we find a free slot in parent as above
-    // (extracted earlier code)
-    uint32_t cluster = parent_cluster;
-    uint8_t *pbuf = kernel_malloc(cluster_size);
+    // 3: Prepare the 11-byte FAT name key for "name"
+    uint8_t key[11];
+    fat32_build_name_key(name, key);
+
+    // 4: Find a free slot in parent directory, possibly extending it
+    uint32_t cl = parent_cl;
+    buf = kernel_malloc(cluster_size);
     fat_dir_entry_t *slot = NULL;
     uint32_t entries_per_cl = cluster_size / sizeof(fat_dir_entry_t);
+
     while (!slot) {
-        fat32_read_cluster(fs, cluster, pbuf);
-        fat_dir_entry_t *pe = (fat_dir_entry_t*)pbuf;
-        for (uint32_t i=0;i<entries_per_cl;i++){
-            if (pe[i].name[0]==0x00 || pe[i].name[0]==0xE5){
-                slot = &pe[i];
+        fat32_read_cluster(fs, cl, buf);
+        ents = (fat_dir_entry_t *)buf;
+
+        // scan for free (0x00 or 0xE5) entry
+        for (uint32_t i = 0; i < entries_per_cl; i++) {
+            if (ents[i].name[0] == 0x00 || ents[i].name[0] == 0xE5) {
+                slot = &ents[i];
                 break;
             }
         }
         if (!slot) {
-            uint32_t next = fat32_read_fat_entry(fs, cluster);
+            // need to extend parent dir
+            uint32_t next = fat32_read_fat_entry(fs, cl);
             if (next >= FAT32_CLUSTER_END) {
                 next = fat32_allocate_cluster(fs);
-                if (!next) { kernel_free(pbuf); return NULL; }
-                fat32_write_fat_entry(fs, cluster, next);
-                memset(pbuf,0,cluster_size);
-                fat32_write_cluster(fs, next, pbuf);
-                cluster = next;
+                if (!next) {
+                    kernel_free(buf);
+                    return NULL;
+                }
+                fat32_write_fat_entry(fs, cl, next);
+                memset(buf, 0, cluster_size);
+                fat32_write_cluster(fs, next, buf);
+                cl = next;
             } else {
-                cluster = next;
+                cl = next;
             }
         }
     }
 
+    // 5: Fill in the new directory entry in parent
     memcpy(slot->name, key, 11);
     slot->attr = FAT32_ATTR_DIRECTORY;
-    slot->first_cluster_high = (newcl >> 16)&0xFFFF;
+    slot->first_cluster_high = (newcl >> 16) & 0xFFFF;
     slot->first_cluster_low  = newcl & 0xFFFF;
     slot->file_size = 0;
-    fat32_write_cluster(fs, cluster, pbuf);
-    kernel_free(pbuf);
 
-    // build a VFS node
+    // commit the parent directory cluster back to disk
+    fat32_write_cluster(fs, cl, buf);
+    kernel_free(buf);
+
+    // 6: Allocate and return the VFS node for the new directory
     vfs_node_t *child = kernel_malloc(sizeof(*child));
-    memset(child,0,sizeof(*child));
-    strcpy(child->name, name);
-    child->inode    = (uint32_t)child;
+    memset(child, 0, sizeof(*child));
+    strncpy(child->name, name, sizeof(child->name));
     child->flags    = VFS_FLAG_DIRECTORY;
-    child->size     = 0;
     child->refcount = 1;
     child->ops      = &fat32_ops;
 
@@ -681,5 +668,6 @@ static vfs_node_t *fat32_mkdir(vfs_node_t *parent, const char *name) {
     cni->fs_info        = fs;
     cni->cluster_number = newcl;
     child->fs_data      = cni;
+
     return child;
 }

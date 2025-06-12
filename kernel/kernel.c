@@ -389,16 +389,42 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     vfs_mount("1", "/", "fat32");
 
     vfs_list_dir("/");
-    vfs_node_t *f = vfs_open("/hello.txt");
+    vfs_list_dir("/NEWDIR");
+
+    vfs_node_t *f = vfs_open("/NEWDIR/indir.txt");
     if (!f) {
-        printf("vfs_open failed!\n");
-    } else {
-        char buf[64];
-        int n = vfs_read(f, 0, sizeof(buf)-1, buf);
-        buf[n] = '\0';
-        printf("Read %d bytes: '%s'\n", n, buf);
-        vfs_close(f);
+        printf("fat32_write_test: vfs_open failed: %d\n",f);
+        return;
     }
+
+    const char *msg = "Updating in a directory";
+    int written = vfs_write(f, 0, strlen(msg), (char*)msg);
+    printf(" fat32_write_test: wrote %d bytes\n", written);
+
+    char buf[64];
+    memset(buf, 0, sizeof(buf));
+    int n = vfs_read(f, 0, sizeof(buf)-1, buf);
+    printf(" fat32_write_test: read  %d bytes: '%s'\n", n, buf);
+
+    vfs_mkdir("/foo");
+    vfs_mkdir("/foo/bar");
+
+    vfs_list_dir("/");
+    vfs_list_dir("/foo");
+    vfs_list_dir("/foo/bar");
+    vfs_node_t *f1 = vfs_open("/foo/bar/foo.txt");
+    if (!f1) {
+        printf("fat32_write_test: vfs_open failed: %d\n",f1);
+        return;
+    }
+    const char *msg1 = "bar";
+    int written1 = vfs_write(f1, 0, strlen(msg1), (char*)msg1);
+    printf(" fat32_write_test: wrote %d bytes\n", written1);
+
+    char buf1[64];
+    memset(buf1, 0, sizeof(buf1));
+    int n1 = vfs_read(f1, 0, sizeof(buf1)-1, buf1);
+    printf(" fat32_write_test: read  %d bytes: '%s'\n", n1, buf1);
 
     abort();
 }
