@@ -2,6 +2,8 @@
 #include "vbe/vbe.h"
 #include "../kernel.h"
 #include "../stdlib/stdlib.h"
+#include "../stdio/stdio.h"
+#include "../io/io.h"
 #include "font.h"
 #include <stdint.h>
 
@@ -8028,7 +8030,23 @@ void draw_cube(Vec3 position, float angle_x, float angle_y, int color) {
 void cube_demo() {
     float angle = 0.0f;
 
+    uint64_t last_fps_tick = 0;
+    uint32_t frame_count = 0;
+    uint32_t total_frame_count = 0;
+    uint32_t current_fps = 0;
     while (1) {
+        if (last_fps_tick == 0) {
+          last_fps_tick = timer_ticks;
+        }
+        frame_count++;
+        total_frame_count++;
+
+        if (timer_ticks - last_fps_tick >= MILLISECONDS_TO_TICKS(1000)) {
+            current_fps = frame_count;
+            frame_count = 0;
+            last_fps_tick = timer_ticks;
+        }
+
         clear_screen();
 
         Vec3 pos1 = { -1.5f, 0.0f, 0.0f }; // cube on left
@@ -8037,8 +8055,12 @@ void cube_demo() {
         draw_cube(pos1, angle, 0.0f, 0xFFB3A2F8);
         draw_cube(pos2, angle * 1.5f, angle * 0.5f,0xFF63ADE8); // rotate differently
 
+        vbe_set_cursor(0,0);
+        printf("%d frames, %dfps",total_frame_count,current_fps);
+
         vbe_flip();
-        kernel_sleep(16);
+        frame_count++;
+        //kernel_sleep(16);
         angle += 0.01f;
     }
 }

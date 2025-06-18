@@ -1,5 +1,8 @@
 #include "io.h"
 
+#define PIT_FREQ 1000
+#define PIT_DIVISOR (1193182 / PIT_FREQ)
+
 /**
  * @brief Remap the PIC (Programmable Interrupt Controller) to new vector offsets.
  * 
@@ -32,4 +35,11 @@ void pic_remap(int offset1, int offset2) {
 
     outb(0x21, a1);          // Restore saved masks
     outb(0xA1, a2);
+
+    outb(0x43, 0x36);               // Command port
+    outb(0x40,PIT_DIVISOR & 0xFF); // Channel 0 data port (low byte)
+    outb(0x40,PIT_DIVISOR >> 8);   // Channel 0 data port (high byte)
+
+    outb(0x21, inb(0x21) & ~(1 << 0)); 
+    asm volatile ("sti");
 }

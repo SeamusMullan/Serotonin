@@ -40,4 +40,6 @@ void irq_handler(int irq);
 void pic_remap(int offset1, int offset2);
 void handle_scancode(uint8_t scancode);
 
+#define MILLISECONDS_TO_TICKS(ms) (ms)
+
 #endif

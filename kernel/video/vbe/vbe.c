@@ -20,6 +20,7 @@ uint32_t dirty_min_y = 0;
 uint32_t dirty_max_x = 0;
 uint32_t dirty_max_y = 0;
 static int vbe_any_dirty = 0;
+uint8_t dirty_lines[SCREEN_HEIGHT];
 
 vbe_mode_info_t vbe_info;
 
@@ -127,8 +128,7 @@ void vbe_init(multiboot_info_t *mbi) {
  */
 static inline void vbe_mark_pixel_dirty(uint32_t x, uint32_t y) {
     if (x >= SCREEN_WIDTH || y >= SCREEN_HEIGHT) return;
-    uint32_t index = y * SCREEN_WIDTH + x;
-    dirty_bitmap[index / 8] |= (1 << (index % 8));
+    dirty_lines[y] = 1;
 }
 
 /**
@@ -207,23 +207,16 @@ inline void fast_putpixel(uint32_t *buf, uint32_t pitch, uint32_t width, uint32_
  * @brief Copy the backbuffer contents to the framebuffer.
  */
 void vbe_flip(void) {
-
     uint32_t stride = vbe_info.pitch / sizeof(uint32_t);
     uint32_t *src_buf = vbe_info.backbuffer;
     uint32_t *dst_buf = vbe_info.framebuffer;
 
     for (uint32_t y = 0; y < SCREEN_HEIGHT; y++) {
-        for (uint32_t x = 0; x < SCREEN_WIDTH; x++) {
-            uint32_t index = y * SCREEN_WIDTH + x;
-            uint8_t byte = dirty_bitmap[index / 8];
-            uint8_t mask = (1 << (index % 8));
-
-            if (byte & mask) {
-                uint32_t offset = y * stride + x;
-                dst_buf[offset] = src_buf[offset];
-            }
-        }
+        if (!dirty_lines[y]) continue;
+        memcpy(&dst_buf[y * stride], &src_buf[y * stride], SCREEN_WIDTH * sizeof(uint32_t));
+        dirty_lines[y] = 0;
     }
+
 
     vbe_clear_dirty_bitmap();
 }

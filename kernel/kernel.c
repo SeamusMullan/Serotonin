@@ -194,7 +194,7 @@ static inline void *kernel_current_eip(void) {
 void kernel_sleep(unsigned int milliseconds) {
     uint64_t start = timer_ticks;
 
-    unsigned int target_ticks = (milliseconds * 1000U) / 54945U;
+    unsigned int target_ticks = MILLISECONDS_TO_TICKS(milliseconds);
 
     while ((timer_ticks - start) < target_ticks) {
         asm volatile ("hlt");

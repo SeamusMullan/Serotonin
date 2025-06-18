@@ -66,20 +66,42 @@ void* memset(void* bufptr, int value, size_t size) {
  * @return void* Pointer to the destination.
  */
 void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
-    unsigned char* dst = (unsigned char*) dstptr;
-    const unsigned char* src = (const unsigned char*) srcptr;
+    unsigned char* dst = (unsigned char*)dstptr;
+    const unsigned char* src = (const unsigned char*)srcptr;
 
-    // Align to 16 bytes
+    // Align destination to 16 bytes
     while (size > 0 && ((uintptr_t)dst & 15)) {
         *dst++ = *src++;
         size--;
     }
 
-    // Copy 16 bytes at a time with SSE
+    // Copy 64 bytes per loop (4 x 16-byte SSE moves)
+    while (size >= 64) {
+        asm volatile (
+            "movups 0(%0), %%xmm0\n"
+            "movups 16(%0), %%xmm1\n"
+            "movups 32(%0), %%xmm2\n"
+            "movups 48(%0), %%xmm3\n"
+
+            "movaps %%xmm0, 0(%1)\n"
+            "movaps %%xmm1, 16(%1)\n"
+            "movaps %%xmm2, 32(%1)\n"
+            "movaps %%xmm3, 48(%1)\n"
+            :
+            : "r"(src), "r"(dst)
+            : "memory", "xmm0", "xmm1", "xmm2", "xmm3"
+        );
+
+        src += 64;
+        dst += 64;
+        size -= 64;
+    }
+
+    // Copy 16 bytes at a time
     while (size >= 16) {
         asm volatile (
             "movups (%0), %%xmm0\n"
-            "movups %%xmm0, (%1)\n"
+            "movaps %%xmm0, (%1)\n"
             :
             : "r"(src), "r"(dst)
             : "memory", "xmm0"
@@ -90,11 +112,11 @@ void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
         size -= 16;
     }
 
-    // Copy remaining bytes
-    while (size > 0) {
+    // Copy remaining tail bytes
+    while (size-- > 0) {
         *dst++ = *src++;
-        size--;
     }
 
     return dstptr;
 }
+
