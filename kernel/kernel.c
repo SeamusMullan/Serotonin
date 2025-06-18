@@ -393,6 +393,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         kernel_panic("unable to mount rootfs on drive 1");
     }
 
+    cube_demo();
+
     abort();
 }
 

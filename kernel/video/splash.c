@@ -1,6 +1,9 @@
 #include "splash.h"
 #include "vbe/vbe.h"
+#include "../kernel.h"
+#include "../stdlib/stdlib.h"
 #include "font.h"
+#include <stdint.h>
 
 #define NUM_STEPS  1000 
 
@@ -7833,6 +7836,23 @@ static const struct {
   "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000",
 };
 
+typedef struct {
+    float x, y, z;
+} Vec3;
+
+#define CUBE_SIZE     100
+#define CUBE_COLOR    0xFFB3A2F8
+
+Vec3 cube_vertices[8] = {
+    {-1, -1, -1}, {1, -1, -1}, {1,  1, -1}, {-1,  1, -1},
+    {-1, -1,  1}, {1, -1,  1}, {1,  1,  1}, {-1,  1,  1}
+};
+
+int edges[12][2] = {
+    {0,1},{1,2},{2,3},{3,0},
+    {4,5},{5,6},{6,7},{7,4},
+    {0,4},{1,5},{2,6},{3,7}
+};
 
 /**
  * @brief Render the splash image to the framebuffer
@@ -7926,4 +7946,99 @@ void create_color_render(int height) {
                     | (uint32_t)b;
     vbe_fillrect(1*i, height, 1, 3, packed);
   }
+}
+
+static float wrap_angle(float x) {
+    const float PI = 3.14159265f;
+    const float TWO_PI = 6.28318531f;
+    while (x > PI) x -= TWO_PI;
+    while (x < -PI) x += TWO_PI;
+    return x;
+}
+
+static float sinf(float x) {
+    x = wrap_angle(x);
+    float x2 = x * x;
+    return x * (1 - x2 / 6.0f + x2 * x2 / 120.0f);
+}
+
+static float cosf(float x) {
+    x = wrap_angle(x);
+    float x2 = x * x;
+    return 1 - x2 / 2.0f + x2 * x2 / 24.0f;
+}
+
+void project(Vec3 v, int *x, int *y) {
+    float distance = 2.0f;
+    float factor = 200.0f / (v.z + distance);
+    *x = (int)(v.x * factor) + SCREEN_WIDTH / 2;
+    *y = (int)(v.y * factor) + SCREEN_HEIGHT / 2;
+}
+
+void draw_line(int x0, int y0, int x1, int y1, uint32_t color) {
+    int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy, e2;
+
+    while (1) {
+        vbe_fast_putpixel(x0, y0, color);
+        if (x0 == x1 && y0 == y1) break;
+        e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+}
+
+void clear_screen() {
+    for (int y = 0; y < SCREEN_HEIGHT; ++y)
+        for (int x = 0; x < SCREEN_WIDTH; ++x)
+            vbe_fast_putpixel(x, y, 0xFF000000);
+}
+
+void draw_cube(Vec3 position, float angle_x, float angle_y, int color) {
+    Vec3 rotated[8];
+
+    for (int i = 0; i < 8; ++i) {
+        Vec3 v = cube_vertices[i];
+
+        // Rotate (X and Y, or X only)
+        float x1 = v.x;
+        float y1 = v.y * cosf(angle_x) - v.z * sinf(angle_x);
+        float z1 = v.y * sinf(angle_x) + v.z * cosf(angle_x);
+
+        float x2 = x1 * cosf(angle_y) - z1 * sinf(angle_y);
+        float z2 = x1 * sinf(angle_y) + z1 * cosf(angle_y);
+
+        // Translate
+        rotated[i].x = x2 + position.x;
+        rotated[i].y = y1 + position.y;
+        rotated[i].z = z2 + position.z;
+    }
+
+    // Project and draw edges
+    for (int i = 0; i < 12; ++i) {
+        int a = edges[i][0], b = edges[i][1];
+        int x0, y0, x1, y1;
+        project(rotated[a], &x0, &y0);
+        project(rotated[b], &x1, &y1);
+        draw_line(x0, y0, x1, y1, color); // green
+    }
+}
+
+void cube_demo() {
+    float angle = 0.0f;
+
+    while (1) {
+        clear_screen();
+
+        Vec3 pos1 = { -1.5f, 0.0f, 0.0f }; // cube on left
+        Vec3 pos2 = {  1.5f, 0.0f, 0.0f }; // cube on right
+
+        draw_cube(pos1, angle, 0.0f, 0xFFB3A2F8);
+        draw_cube(pos2, angle * 1.5f, angle * 0.5f,0xFF63ADE8); // rotate differently
+
+        vbe_flip();
+        kernel_sleep(16);
+        angle += 0.01f;
+    }
 }
