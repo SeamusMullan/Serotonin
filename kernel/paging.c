@@ -1,20 +1,24 @@
 #include "paging.h"
 #include <stdint.h>
-#include "kernel.h"   // for kernel_panic()
 
 __attribute__((aligned(PAGE_SIZE)))
+__attribute__((section(".identity_data")))
 page_directory_t page_directory;
 
 __attribute__((aligned(PAGE_SIZE)))
+__attribute__((section(".identity_data")))
 page_table_t first_page_table;
 
 __attribute__((aligned(PAGE_SIZE)))
+__attribute__((section(".identity_data")))
 page_table_t kernel_page_tables[64];
 
 __attribute__((aligned(PAGE_SIZE)))
+__attribute__((section(".identity_data")))
 page_table_t heap_page_tables[64];
 
 __attribute__((aligned(PAGE_SIZE)))
+__attribute__((section(".identity_data")))
 page_table_t fb_page_table;
 
 uintptr_t page_dir_ptr;
@@ -28,7 +32,7 @@ uintptr_t fb_addr_ptr;  // stores the _physical_ framebuffer base
  *
  * @param fb_phys_base The physical address of the framebuffer.
  */
-void paging_init(uintptr_t fb_phys_base) {
+__attribute__((section(".identity"))) void paging_init(uintptr_t fb_phys_base) {
     fb_addr_ptr = fb_phys_base;
 
     uintptr_t pd_phys    = (uintptr_t)&page_directory;
@@ -47,7 +51,7 @@ void paging_init(uintptr_t fb_phys_base) {
     // 3) Map kernel space: 256 MB → 64 page tables → PDE[768..831]
     for (uint32_t pd_idx = 0; pd_idx < 64; pd_idx++) {
         for (uint32_t i = 0; i < PAGE_ENTRIES; i++) {
-            kernel_page_tables[pd_idx][i] = (KERNEL_PHYS_BASE + (pd_idx * 0x400000) + i * PAGE_SIZE) | PAGE_FLAGS;
+            kernel_page_tables[pd_idx][i] = ((pd_idx * 0x400000) + i * PAGE_SIZE) | PAGE_FLAGS;
         }
 
         page_directory[768 + pd_idx] = ((uint32_t)&kernel_page_tables[pd_idx]) | PAGE_FLAGS;
@@ -119,6 +123,5 @@ void *phys_to_virt(uintptr_t pa) {
         return (void *)(KERNEL_HEAP_VMA + (pa - KERNEL_HEAP_PHYS));
     }
 
-    kernel_panic("phys_to_virt: attempted to map an unmapped physical address");
     return (void *)0;
 }

@@ -53,28 +53,28 @@ uint32_t align(uint32_t size) {
     return (size + BLOCK_ALIGN - 1) & ~(BLOCK_ALIGN - 1);
 }
 
-static inline uint32_t kernel_read_cr0(void) {
+__attribute__((target("no-sse"))) static inline uint32_t kernel_read_cr0(void) {
     uint32_t val;
     asm volatile("mov %%cr0, %0" : "=r"(val));
     return val;
 }
 
-static inline void kernel_write_cr0(uint32_t val) {
+__attribute__((target("no-sse"))) static inline void kernel_write_cr0(uint32_t val) {
     asm volatile("mov %0, %%cr0" : : "r"(val));
 }
 
-static inline uint32_t kernel_read_cr4(void) {
+__attribute__((target("no-sse"))) static inline uint32_t kernel_read_cr4(void) {
     uint32_t val;
     asm volatile("mov %%cr4, %0" : "=r"(val));
     return val;
 }
 
-static inline void kernel_write_cr4(uint32_t val) {
+__attribute__((target("no-sse"))) static inline void kernel_write_cr4(uint32_t val) {
     asm volatile("mov %0, %%cr4" : : "r"(val));
 }
 
 
-static int kernel_cpu_has_sse(void) {
+__attribute__((target("no-sse"))) static int kernel_cpu_has_sse(void) {
     unsigned int eax, ebx, ecx, edx;
     unsigned int ret;
 
@@ -119,7 +119,7 @@ static char* kernel_get_cpu_manufacturer(void) {
     return manufacturer;
 }
 
-void kernel_setup_fpu(void) {
+__attribute__((target("no-sse"))) void kernel_setup_fpu(void) {
     // Enable FPU in CR0
     uint32_t cr0 = kernel_read_cr0();
     cr0 &= ~(1 << 2); // Clear EM → allow FPU instructions
@@ -403,15 +403,13 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
  * @param arg1 The magic number passed by the bootloader.
  * @param arg2 The address of the multiboot information structure.
  */
-void kernel_main(unsigned long arg1, unsigned long arg2) {
+__attribute__((target("no-sse"))) __attribute__((section(".identity"))) void kernel_main(unsigned long arg1, unsigned long arg2) {
     multiboot_info_t *mbi = (multiboot_info_t *) arg2;
 
-    unsigned long volatile saved_magic = arg1;
-    unsigned long volatile saved_multiboot_info = arg2;
+    paging_init((uintptr_t)mbi->framebuffer_addr);
 
     kernel_setup_fpu();
-    paging_init((uintptr_t)mbi->framebuffer_addr);
-    kernel_jump_to_higher_half(kernel_main_high,arg1,arg2);
+    kernel_main_high(arg1,arg2);
 
     kernel_panic("returned from higher half kernel!"); 
 }

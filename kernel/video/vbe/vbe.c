@@ -89,7 +89,7 @@ void vbe_init(multiboot_info_t *mbi) {
     uint32_t height  = (uint32_t)(mbi->framebuffer_height);
     uint32_t bpp     = (uint32_t)(mbi->framebuffer_bpp);
 
-    uint32_t *virt_fb = (uint32_t *)phys_to_virt(phys_fb);
+    uint32_t *virt_fb = (uint32_t *)FB_VMA_BASE;
     if (!virt_fb) {
         kernel_panic("vbe_init: phys_to_virt failed");
     }

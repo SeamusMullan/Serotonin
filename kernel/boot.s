@@ -57,7 +57,9 @@ System V ABI standard and de-facto extensions. The compiler will assume the
 stack is properly aligned and failure to align the stack will result in
 undefined behavior.
 */
-.section .bss
+.section .bootstrap_stack
+saved_eax: .skip 4
+saved_ebx: .skip 4
 .align 16
 stack_bottom:
 .skip 16384 # 16 KiB
@@ -68,7 +70,7 @@ The linker script specifies _start as the entry point to the kernel and the
 bootloader will jump to this position once the kernel has been loaded. It
 doesn't make sense to return from this function as the bootloader is gone.
 */
-.section .text
+.section .identity
 .global _start
 .type _start, @function
 _start:
@@ -102,11 +104,12 @@ _start:
 	C++ features such as global constructors and exceptions will require
 	runtime support to work as well.
 	*/
-	push %ebx
-	push %eax
+	mov %eax, saved_eax
+	mov %ebx, saved_ebx
 	call init_gdt
-	pop %eax
-	pop %ebx
+1:
+	mov saved_eax, %eax
+	mov saved_ebx, %ebx
 
 	/*
 	Enter the high-level kernel. The ABI requires the stack is 16-byte
@@ -133,8 +136,24 @@ _start:
 	   non-maskable interrupt occurring or due to system management mode.
 	*/
 	cli
-1:	hlt
-	jmp 1b
+2:	hlt
+	jmp 2b
+
+.global gdt_flush
+gdt_flush:
+    movl 4(%esp), %ecx     # Load argument (gdt_ptr*) into eax
+    lgdt (%ecx)            # Load GDT using address in eax
+
+    movw $0x10, %ax        # Load data segment selector
+    movw %ax, %ds
+    movw %ax, %es
+    movw %ax, %fs
+    movw %ax, %gs
+    movw %ax, %ss
+
+    ljmp $0x08, $reload_cs # Far jump to set CS
+reload_cs:
+    jmp 1b
 
 /*
 Set the size of the _start symbol to the current location '.' minus its start.

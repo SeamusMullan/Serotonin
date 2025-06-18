@@ -8,15 +8,15 @@ struct gdt_entry {
     uint8_t  access;
     uint8_t  granularity;
     uint8_t  base_high;
-} __attribute__((packed));
+} __attribute__((packed)) __attribute__((section(".identity_data")));
 
 struct gdt_ptr {
     uint16_t limit;
     uint32_t base;
-} __attribute__((packed));
+} __attribute__((packed)) __attribute__((section(".identity_data")));
 
-static struct gdt_entry gdt[3];
-static struct gdt_ptr gdtp;
+__attribute__((section(".identity_data"))) static struct gdt_entry gdt[3];
+__attribute__((section(".identity_data"))) static struct gdt_ptr gdtp;
 
 extern void gdt_flush(uint32_t);
 
@@ -29,7 +29,7 @@ extern void gdt_flush(uint32_t);
  * @param access The access flags for the segment.
  * @param gran The granularity flags for the segment.
  */
-static void gdt_set_gate(int num, uint32_t base, uint32_t limit, uint8_t access, uint8_t gran) {
+__attribute__((section(".identity"))) static void gdt_set_gate(int num, uint32_t base, uint32_t limit, uint8_t access, uint8_t gran) {
     gdt[num].base_low    = base & 0xFFFF;
     gdt[num].base_middle = (base >> 16) & 0xFF;
     gdt[num].base_high   = (base >> 24) & 0xFF;
@@ -39,7 +39,7 @@ static void gdt_set_gate(int num, uint32_t base, uint32_t limit, uint8_t access,
     gdt[num].access      = access;
 }
 
-void init_gdt() {
+__attribute__((section(".identity"))) void init_gdt() {
     gdtp.limit = (sizeof(gdt) - 1);
     gdtp.base  = (uint32_t)&gdt;
 

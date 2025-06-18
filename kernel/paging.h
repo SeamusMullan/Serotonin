@@ -13,8 +13,9 @@ typedef page_table_entry_t page_table_t[PAGE_ENTRIES];
 typedef uint32_t page_directory_entry_t;
 typedef page_directory_entry_t page_directory_t[PAGE_ENTRIES];
 
-#define KERNEL_PHYS_BASE 0x00200000U   // linked at physical 2 MiB
+#define KERNEL_PHYS_BASE 0x00100000U   // linked at physical 1 MiB
 #define KERNEL_VMA_BASE  0xC0000000U   // where code/data live after paging
+#define HIGHER_HALF_STACK 0xC0800000
 
 #define KERNEL_HEAP_VMA   0xD0000000U   // heap virtual base (after 256MB kernel)
 #define KERNEL_HEAP_PHYS  0x10200000U   // heap physical base (after 256MB kernel phys)
