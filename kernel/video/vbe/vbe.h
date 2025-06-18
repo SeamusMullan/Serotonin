@@ -72,5 +72,6 @@ void vbe_setcolor_bg_palette(vbe_color_t color);
 void vbe_fast_draw_hline(uint32_t *buf, uint32_t pitch, uint32_t x, uint32_t y, uint32_t w, uint32_t color);
 void vbe_fast_putpixel(uint32_t x, uint32_t y, uint32_t color);
 void vbe_fast_mark_dirty(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
+void vbe_set_cursor(uint32_t col, uint32_t row);
 
 #endif

@@ -7866,7 +7866,7 @@ void splash_render(int offset_x,int offset_y) {
  * This function generates a gradient of colors across the screen. (makes it gay)
  * 
  */
-void create_color_render() {
+void create_color_render(int height) {
   unsigned int r = 255, g = 0, b = 0;
   unsigned int color;
   int step_size = 1; // Control how many colors (larger step = fewer colors)
@@ -7924,6 +7924,6 @@ void create_color_render() {
                     | ((uint32_t)r << 16) 
                     | ((uint32_t)g << 8) 
                     | (uint32_t)b;
-    vbe_fillrect(1*i, 768, 1, 3, packed);
+    vbe_fillrect(1*i, height, 1, 3, packed);
   }
 }

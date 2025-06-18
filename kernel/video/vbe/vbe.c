@@ -467,3 +467,11 @@ void vbe_fast_mark_dirty(uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
         }
     }
 }
+
+void vbe_set_cursor(uint32_t col, uint32_t row) {
+    if (col >= term_max_cols() || row >= term_max_rows()) {
+        return;
+    }
+    term_cursor_col = col;
+    term_cursor_row = row;
+}

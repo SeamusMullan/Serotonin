@@ -1,8 +1,9 @@
 #ifndef _KERNEL_STDIO
 #define _KERNEL_STDIO
-#include <stddef.h>
 
-#define NULL (void*)0
+#ifndef NULL
+#define NULL ((void*)0)
+#endif
 
 enum print_status_types {
     PRINT_STATUS_DEBUG = 0,

@@ -332,8 +332,10 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     vbe_init(mbi);
     vbe_palette_init();
     vbe_flip();
-    splash_render(0,SCREEN_HEIGHT-300);
-    create_color_render();
+    splash_render(0,10);
+    create_color_render(275);
+
+    vbe_set_cursor(0,15);
 
     printf("   _____                _              _       \n");
     printf("  / ____|              | |            (_)      \n");
