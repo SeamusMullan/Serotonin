@@ -320,51 +320,48 @@ void kernel_free(void *ptr) {
 }
 
 void task_A(void) {
-    unsigned int esp;
-    asm volatile (
-        "movl %%esp, %0"
-        : "=r" (esp)
-        :
-        :
-    );
-    for (int i = 0; i < 5; i++) {
-        printf("[A] tick %d, esp=%p\n", i, esp);
-        task_yield();
+    unsigned int i;
+    while (true) {
+        i++;
+        unsigned int esp;
+        asm volatile (
+            "movl %%esp, %0"
+            : "=r" (esp)
+            :
+            :
+        );
+        printf("[A] tick %d, esp=%p, quantum=%d\n", i, esp,last_quantum_tick);
     }
-    printf("[A] done\n");
-    task_exit();
 }
 
 void task_B(void) {
-    unsigned int esp;
-    asm volatile (
-        "movl %%esp, %0"
-        : "=r" (esp)
-        :
-        :
-    );
-    for (int i = 0; i < 5; i++) {
-        printf("[B] tick %d, esp=%p\n", i, esp);
-        task_yield();
+    unsigned int i;
+    while (true) {
+        i++;
+        unsigned int esp;
+        asm volatile (
+            "movl %%esp, %0"
+            : "=r" (esp)
+            :
+            :
+        );
+        printf("[B] tick %d, esp=%p, quantum=%d\n", i, esp,last_quantum_tick);
     }
-    printf("[B] done\n");
-    task_exit();
 }
 
 void task_C(void) {
-    unsigned int esp;
-    asm volatile (
-        "movl %%esp, %0"
-        : "=r" (esp)
-        :
-        :
-    );
-    for (int i = 0; i < 5; i++) {
-        printf("[C] tick %d, esp=%p\n", i, esp);
-        task_yield();
+    unsigned int i;
+    while (true) {
+        i++;
+        unsigned int esp;
+        asm volatile (
+            "movl %%esp, %0"
+            : "=r" (esp)
+            :
+            :
+        );
+        printf("[C] tick %d, esp=%p, quantum=%d\n", i, esp,last_quantum_tick);
     }
-    printf("[C] done\n");
-    task_exit();
 }
 
 /**
@@ -463,7 +460,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         t = t->next;
     } while (t != task_list);
 
-    task_yield();
+    task_yield(0);
 
     abort();
 }

@@ -1,6 +1,8 @@
 .section .text
 .global switch_task
 .type   switch_task, @function
+.global switch_task_iret
+.type   switch_task_iret, @function
 .extern current_task
 .extern kernel_panic
 
@@ -10,6 +12,7 @@
 .equ    OFF_ENTRY, 56
 
 switch_task:
+    cli
     # edx = next PCB
     movl    4(%esp), %edx
     testl   %edx, %edx
@@ -36,6 +39,46 @@ switch_task:
     popl    %edi
     popl    %esi
     popl    %ebx
+
+    sti
+
+    # finally jump back to its saved EIP
+    pushl   OFF_ENTRY(%edx)
+    ret
+
+switch_task_iret:
+    cli
+    # edx = next PCB
+    movl    4(%esp), %edx
+    testl   %edx, %edx
+    jz      .fail
+
+    # save callee-saved in this task
+    pushl   %ebx
+    pushl   %esi
+    pushl   %edi
+    pushl   %ebp
+
+    # store that stack into the PCB
+    movl    current_task, %ecx
+    movl    %esp, OFF_ESP(%ecx)
+
+    # switch to the new PCB
+    movl    %edx, current_task
+    movl    OFF_ESP(%edx), %esp
+    movl    OFF_CR3(%edx), %eax
+    movl    %eax,       %cr3
+
+    # restore callee-saved regs
+    popl    %ebp
+    popl    %edi
+    popl    %esi
+    popl    %ebx
+
+    movb $0x20, %al
+    outb %al, $0x20
+
+    sti
 
     # finally jump back to its saved EIP
     pushl   OFF_ENTRY(%edx)

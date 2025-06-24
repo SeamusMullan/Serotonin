@@ -42,4 +42,7 @@ void handle_scancode(uint8_t scancode);
 
 #define MILLISECONDS_TO_TICKS(ms) (ms)
 
+extern volatile uint64_t last_quantum_tick;
+extern volatile int multitasking_ready;
+
 #endif

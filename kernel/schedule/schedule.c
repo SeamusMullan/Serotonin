@@ -4,6 +4,7 @@
 #include "../string.h"
 #include "../paging.h"
 #include "../stdio/stdio.h"
+#include "../io/io.h"
 
 process_control_block_t *current_task = NULL;
 process_control_block_t *task_list    = NULL;
@@ -39,48 +40,49 @@ void multitasking_init(void) {
     init_task->next       = init_task;
     task_list             = init_task;
     current_task          = init_task;
+    multitasking_ready = 1;
 }
 
-void task_yield(void) {
+__attribute__((noreturn)) void task_yield(int irq) {
+    void *ret;
+    asm volatile ("movl 4(%%ebp), %0"
+        : "=r"(ret)
+        :
+        :
+    );
+
     process_control_block_t *start = current_task;
     process_control_block_t *next = current_task;
 
     if (start->state == PROCESS_STATE_RUNNING) {
         start->state = PROCESS_STATE_READY;
-        start->entry = __builtin_return_address(0);
+        start->entry = ret;
     }
 
     do {
         next = next->next;
         if (next->state == PROCESS_STATE_READY) {
-            printf("found next: %p, name: %s, started:%d, entry:%p, esp:%p\n",next, next->name,next->started,next->entry,next->esp);
+            //printf("found next: %p, name: %s, started:%d, entry:%p, esp:%p\n",next, next->name,next->started,next->entry,next->esp);
             // found someone we can switch into
-            start->state    = (start->state == PROCESS_STATE_RUNNING)
-                              ? PROCESS_STATE_READY
-                              : start->state;
             next->state     = PROCESS_STATE_RUNNING;
             current_task = start;
+            if (irq == 1)
+                switch_task_iret(next);
             switch_task(next);
             __builtin_unreachable();
         }
     } while (next != start);
 
-    kernel_panic("task_yield: No valid task to switch to\n");
+    kernel_panic("task_yield: no valid task to switch to");
+    __builtin_unreachable();
 }
 
 void task_exit(void) {
     printfs(PRINT_STATUS_DEBUG, "task_exit: Task %s (pid=%u) exited\n", current_task->name, current_task->pid);
     current_task->state = PROCESS_STATE_TERMINATED;
 
-    task_yield();  // pick the next runnable task
+    task_yield(0);  // pick the next runnable task
     kernel_panic("task_exit: nothing to switch to");
-}
-
-__attribute__((noreturn)) void task_trampoline(void) {
-    current_task->entry();
-    task_exit();
-    kernel_panic("task_trampoline: execution continued after task_exit");
-    __builtin_unreachable();
 }
 
 process_control_block_t* task_create(void (*entry)(void), const char *name) {
