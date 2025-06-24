@@ -118,3 +118,8 @@ void page_fault_handler(uint32_t error_code) {
     kernel_panic("exception - page fault (#PF)");
 }
 
+void gp_fault_handler(uint32_t error_code) {
+    printfs(PRINT_STATUS_ERROR,"A general protection fault has occured. Error code: 0x%08x\n",error_code);
+    kernel_panic("exception - general protection fault (#GP)");
+}
+

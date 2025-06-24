@@ -41,5 +41,5 @@ void pic_remap(int offset1, int offset2) {
     outb(0x40,PIT_DIVISOR >> 8);   // Channel 0 data port (high byte)
 
     outb(0x21, inb(0x21) & ~(1 << 0)); 
-    asm volatile ("sti");
+    //asm volatile ("sti");
 }

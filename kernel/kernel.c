@@ -17,6 +17,7 @@
 #include "filesystem/ide.h"
 #include "filesystem/tmpfs/tmpfs.h"
 #include "filesystem/fat32/fat32.h"
+#include "schedule/schedule.h"
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 0
@@ -210,7 +211,14 @@ void kernel_sleep(unsigned int milliseconds) {
  * @param str The panic message to display.
  */
 void kernel_panic(char* str) {
-    uintptr_t eip = (uintptr_t)kernel_current_eip();
+    unsigned int eip;
+
+    asm volatile (
+        "movl 4(%%ebp), %0"
+        : "=r"(eip)
+        :
+        :
+    );
 
     uint32_t eax, ebx, ecx, edx;
     uint32_t esi, edi, ebp, esp;
@@ -311,6 +319,54 @@ void kernel_free(void *ptr) {
     block->free = 1;
 }
 
+void task_A(void) {
+    unsigned int esp;
+    asm volatile (
+        "movl %%esp, %0"
+        : "=r" (esp)
+        :
+        :
+    );
+    for (int i = 0; i < 5; i++) {
+        printf("[A] tick %d, esp=%p\n", i, esp);
+        task_yield();
+    }
+    printf("[A] done\n");
+    task_exit();
+}
+
+void task_B(void) {
+    unsigned int esp;
+    asm volatile (
+        "movl %%esp, %0"
+        : "=r" (esp)
+        :
+        :
+    );
+    for (int i = 0; i < 5; i++) {
+        printf("[B] tick %d, esp=%p\n", i, esp);
+        task_yield();
+    }
+    printf("[B] done\n");
+    task_exit();
+}
+
+void task_C(void) {
+    unsigned int esp;
+    asm volatile (
+        "movl %%esp, %0"
+        : "=r" (esp)
+        :
+        :
+    );
+    for (int i = 0; i < 5; i++) {
+        printf("[C] tick %d, esp=%p\n", i, esp);
+        task_yield();
+    }
+    printf("[C] done\n");
+    task_exit();
+}
+
 /**
  * @brief The main entry point of the kernel.
  *
@@ -393,7 +449,21 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         kernel_panic("unable to mount rootfs on drive 1");
     }
 
-    cube_demo();
+    multitasking_init();
+
+    task_create(task_A, "TaskA");
+    task_create(task_B, "TaskB");
+    task_create(task_C, "TaskC");
+
+    process_control_block_t *t = task_list;
+    printf("Task list:\n");
+    do {
+        printf("  Task %s (pid=%u), esp=%p, cr3=%p, state=%d\n",
+               t->name, t->pid, t->esp, t->cr3, t->state);
+        t = t->next;
+    } while (t != task_list);
+
+    task_yield();
 
     abort();
 }

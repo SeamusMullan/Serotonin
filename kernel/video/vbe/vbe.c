@@ -12,8 +12,8 @@
 #include "../../paging.h"
 #include "../font.h"
 
-uint32_t term_fg_color = 0xFFFFFF;
-uint32_t term_bg_color = 0x000000;
+uint32_t term_fg_color = 0xFFFFFFFF;
+uint32_t term_bg_color = 0xFF000000;
 
 uint32_t dirty_min_x = 0;
 uint32_t dirty_min_y = 0;
@@ -92,7 +92,8 @@ void vbe_init(multiboot_info_t *mbi) {
 
     uint32_t *virt_fb = (uint32_t *)FB_VMA_BASE;
     if (!virt_fb) {
-        kernel_panic("vbe_init: phys_to_virt failed");
+        // ?!?!?!
+        kernel_panic("vbe_init: unable to get virtual framebuffer address");
     }
 
     vbe_info.framebuffer = virt_fb;
@@ -364,7 +365,7 @@ void vbe_terminal_back(void) {
  *
  * @param color The new foreground color.
  */
-void vbe_setcolor_fg(uint8_t color) {
+void vbe_setcolor_fg(uint32_t color) {
     term_fg_color = color;
 }
 
@@ -373,7 +374,7 @@ void vbe_setcolor_fg(uint8_t color) {
  *
  * @param color The new background color.
  */
-void vbe_setcolor_bg(uint8_t color) {
+void vbe_setcolor_bg(uint32_t color) {
     term_bg_color = color;
 }
 

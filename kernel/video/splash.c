@@ -7994,7 +7994,7 @@ void draw_line(int x0, int y0, int x1, int y1, uint32_t color) {
 void clear_screen() {
     for (int y = 0; y < SCREEN_HEIGHT; ++y)
         for (int x = 0; x < SCREEN_WIDTH; ++x)
-            vbe_fast_putpixel(x, y, 0xFF000000);
+            vbe_fast_putpixel(x, y, 0xFF001111);
 }
 
 void draw_cube(Vec3 position, float angle_x, float angle_y, int color) {
@@ -8056,11 +8056,14 @@ void cube_demo() {
         draw_cube(pos2, angle * 1.5f, angle * 0.5f,0xFF63ADE8); // rotate differently
 
         vbe_set_cursor(0,0);
-        printf("%d frames, %dfps",total_frame_count,current_fps);
+        printf("Serotonin Kernel [VESA BIOS Extensions] Cube Demo: %d frames, ",total_frame_count);
+        vbe_setcolor_fg(0xFFFEAF0D);
+        printf("%d frames per second",current_fps);
+        vbe_setcolor_fg(0xFFFFFFFF);
 
-        vbe_flip();
         frame_count++;
-        //kernel_sleep(16);
+        kernel_sleep(30);
         angle += 0.01f;
+        vbe_flip();
     }
 }

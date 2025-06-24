@@ -28,6 +28,8 @@ typedef page_directory_entry_t page_directory_t[PAGE_ENTRIES];
 #define BLOCK_ALIGN 8
 #define PAGE_ALIGN(addr) (((addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))
 
+#define KERNEL_STACK_SIZE 8192
+
 extern uintptr_t page_dir_ptr;
 void paging_init(uintptr_t fb_phys_base);
 void *phys_to_virt(uintptr_t phys_addr);
