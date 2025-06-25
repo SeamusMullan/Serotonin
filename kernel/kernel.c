@@ -19,6 +19,7 @@
 #include "filesystem/fat32/fat32.h"
 #include "schedule/schedule.h"
 #include "audio/pcspeaker/pcspeaker.h"
+#include "gdt.h"
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 1
@@ -258,6 +259,7 @@ void kernel_panic(char* str) {
     printfs(PRINT_STATUS_FATAL, "EFLAGS: 0x%08x  CS: 0x%04x  DS: 0x%04x  SS: 0x%04x\n",(unsigned int)eflags, (unsigned int)cs, (unsigned int)ds, (unsigned int)ss);
     printfs(PRINT_STATUS_FATAL, "CR0: 0x%08x  CR2 (fault addr): 0x%08x  CR3 (page directory base): 0x%08x  CR4: 0x%08x\n",
             (unsigned int)cr0, (unsigned int)cr2, (unsigned int)cr3, (unsigned int)cr4);
+    printfs(PRINT_STATUS_FATAL, "TSS.ESP0: 0x%08x  TSS.SS0: 0x%04x\n", sys_tss.esp0, sys_tss.ss0);
 
     abort();
 }

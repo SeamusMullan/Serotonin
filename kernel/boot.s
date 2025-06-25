@@ -151,6 +151,9 @@ gdt_flush:
     movw %ax, %gs
     movw %ax, %ss
 
+	movw $0x28, %ax
+	ltr %ax
+
     ljmp $0x08, $reload_cs # Far jump to set CS
 reload_cs:
     jmp 1b

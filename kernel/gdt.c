@@ -15,8 +15,9 @@ struct gdt_ptr {
     uint32_t base;
 } __attribute__((packed)) __attribute__((section(".identity_data")));
 
-__attribute__((section(".identity_data"))) static struct gdt_entry gdt[3];
+__attribute__((section(".identity_data"))) static struct gdt_entry gdt[6];
 __attribute__((section(".identity_data"))) static struct gdt_ptr gdtp;
+__attribute__((section(".identity_data"))) tss_struct sys_tss; 
 
 extern void gdt_flush(uint32_t);
 
@@ -39,13 +40,27 @@ __attribute__((section(".identity"))) static void gdt_set_gate(int num, uint32_t
     gdt[num].access      = access;
 }
 
+__attribute__((section(".identity"))) void install_tss() {
+	sys_tss.ss0 = 0x10;
+	sys_tss.iomap = ( unsigned short ) sizeof( tss_struct ); 
+}
+			
+
 __attribute__((section(".identity"))) void init_gdt() {
     gdtp.limit = (sizeof(gdt) - 1);
     gdtp.base  = (uint32_t)&gdt;
 
-    gdt_set_gate(0, 0, 0, 0, 0);                // Null segment
+    gdt_set_gate(0, 0, 0, 0, 0);                 // Null segment
     gdt_set_gate(1, 0, 0xFFFFFFFF, 0x9A, 0xCF);  // Code segment
     gdt_set_gate(2, 0, 0xFFFFFFFF, 0x92, 0xCF);  // Data segment
+    gdt_set_gate(3, 0, 0xFFFFFFFF, 0xFA, 0xCF);  // User mode code segment
+	gdt_set_gate(4, 0, 0xFFFFFFFF, 0xF2, 0xCF);  // User mode data segment
+
+    install_tss();
+
+    unsigned int addr = (unsigned int)&sys_tss; 
+	int size = sizeof(tss_struct);
+    gdt_set_gate(5,addr,size - 1,0x89,0x40);
 
     gdt_flush((uint32_t)&gdtp);
 }
