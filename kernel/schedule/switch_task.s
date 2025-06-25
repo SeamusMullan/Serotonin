@@ -12,7 +12,6 @@
 .equ    OFF_ENTRY, 56
 
 switch_task:
-    cli
     # edx = next PCB
     movl    4(%esp), %edx
     testl   %edx, %edx
@@ -40,14 +39,11 @@ switch_task:
     popl    %esi
     popl    %ebx
 
-    sti
-
     # finally jump back to its saved EIP
     pushl   OFF_ENTRY(%edx)
     ret
 
 switch_task_iret:
-    cli
     # edx = next PCB
     movl    4(%esp), %edx
     testl   %edx, %edx
@@ -77,8 +73,6 @@ switch_task_iret:
 
     movb $0x20, %al
     outb %al, $0x20
-
-    sti
 
     # finally jump back to its saved EIP
     pushl   OFF_ENTRY(%edx)

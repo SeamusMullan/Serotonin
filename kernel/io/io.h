@@ -3,7 +3,11 @@
 
 #include <stdint.h>
 
+#define MILLISECONDS_TO_TICKS(ms) (ms)
 extern volatile uint64_t timer_ticks;
+extern volatile uint64_t last_quantum_tick;
+extern volatile int multitasking_ready;
+extern volatile int irq_disabled;
 
 static inline void outb(uint16_t port, uint8_t val)
 {
@@ -35,14 +39,22 @@ static inline void outw(uint16_t port, uint16_t val) {
     asm volatile ("outw %0, %1" : : "a"(val), "Nd"(port));
 }
 
+static inline void clear_interrupts(void) {
+    if (irq_disabled == 0) {
+        irq_disabled++;
+        asm volatile ("cli");
+    }
+}
+
+static inline void enable_interrupts(void) {
+    if (irq_disabled == 1) {
+        irq_disabled--;
+        asm volatile ("sti");
+    }
+}
 
 void irq_handler(int irq);
 void pic_remap(int offset1, int offset2);
 void handle_scancode(uint8_t scancode);
-
-#define MILLISECONDS_TO_TICKS(ms) (ms)
-
-extern volatile uint64_t last_quantum_tick;
-extern volatile int multitasking_ready;
 
 #endif

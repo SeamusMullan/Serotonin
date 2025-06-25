@@ -43,6 +43,9 @@ static uint32_t heap_start = (uint32_t)HEAP_START;
 static uint32_t heap_end = (uint32_t)(KERNEL_HEAP_VMA + KERNEL_HEAP_SIZE);
 static uint32_t current_heap = (uint32_t)KERNEL_HEAP_VMA;
 static block_header_t *heap_list = NULL;
+process_control_block_t *pcbA;
+process_control_block_t *pcbB;
+process_control_block_t *pcbC;
 
 #define CHECK_FLAG(flags,bit)   ((flags) & (1 << (bit)))
 
@@ -351,7 +354,7 @@ void task_B(void) {
 }
 
 void task_C(void) {
-    unsigned int i;
+    unsigned int i = 0;
     while (true) {
         i++;
         unsigned int esp;
@@ -412,7 +415,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     printfs(PRINT_STATUS_INFO,"IDT limit: 0x%04x\n", idtp_read.limit);
 
     // Interrupts ready to be enabled
-    asm volatile ("sti");
+    enable_interrupts();
 
     uint32_t mem_lower;
     uint32_t mem_upper;
@@ -453,9 +456,13 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     multitasking_init();
 
-    task_create(task_A, "TaskA");
-    task_create(task_B, "TaskB");
-    task_create(task_C, "TaskC");
+    pcbA = task_create(task_A, "TaskA");
+    pcbB = task_create(task_B, "TaskB");
+    pcbC = task_create(task_C, "TaskC");
+
+    enqueue(pcbA);
+    enqueue(pcbB);
+    enqueue(pcbC);
 
     process_control_block_t *t = task_list;
     printf("Task list:\n");
@@ -463,6 +470,9 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         printf("  Task %s (pid=%u), esp=%p, cr3=%p, state=%d\n",
                t->name, t->pid, t->esp, t->cr3, t->state);
         t = t->next;
+        if (t == NULL) {
+            break;
+        }
     } while (t != task_list);
 
     task_yield(0);

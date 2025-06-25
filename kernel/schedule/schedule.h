@@ -38,6 +38,12 @@ process_control_block_t* task_create(void (*entry)(void), const char *name);
 void task_yield(int irq);
 void task_trampoline(void);
 void task_exit(void);
-void schedule_timer_tick(void);
+void enqueue(process_control_block_t* pcb);
+process_control_block_t* dequeue();
+void lock_scheduler(void);
+void unlock_scheduler(void);
+void task_set_state(process_control_block_t *pcb, int state);
+void task_block(void);
+void task_unblock(process_control_block_t *pcb);
 
 #endif

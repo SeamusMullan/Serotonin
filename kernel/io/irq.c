@@ -5,6 +5,7 @@
 volatile uint64_t timer_ticks = 0;
 volatile uint64_t last_quantum_tick = 0;
 volatile int multitasking_ready = 0;
+volatile int irq_disabled = 1;
 
 /**
  * @brief Handle IRQ (Interrupt Request) signals.
