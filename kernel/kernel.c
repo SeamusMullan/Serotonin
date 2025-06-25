@@ -18,6 +18,7 @@
 #include "filesystem/tmpfs/tmpfs.h"
 #include "filesystem/fat32/fat32.h"
 #include "schedule/schedule.h"
+#include "audio/pcspeaker/pcspeaker.h"
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 0
@@ -445,6 +446,10 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     if (mount_result != 0) {
         kernel_panic("unable to mount rootfs on drive 1");
     }
+
+    play_pc_speaker_sound(750);
+    kernel_sleep(500);
+    stop_pc_speaker_sound();
 
     multitasking_init();
 
