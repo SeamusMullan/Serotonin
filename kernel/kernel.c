@@ -21,8 +21,8 @@
 #include "audio/pcspeaker/pcspeaker.h"
 
 #define KERNEL_VERSION_HIGH 0
-#define KERNEL_VERSION_MID 0
-#define KERNEL_VERSION_LOW 3 
+#define KERNEL_VERSION_MID 1
+#define KERNEL_VERSION_LOW 0
 
 #define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
 #define HEAP_SIZE   (KERNEL_HEAP_SIZE)
