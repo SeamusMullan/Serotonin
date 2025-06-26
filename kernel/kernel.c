@@ -373,8 +373,9 @@ void task_C(void) {
 
 __attribute__((section(".userspace"))) void test_syscall() {
     asm volatile("int $0x80");
-    asm volatile("cli");
-    asm volatile("hlt");
+    while (1) {
+        asm volatile("nop");
+    }
 }
 
 __attribute__((section(".userspace"))) void kernel_enter_user_mode() {
