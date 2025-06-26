@@ -7,7 +7,7 @@ typedef struct process_control_block {
     uint32_t pid;
 
     void* esp;
-    void* esp0; // Unused, TSS TBD
+    void* esp0;
     void* cr3;
 
     struct process_control_block *next;

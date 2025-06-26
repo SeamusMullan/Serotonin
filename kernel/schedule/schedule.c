@@ -1,3 +1,8 @@
+/*
+ * schedule.c
+ * Serotonin Kernel Scheduler
+*/
+
 #include "schedule.h"
 #include "../kernel.h"
 #include "../stdlib/stdlib.h"
@@ -23,22 +28,31 @@ static inline void* read_cr3_register(void) {
     return cr3;
 }
 
+/**
+ * @brief Disables interrupts to lock the scheduler.
+ */
 void lock_scheduler(void) {
     clear_interrupts();
 }
 
+/**
+ * @brief Enables interrupts to unlock the scheduler.
+ */
 void unlock_scheduler(void) {
     enable_interrupts();
 }
 
+/**
+ * @brief Initializes multitasking by creating the initial kernel task.
+ */
 void multitasking_init(void) {
-    volatile process_control_block_t *init_task = (process_control_block_t*)kernel_malloc(sizeof(process_control_block_t));
+    process_control_block_t *init_task = (process_control_block_t*)kernel_malloc(sizeof(process_control_block_t));
     memset(init_task, 0, sizeof(*init_task));
 
     // populate fields
     init_task->pid    = next_pid++;
     init_task->esp    = get_esp();
-    init_task->esp0   = NULL;                // TSS setup later
+    init_task->esp0   = get_esp();
     init_task->cr3    = read_cr3_register();
     init_task->state  = PROCESS_STATE_BLOCKED;
     strncpy(init_task->name, "kernel_init", 32);
@@ -49,6 +63,10 @@ void multitasking_init(void) {
     multitasking_ready = 1;
 }
 
+/**
+ * @brief Yields control from the current task and switches to the next ready task.
+ * @param irq The IRQ number that caused the yield.
+ */
 __attribute__((noreturn)) void task_yield(int irq) {
     void *ret;
     asm volatile ("movl 4(%%ebp), %0"
@@ -84,6 +102,9 @@ __attribute__((noreturn)) void task_yield(int irq) {
     __builtin_unreachable();
 }
 
+/**
+ * @brief Terminates the currently running task and switches to the next one.
+ */
 void task_exit(void) {
     printfs(PRINT_STATUS_DEBUG, "task_exit: Task %s (pid=%u) exited\n", current_task->name, current_task->pid);
     current_task->state = PROCESS_STATE_TERMINATED;
@@ -92,6 +113,12 @@ void task_exit(void) {
     kernel_panic("task_exit: nothing to switch to");
 }
 
+/**
+ * @brief Creates a new task with the given entry point and name.
+ * @param entry Pointer to the task's entry function.
+ * @param name  Name of the task.
+ * @return Pointer to the newly created process control block.
+ */
 process_control_block_t* task_create(void (*entry)(void), const char *name) {
     // alloc and init pcb
     process_control_block_t *pcb = (process_control_block_t*)kernel_malloc(sizeof(*pcb));
@@ -105,20 +132,24 @@ process_control_block_t* task_create(void (*entry)(void), const char *name) {
     // create stack
     uint8_t *stack = (uint8_t*)kernel_malloc(KERNEL_STACK_SIZE);
     uint32_t *stk_top = (uint32_t*)(stack + KERNEL_STACK_SIZE);
-
     *(--stk_top) = 0; // EBP
     *(--stk_top) = 0; // EBX
     *(--stk_top) = 0; // ESI
     *(--stk_top) = 0; // EDI
 
     pcb->esp = stk_top;
+    pcb->esp0 = stk_top;
     pcb->entry = entry;
 
-    printfs(PRINT_STATUS_DEBUG,"Creating task '%s', esp=%p\n", name, pcb->esp);
+    printfs(PRINT_STATUS_DEBUG,"Creating task '%s', esp=%p, esp0=%p\n", name, pcb->esp,pcb->esp0);
 
     return pcb;
 }
 
+/**
+ * @brief Adds a task to the scheduler's queue.
+ * @param pcb Pointer to the task's process control block.
+ */
 void enqueue(process_control_block_t* pcb) {
     lock_scheduler();
 
@@ -137,6 +168,10 @@ void enqueue(process_control_block_t* pcb) {
     unlock_scheduler();
 }
 
+/**
+ * @brief Removes and returns the next task from the scheduler's queue.
+ * @return Pointer to the dequeued process control block.
+ */
 process_control_block_t* dequeue() {
     if (!task_list)
         return NULL;
@@ -147,18 +182,30 @@ process_control_block_t* dequeue() {
     return head;
 }
 
+/**
+ * @brief Sets the state of the specified task.
+ * @param pcb Pointer to the task's process control block.
+ * @param state New state to set for the task.
+ */
 void task_set_state(process_control_block_t *pcb, int state) {
     lock_scheduler();
     pcb->state = state;
     unlock_scheduler();
 }
 
+/**
+ * @brief Blocks the current task and yields to the next one.
+ */
 void task_block(void) {
     task_set_state(current_task,PROCESS_STATE_BLOCKED);
     task_yield(0);
     __builtin_unreachable();
 }
 
+/**
+ * @brief Unblocks the specified task and makes it ready to run.
+ * @param pcb Pointer to the task's process control block.
+ */
 void task_unblock(process_control_block_t *pcb) {
     lock_scheduler();
     pcb->state == PROCESS_STATE_READY;

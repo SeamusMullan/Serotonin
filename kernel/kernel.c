@@ -228,7 +228,7 @@ void kernel_panic(char* str) {
     uint32_t eax, ebx, ecx, edx;
     uint32_t esi, edi, ebp, esp;
     uint32_t eflags;
-    uint16_t cs, ds, ss;
+    uint16_t cs, ds, ss, tr;
 
     uint32_t cr0, cr2, cr3, cr4;
 
@@ -248,6 +248,7 @@ void kernel_panic(char* str) {
     asm volatile ("mov %%cr2, %0" : "=r"(cr2));
     asm volatile ("mov %%cr3, %0" : "=r"(cr3));
     asm volatile ("mov %%cr4, %0" : "=r"(cr4));
+    asm volatile ("str %0" : "=r"(tr));;
 
 
     printfs(PRINT_STATUS_FATAL, "Kernel panic. Please reboot your computer.\n");
@@ -259,7 +260,7 @@ void kernel_panic(char* str) {
     printfs(PRINT_STATUS_FATAL, "EFLAGS: 0x%08x  CS: 0x%04x  DS: 0x%04x  SS: 0x%04x\n",(unsigned int)eflags, (unsigned int)cs, (unsigned int)ds, (unsigned int)ss);
     printfs(PRINT_STATUS_FATAL, "CR0: 0x%08x  CR2 (fault addr): 0x%08x  CR3 (page directory base): 0x%08x  CR4: 0x%08x\n",
             (unsigned int)cr0, (unsigned int)cr2, (unsigned int)cr3, (unsigned int)cr4);
-    printfs(PRINT_STATUS_FATAL, "TSS.ESP0: 0x%08x  TSS.SS0: 0x%04x\n", sys_tss.esp0, sys_tss.ss0);
+    printfs(PRINT_STATUS_FATAL, "TSS.ESP0: 0x%08x,  TSS.SS0: 0x%04x, TR: 0x%04x\n", sys_tss.esp0, sys_tss.ss0,tr);
 
     abort();
 }
@@ -336,7 +337,7 @@ void task_A(void) {
             :
             :
         );
-        printf("[A] tick %d, esp=%p, quantum=%d\n", i, esp,last_quantum_tick);
+        printf("[A] tick %d, esp=%p, since_last_quantum=%d\n", i, esp,last_quantum_tick);
     }
 }
 
@@ -351,7 +352,7 @@ void task_B(void) {
             :
             :
         );
-        printf("[B] tick %d, esp=%p, quantum=%d\n", i, esp,last_quantum_tick);
+        printf("[B] tick %d, esp=%p, since_last_quantum=%d\n", i, esp,last_quantum_tick);
     }
 }
 
@@ -366,8 +367,43 @@ void task_C(void) {
             :
             :
         );
-        printf("[C] tick %d, esp=%p, quantum=%d\n", i, esp,last_quantum_tick);
+        printf("[C] tick %d, esp=%p, since_last_quantum=%d\n", i, esp,last_quantum_tick);
     }
+}
+
+__attribute__((section(".userspace"))) void test_syscall() {
+    asm volatile("int $0x80");
+    asm volatile("cli");
+    asm volatile("hlt");
+}
+
+__attribute__((section(".userspace"))) void kernel_enter_user_mode() {
+
+    void* esp;
+    asm volatile ("mov %%esp, %0" : "=r"(esp));
+
+    sys_tss.esp0 = (uint32_t)esp;
+
+    uint32_t user_stack = 0x047FF000U;
+
+    asm volatile (
+        "cli\n\t"
+        "mov $0x23, %%ax\n\t"       // User data segment
+        "mov %%ax, %%ds\n\t"
+        "mov %%ax, %%es\n\t"
+        "mov %%ax, %%fs\n\t"
+        "mov %%ax, %%gs\n\t"
+
+        "pushl $0x23\n\t"           // SS (user data segment)
+        "pushl %[stack]\n\t"        // ESP
+        "pushf\n\t"                 // EFLAGS
+        "pushl $0x1B\n\t"           // CS (user code segment)
+        "pushl %[entry]\n\t"        // EIP
+        "iret\n\t"
+        :
+        : [entry]"r"(test_syscall), [stack]"r"(user_stack)
+        : "ax"
+    );
 }
 
 /**
@@ -455,6 +491,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     play_pc_speaker_sound(750);
     kernel_sleep(500);
     stop_pc_speaker_sound();
+
+    kernel_enter_user_mode();
 
     multitasking_init();
 

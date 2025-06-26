@@ -6,12 +6,14 @@
 #define PAGE_ENTRIES   1024
 #define PAGE_PRESENT   0x1
 #define PAGE_RW        0x2
+#define PAGE_USER      0x4
 
 typedef uint32_t page_table_entry_t;
 typedef page_table_entry_t page_table_t[PAGE_ENTRIES];
 
 typedef uint32_t page_directory_entry_t;
 typedef page_directory_entry_t page_directory_t[PAGE_ENTRIES];
+extern page_directory_t page_directory;
 
 #define KERNEL_PHYS_BASE 0x00100000U   // linked at physical 1 MiB
 #define KERNEL_VMA_BASE  0xC0000000U   // where code/data live after paging
@@ -21,9 +23,14 @@ typedef page_directory_entry_t page_directory_t[PAGE_ENTRIES];
 #define KERNEL_HEAP_PHYS  0x10200000U   // heap physical base (after 256MB kernel phys)
 #define KERNEL_HEAP_SIZE ((uint32_t)(256 * 1024 * 1024U)) // 256 MB heap
 
-#define FB_VMA_BASE      0x02800000U   // virtual base for the framebuffer mapping
+#define FB_VMA_BASE      0xE0000000U   // virtual base for the framebuffer mapping
+
+#define USER_SPACE_START 0x00400000
+#define USER_SPACE_END   0xBFFFFFFF
+#define USER_SPACE_PHYS 0x20000000U
 
 #define PAGE_FLAGS (PAGE_PRESENT | PAGE_RW)
+#define USER_PAGE_FLAGS (PAGE_PRESENT | PAGE_RW | PAGE_USER)
 
 #define BLOCK_ALIGN 8
 #define PAGE_ALIGN(addr) (((addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))

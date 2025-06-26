@@ -2,6 +2,7 @@
 #include "idt.h"
 #include "stdio/stdio.h"
 #include "kernel.h"
+#include "syscall/syscall.h"
 
 #define IDT_ENTRIES 256
 
@@ -123,6 +124,8 @@ void init_idt() {
     for (int i = 0; i < 16; i++) {
         idt_set_gate(32 + i, (uint32_t)irqs[i], 0x08, 0x8E);
     }
+
+    idt_set_gate(0x80, (uint32_t)isr_syscall, 0x08, 0xEE);
 
     idt_load(&idtp);
 }

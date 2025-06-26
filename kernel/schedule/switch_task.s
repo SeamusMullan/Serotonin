@@ -5,9 +5,11 @@
 .type   switch_task_iret, @function
 .extern current_task
 .extern kernel_panic
+.extern sys_tss
 
 # PCB offsets
 .equ    OFF_ESP,    4
+.equ    OFF_ESP0,   8 
 .equ    OFF_CR3,   12
 .equ    OFF_ENTRY, 56
 
@@ -26,6 +28,8 @@ switch_task:
     # store that stack into the PCB
     movl    current_task, %ecx
     movl    %esp, OFF_ESP(%ecx)
+    movl    OFF_ESP0(%ecx), %ebx
+    movl    %ebx, sys_tss+4 # sys_tss.esp0
 
     # switch to the new PCB
     movl    %edx, current_task
@@ -58,6 +62,8 @@ switch_task_iret:
     # store that stack into the PCB
     movl    current_task, %ecx
     movl    %esp, OFF_ESP(%ecx)
+    movl    OFF_ESP0(%ecx), %ebx
+    movl    %ebx, sys_tss+4 # sys_tss.esp0
 
     # switch to the new PCB
     movl    %edx, current_task
