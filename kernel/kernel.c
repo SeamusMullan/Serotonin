@@ -372,6 +372,8 @@ void task_C(void) {
 }
 
 __attribute__((section(".userspace"))) void test_syscall() {
+    volatile int *ptr = (int *)0xC1000000;
+    int val = *ptr;
     asm volatile("int $0x80");
     while (1) {
         asm volatile("nop");
@@ -497,13 +499,11 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     multitasking_init();
 
-    pcbA = task_create(task_A, "TaskA");
+    pcbA = task_create(kernel_enter_user_mode, "TaskA");
     pcbB = task_create(task_B, "TaskB");
-    pcbC = task_create(task_C, "TaskC");
 
     enqueue(pcbA);
     enqueue(pcbB);
-    enqueue(pcbC);
 
     process_control_block_t *t = task_list;
     printf("Task list:\n");

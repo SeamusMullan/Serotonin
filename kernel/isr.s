@@ -125,7 +125,7 @@ isr14:
     pusha
     pushl %ds
 
-    mov 44(%esp), %eax
+    mov 36(%esp), %eax
     push %eax
     call page_fault_handler
 

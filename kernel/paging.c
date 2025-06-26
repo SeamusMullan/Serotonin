@@ -24,6 +24,11 @@ page_table_t fb_page_table;
 uintptr_t page_dir_ptr;
 uintptr_t fb_addr_ptr;
 
+static inline uint32_t mk_entry(uint32_t phys, uint32_t flags)
+{
+    return (phys & 0xFFFFF000) | flags;   //bits 0-11 must be 0 except legal flags
+}
+
 /**
  * @brief Initialize the paging system.
  */
@@ -38,17 +43,17 @@ void paging_init(uintptr_t fb_phys_base) {
 
     // Identity map first 4 MiB
     for (uint32_t i = 0; i < PAGE_ENTRIES; ++i)
-        first_page_table[i] = (i * PAGE_SIZE) | PAGE_FLAGS;
-    page_directory[0] = ((uintptr_t)&first_page_table) | PAGE_FLAGS;
+        first_page_table[i] = mk_entry(i * PAGE_SIZE, PAGE_FLAGS);
+    page_directory[0] = mk_entry((uintptr_t)first_page_table, PAGE_FLAGS);
 
     // Map kernel higher half: 256 MiB via 64 page tables at PDE[768..831]
     for (uint32_t pd_idx = 0; pd_idx < 64; ++pd_idx) {
         for (uint32_t i = 0; i < PAGE_ENTRIES; ++i) {
             kernel_page_tables[pd_idx][i] =
-                (pd_idx * 0x400000 + i * PAGE_SIZE) | PAGE_FLAGS;
+                mk_entry(KERNEL_PHYS_BASE + pd_idx * 0x400000 + i * PAGE_SIZE, PAGE_FLAGS);
         }
         page_directory[768 + pd_idx] =
-            ((uintptr_t)&kernel_page_tables[pd_idx]) | PAGE_FLAGS;
+            mk_entry((uintptr_t)&kernel_page_tables[pd_idx],PAGE_FLAGS);
     }
 
     // Map framebuffer: 4 MiB at FB_VMA_BASE (PDE[10])

@@ -15,7 +15,7 @@ typedef uint32_t page_directory_entry_t;
 typedef page_directory_entry_t page_directory_t[PAGE_ENTRIES];
 extern page_directory_t page_directory;
 
-#define KERNEL_PHYS_BASE 0x00100000U   // linked at physical 1 MiB
+#define KERNEL_PHYS_BASE 0x00200000U   // linked at physical 1 MiB
 #define KERNEL_VMA_BASE  0xC0000000U   // where code/data live after paging
 #define HIGHER_HALF_STACK 0xC0800000
 

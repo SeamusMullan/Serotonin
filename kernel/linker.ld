@@ -11,9 +11,13 @@ SECTIONS
 	.identity : {
 		*(.multiboot)
 		*(.identity)
-		*(.identity_data)
 		*(.bootstrap_stack)
 	}
+
+	.identity_data : ALIGN(4096) {
+		*(.identity_data)
+	}
+
 
 	. = 0x00400000;
 
@@ -25,7 +29,7 @@ SECTIONS
 	/* First put the multiboot header, as it is required to be put very early
 	   in the image or the bootloader won't recognize the file format.
 	   Next we'll put the .text section. */
-	.text ALIGN (4K) : AT (ADDR (.text) - 0xC0000000)
+	.text ALIGN (4K) : AT (ADDR (.text) - 0xC0000000 + 0x00200000)
 	{
 		*(.text)
 	}

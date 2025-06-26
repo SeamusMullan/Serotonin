@@ -109,11 +109,24 @@ void page_fault_handler(uint32_t error_code) {
     printfs(PRINT_STATUS_ERROR,"     Faulting address = 0x%08x\n", faulting_address);
     printfs(PRINT_STATUS_ERROR,"     Error code = 0x%08x\n", error_code);
 
+    int present   =  error_code & (1<<0);
+    int write     =  error_code & (1<<1);
+    int user      =  error_code & (1<<2);
+    int rsvd      =  error_code & (1<<3);
+    int ifetch    =  error_code & (1<<4);
+
     // Decode the error code
-    printfs(PRINT_STATUS_ERROR,"     %s, %s, %s\n",
-           (error_code & 0x1) ? "protection violation" : "page not present",
-           (error_code & 0x2) ? "write access" : "read access",
-           (error_code & 0x4) ? "user mode" : "kernel mode");
+    if (rsvd) {
+      printfs(PRINT_STATUS_ERROR,"     reserved-bit violation in PDE/PTE\n");
+    } else if (!present) {
+      printfs(PRINT_STATUS_ERROR,"     page not present\n");
+    } else {
+      printfs(PRINT_STATUS_ERROR,"     protection violation\n");
+    }
+    printfs(PRINT_STATUS_ERROR,"       %s access in %s mode%s\n",
+           write ? "write" : (ifetch ? "instruction-fetch" : "read"),
+           user ? "user" : "kernel",
+           (error_code & (1<<5)) ? ", reserved violation of PAT bits" : "");
 
     kernel_panic("exception - page fault (#PF)");
 }
