@@ -10,10 +10,13 @@
 #include "../paging.h"
 #include "../stdio/stdio.h"
 #include "../io/io.h"
+#include "../video/vbe/vbe.h"
 
 process_control_block_t *current_task = NULL;
 process_control_block_t *task_list    = NULL;
 static uint32_t next_pid = 0;
+volatile uint32_t preempt_count = 0;
+volatile uint8_t pending_schedule = 0;
 
 // TODO: I should probably not scatter a repeat function but fuck it later issue
 static inline void* get_esp(void) {
@@ -32,6 +35,8 @@ static inline void* read_cr3_register(void) {
  * @brief Disables interrupts to lock the scheduler.
  */
 void lock_scheduler(void) {
+    if (multitasking_ready == 0)
+        return;
     clear_interrupts();
 }
 
@@ -39,7 +44,21 @@ void lock_scheduler(void) {
  * @brief Enables interrupts to unlock the scheduler.
  */
 void unlock_scheduler(void) {
+    if (multitasking_ready == 0)
+        return;
     enable_interrupts();
+}
+
+void preempt_enable(void) {
+    preempt_count--;
+    if (pending_schedule == 1 && preempt_count == 0&& current_task->state == PROCESS_STATE_RUNNING) {
+        pending_schedule == 0;
+        task_yield(1);
+    }
+}
+
+void preempt_disable(void) {
+    preempt_count++;
 }
 
 /**
@@ -60,6 +79,9 @@ void multitasking_init(void) {
     // single‐element list
     task_list             = init_task;
     current_task          = init_task;
+}
+
+void multitasking_make_ready(void) {
     multitasking_ready = 1;
 }
 
@@ -68,29 +90,25 @@ void multitasking_init(void) {
  * @param irq The IRQ number that caused the yield.
  */
 __attribute__((noreturn)) void task_yield(int irq) {
-    void *ret;
-    asm volatile ("movl 4(%%ebp), %0"
-        : "=r"(ret)
-        :
-        :
-    );
 
     lock_scheduler();
+    preempt_disable();
 
     if (current_task->state == PROCESS_STATE_RUNNING) {
         current_task->state = PROCESS_STATE_READY;
-        current_task->entry = ret;
         enqueue(current_task);
     }
 
     process_control_block_t* next = NULL;
     while ((next = dequeue()) != NULL) {
         if (next->state == PROCESS_STATE_READY) {
-            printf("found next: %p, name: %s, started:%d, entry:%p, esp:%p\n",next, next->name,next->started,next->entry,next->esp);
+            printf("found next: %p, name: %s, ring:%d, entry:%p, esp:%p\n",next, next->name,next->priv,next->entry,next->esp);
             // found someone we can switch into
             next->state = PROCESS_STATE_RUNNING;
             unlock_scheduler();
+            preempt_enable();
 
+            // if nothing is pending, switch
             if (irq == 1)
                 switch_task_iret(next);
             switch_task(next);
@@ -119,7 +137,7 @@ void task_exit(void) {
  * @param name  Name of the task.
  * @return Pointer to the newly created process control block.
  */
-process_control_block_t* task_create(void (*entry)(void), const char *name) {
+process_control_block_t* task_create(void (*entry)(void), const char *name, uint8_t priv) {
     // alloc and init pcb
     process_control_block_t *pcb = (process_control_block_t*)kernel_malloc(sizeof(*pcb));
     memset(pcb, 0, sizeof(*pcb));
@@ -127,6 +145,7 @@ process_control_block_t* task_create(void (*entry)(void), const char *name) {
     pcb->cr3   = read_cr3_register();
     pcb->state = PROCESS_STATE_READY;
     pcb->started = 0;
+    pcb->priv  = priv;
     strncpy(pcb->name, name, sizeof(pcb->name)-1);
 
     // create stack
@@ -208,7 +227,7 @@ void task_block(void) {
  */
 void task_unblock(process_control_block_t *pcb) {
     lock_scheduler();
-    pcb->state == PROCESS_STATE_READY;
+    pcb->state = PROCESS_STATE_READY;
     enqueue(pcb);
     unlock_scheduler();
 }

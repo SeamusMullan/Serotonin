@@ -352,7 +352,7 @@ void task_B(void) {
             :
             :
         );
-        printf("[B] tick %d, esp=%p, since_last_quantum=%d\n", i, esp,last_quantum_tick);
+        printf("[B] tick %d, esp=%p, since_last_quantum=%d, softlock=%d\n", i, esp,last_quantum_tick,preempt_count);
     }
 }
 
@@ -372,10 +372,8 @@ void task_C(void) {
 }
 
 __attribute__((section(".userspace"))) void test_syscall() {
-    volatile int *ptr = (int *)0xC1000000;
-    int val = *ptr;
-    asm volatile("int $0x80");
     while (1) {
+        asm volatile("int $0x80");
         asm volatile("nop");
     }
 }
@@ -495,12 +493,10 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     kernel_sleep(500);
     stop_pc_speaker_sound();
 
-    kernel_enter_user_mode();
-
     multitasking_init();
 
-    pcbA = task_create(kernel_enter_user_mode, "TaskA");
-    pcbB = task_create(task_B, "TaskB");
+    pcbA = task_create(test_syscall, "TaskA", CPU_USER_MODE);
+    pcbB = task_create(task_B, "TaskB", CPU_KERNEL_MODE);
 
     enqueue(pcbA);
     enqueue(pcbB);
@@ -515,6 +511,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
             break;
         }
     } while (t != task_list);
+
+    multitasking_make_ready();
 
     task_yield(0);
 

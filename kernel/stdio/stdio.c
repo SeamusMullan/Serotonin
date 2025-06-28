@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include "../string.h"
 #include "../video/vbe/vbe.h"
+#include "../schedule/schedule.h"
 
 /**
  * @brief Internal printf function.
@@ -161,12 +162,14 @@ void printf_internal(const char* p, void** arg_ptr) {
  */
 void printf(const char* fmt, ...) 
 {
+    preempt_disable();
     const char* p = fmt;
 
     void** arg_ptr = (void**)(&fmt);
     arg_ptr++; // skip format string itself
 
     printf_internal(p, arg_ptr);
+    preempt_enable();
 }
 
 /**
@@ -215,6 +218,7 @@ void printfs_write_status(enum print_status_types status_type) {
  */
 void printfs(enum print_status_types status_type, const char* fmt, ...) 
 {
+    preempt_disable();
     const char* p = fmt;
 
     void** arg_ptr = (void**)(&fmt);
@@ -222,4 +226,5 @@ void printfs(enum print_status_types status_type, const char* fmt, ...)
 
     printfs_write_status(status_type);
     printf_internal(p, arg_ptr);
+    preempt_enable();
 }

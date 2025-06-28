@@ -53,7 +53,7 @@ static inline void enable_interrupts(void) {
     }
 }
 
-void irq_handler(int irq);
+void irq_handler(int irq, uint32_t eip);
 void pic_remap(int offset1, int offset2);
 void handle_scancode(uint8_t scancode);
 
