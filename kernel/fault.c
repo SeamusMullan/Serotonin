@@ -2,6 +2,8 @@
 #include "kernel.h"
 #include "stdlib/stdlib.h"
 #include "fault.h"
+#include "schedule/schedule.h"
+#include "io/io.h"
 
 /**
  * @brief Handle CPU exceptions.
@@ -127,6 +129,11 @@ void page_fault_handler(uint32_t error_code) {
            write ? "write" : (ifetch ? "instruction-fetch" : "read"),
            user ? "user" : "kernel",
            (error_code & (1<<5)) ? ", reserved violation of PAT bits" : "");
+
+    if (multitasking_ready == 1 && current_task->priv == CPU_USER_MODE) {
+        task_exit();
+        return;
+    }
 
     kernel_panic("exception - page fault (#PF)");
 }

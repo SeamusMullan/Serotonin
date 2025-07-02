@@ -12,23 +12,24 @@ volatile int irq_disabled = 1;
  * 
  * @param irq The IRQ number.
  */
-void irq_handler(int irq, uint32_t eip) {
+void irq_handler(int irq, uint32_t eip, uint32_t esp, uint32_t ebp) {
 
     if (irq == 0) {
         timer_ticks++;
         if (multitasking_ready == 0)
             goto end_irq;
 
-        if (preempt_count == 0) {
+        if (preempt_count == 0 && current_task->priv == CPU_USER_MODE) {
+            //printf("esp:%p, eip:%p, ebp:%p\n",esp,eip,ebp);
             last_quantum_tick++;
             int schedule_quantum = MILLISECONDS_TO_TICKS(100);
             if (last_quantum_tick == schedule_quantum) {
                 current_task->entry = (void*)eip;
+                current_task->esp   = (void*)esp;
+                current_task->ebp   = (void*)ebp;
                 last_quantum_tick = 1;
                 task_yield(1);
             }
-        } else {
-            pending_schedule = 1;
         }
     } else if (irq == 1) {
         uint8_t scancode = inb(0x60);

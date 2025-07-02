@@ -19,6 +19,8 @@ typedef struct process_control_block {
     uint8_t started;
     uint8_t priv;
 
+    void* ebp;
+
 } process_control_block_t;
 
 enum {

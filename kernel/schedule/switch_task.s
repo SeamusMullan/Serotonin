@@ -13,6 +13,7 @@
 .equ    OFF_CR3,   12
 .equ    OFF_ENTRY, 56
 .equ    OFF_PRIV,  61
+.equ    OFF_EBP,   64
 
 switch_task:
     # edx = next PCB
@@ -20,15 +21,12 @@ switch_task:
     testl   %edx, %edx
     jz      .fail
 
-    # save callee-saved in this task
-    pushl   %ebx
-    pushl   %esi
-    pushl   %edi
-    pushl   %ebp
+    # user mode switch
+    cmpb $3, OFF_PRIV(%edx)
+    jz .switch_user_mode
 
-    # store that stack into the PCB
+    # store ESP0 into the PCB and TSS
     movl    current_task, %ecx
-    movl    %esp, OFF_ESP(%ecx)
     movl    OFF_ESP0(%ecx), %ebx
     movl    %ebx, sys_tss+4 # sys_tss.esp0
 
@@ -37,16 +35,6 @@ switch_task:
     movl    OFF_ESP(%edx), %esp
     movl    OFF_CR3(%edx), %eax
     movl    %eax,       %cr3
-
-    # restore callee-saved regs
-    popl    %ebp
-    popl    %edi
-    popl    %esi
-    popl    %ebx
-
-    # user mode switch
-    cmpb $3, OFF_PRIV(%edx)
-    jz .switch_user_mode
 
     # finally jump back to its saved EIP
     pushl   OFF_ENTRY(%edx)
@@ -58,17 +46,9 @@ switch_task_iret:
     testl   %edx, %edx
     jz      .fail
 
-    # save callee-saved in this task
-    pushl   %ebx
-    pushl   %esi
-    pushl   %edi
-    pushl   %ebp
-
-    # store that stack into the PCB
-    movl    current_task, %ecx
-    movl    %esp, OFF_ESP(%ecx)
-    movl    OFF_ESP0(%ecx), %ebx
-    movl    %ebx, sys_tss+4 # sys_tss.esp0
+    # user mode switch
+    cmpb $3, OFF_PRIV(%edx)
+    jz .switch_user_mode
 
     # switch to the new PCB
     movl    %edx, current_task
@@ -76,18 +56,8 @@ switch_task_iret:
     movl    OFF_CR3(%edx), %eax
     movl    %eax,       %cr3
 
-    # restore callee-saved regs
-    popl    %ebp
-    popl    %edi
-    popl    %esi
-    popl    %ebx
-
     movb $0x20, %al
     outb %al, $0x20
-
-    # user mode switch
-    cmpb $3, OFF_PRIV(%edx)
-    jz .switch_user_mode
 
     # finally jump back to its saved EIP
     pushf
@@ -101,6 +71,13 @@ switch_task_iret:
     hlt
 
 .switch_user_mode:
+    # switch to the new PCB
+    movl    %edx, current_task
+    movl    OFF_ESP(%edx), %esp
+    movl    OFF_CR3(%edx), %eax
+    movl    OFF_EBP(%edx), %ebp
+    movl    %eax,       %cr3
+
     mov $0x23, %ax
     mov %ax, %ds
     mov %ax, %es

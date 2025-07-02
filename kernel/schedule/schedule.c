@@ -15,6 +15,7 @@
 process_control_block_t *current_task = NULL;
 process_control_block_t *task_list    = NULL;
 static uint32_t next_pid = 0;
+static uint32_t next_user_stack = USER_STACK_TOP;
 volatile uint32_t preempt_count = 0;
 volatile uint8_t pending_schedule = 0;
 
@@ -29,6 +30,17 @@ static inline void* read_cr3_register(void) {
     void* cr3;
     asm volatile("mov %%cr3, %0" : "=r"(cr3));
     return cr3;
+}
+
+void *alloc_user_stack(void) {
+    if (next_user_stack < USER_STACK_BOTTOM + USER_STACK_SIZE) {
+        kernel_panic("alloc_user_stack: out of user stack space!");
+        return NULL;
+    }
+
+    next_user_stack -= USER_STACK_SIZE;
+
+    return (void *)next_user_stack;
 }
 
 /**
@@ -52,8 +64,8 @@ void unlock_scheduler(void) {
 void preempt_enable(void) {
     preempt_count--;
     if (pending_schedule == 1 && preempt_count == 0&& current_task->state == PROCESS_STATE_RUNNING) {
-        pending_schedule == 0;
-        task_yield(1);
+        pending_schedule = 0;
+        task_yield(0);
     }
 }
 
@@ -81,6 +93,7 @@ void multitasking_init(void) {
     current_task          = init_task;
 }
 
+
 void multitasking_make_ready(void) {
     multitasking_ready = 1;
 }
@@ -90,12 +103,22 @@ void multitasking_make_ready(void) {
  * @param irq The IRQ number that caused the yield.
  */
 __attribute__((noreturn)) void task_yield(int irq) {
+    void *esp;
 
+
+    asm volatile ("movl %%esp, %0"
+        : "=r"(esp)
+        :
+        :
+    );
     lock_scheduler();
-    preempt_disable();
+    //preempt_disable();
 
     if (current_task->state == PROCESS_STATE_RUNNING) {
         current_task->state = PROCESS_STATE_READY;
+        if (current_task->priv == CPU_KERNEL_MODE) {
+            current_task->esp = esp;
+        }
         enqueue(current_task);
     }
 
@@ -106,7 +129,7 @@ __attribute__((noreturn)) void task_yield(int irq) {
             // found someone we can switch into
             next->state = PROCESS_STATE_RUNNING;
             unlock_scheduler();
-            preempt_enable();
+            //preempt_enable();
 
             // if nothing is pending, switch
             if (irq == 1)
@@ -149,15 +172,19 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
     strncpy(pcb->name, name, sizeof(pcb->name)-1);
 
     // create stack
-    uint8_t *stack = (uint8_t*)kernel_malloc(KERNEL_STACK_SIZE);
-    uint32_t *stk_top = (uint32_t*)(stack + KERNEL_STACK_SIZE);
-    *(--stk_top) = 0; // EBP
-    *(--stk_top) = 0; // EBX
-    *(--stk_top) = 0; // ESI
-    *(--stk_top) = 0; // EDI
+    uint8_t *stack;
+    uint32_t *stk_top;
+    if (priv == CPU_USER_MODE) {
+        stack = (uint8_t*)alloc_user_stack();
+        stk_top = (uint32_t*)(stack + USER_STACK_SIZE);
+    } else {
+        stack = (uint8_t*)kernel_malloc(KERNEL_STACK_SIZE);
+        stk_top = (uint32_t*)(stack + KERNEL_STACK_SIZE);
+    }
+    memset(stack, 0, sizeof(*stack));
 
     pcb->esp = stk_top;
-    pcb->esp0 = stk_top;
+    pcb->esp0 = get_esp();
     pcb->entry = entry;
 
     printfs(PRINT_STATUS_DEBUG,"Creating task '%s', esp=%p, esp0=%p\n", name, pcb->esp,pcb->esp0);

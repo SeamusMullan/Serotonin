@@ -273,11 +273,15 @@ isr31:
 .global irq0
 irq0:
     pusha
-    movl 32(%esp), %edx
-    pushl %edx
+    movl %ebp, %ecx
+    movl 32(%esp), %eax
+    movl 44(%esp), %ebx
+    pushl %ecx
+    pushl %ebx
+    pushl %eax
     pushl $0
     call irq_handler
-    add $8, %esp
+    add $16, %esp
     popa
     iret
 

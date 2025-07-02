@@ -25,9 +25,18 @@ extern page_directory_t page_directory;
 
 #define FB_VMA_BASE      0xE0000000U   // virtual base for the framebuffer mapping
 
-#define USER_SPACE_START 0x00400000
-#define USER_SPACE_END   0xBFFFFFFF
-#define USER_SPACE_PHYS 0x20000000U
+#define USER_SPACE_START 0x00400000U
+#define USER_SPACE_END   0x103FFFFFU
+#define USER_SPACE_SIZE  (USER_SPACE_END - USER_SPACE_START)
+
+#define USER_SPACE_PHYS  0x20000000U
+
+#define USER_HEAP_START  0x01400000U
+#define USER_HEAP_MAX    0x0F000000U
+
+#define USER_STACK_TOP   0x103FFFFFU
+#define USER_STACK_SIZE  0x00100000U
+#define USER_STACK_BOTTOM (USER_STACK_TOP - USER_STACK_SIZE)
 
 #define PAGE_FLAGS (PAGE_PRESENT | PAGE_RW)
 #define USER_PAGE_FLAGS (PAGE_PRESENT | PAGE_RW | PAGE_USER)
@@ -35,7 +44,7 @@ extern page_directory_t page_directory;
 #define BLOCK_ALIGN 8
 #define PAGE_ALIGN(addr) (((addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))
 
-#define KERNEL_STACK_SIZE 8192
+#define KERNEL_STACK_SIZE 16384
 
 extern uintptr_t page_dir_ptr;
 void paging_init(uintptr_t fb_phys_base);

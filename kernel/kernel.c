@@ -345,14 +345,17 @@ void task_B(void) {
     unsigned int i;
     while (true) {
         i++;
-        unsigned int esp;
+        uint32_t* esp;
         asm volatile (
             "movl %%esp, %0"
             : "=r" (esp)
             :
             :
         );
-        printf("[B] tick %d, esp=%p, since_last_quantum=%d, softlock=%d\n", i, esp,last_quantum_tick,preempt_count);
+
+        printf("esp top: %08x %08x %08x %08x\n", esp[0], esp[1], esp[2], esp[3]);
+        printf("[B] tick %d, esp=%p\n", i, esp);
+        task_yield(0);
     }
 }
 
@@ -367,44 +370,36 @@ void task_C(void) {
             :
             :
         );
-        printf("[C] tick %d, esp=%p, since_last_quantum=%d\n", i, esp,last_quantum_tick);
+        printf("[C] tick %d, esp=%p\n", i, esp);
     }
 }
 
 __attribute__((section(".userspace"))) void test_syscall() {
+    volatile int someval = 2;
     while (1) {
+        someval++;
         asm volatile("int $0x80");
-        asm volatile("nop");
+        // advanced systems programming right here
+        for (int i = 0; i < 999999999; i++) {
+            asm volatile("nop");
+            asm volatile("nop");
+            asm volatile("nop");
+            asm volatile("nop");
+            asm volatile("nop");
+            asm volatile("nop");
+            asm volatile("nop");
+            asm volatile("nop");
+            asm volatile("nop");
+            asm volatile("nop");
+            asm volatile("nop");
+            asm volatile("nop");
+            asm volatile("nop");
+            asm volatile("nop");
+            asm volatile("nop");
+            asm volatile("nop");
+            asm volatile("nop");
+        }
     }
-}
-
-__attribute__((section(".userspace"))) void kernel_enter_user_mode() {
-
-    void* esp;
-    asm volatile ("mov %%esp, %0" : "=r"(esp));
-
-    sys_tss.esp0 = (uint32_t)esp;
-
-    uint32_t user_stack = 0x047FF000U;
-
-    asm volatile (
-        "cli\n\t"
-        "mov $0x23, %%ax\n\t"       // User data segment
-        "mov %%ax, %%ds\n\t"
-        "mov %%ax, %%es\n\t"
-        "mov %%ax, %%fs\n\t"
-        "mov %%ax, %%gs\n\t"
-
-        "pushl $0x23\n\t"           // SS (user data segment)
-        "pushl %[stack]\n\t"        // ESP
-        "pushf\n\t"                 // EFLAGS
-        "pushl $0x1B\n\t"           // CS (user code segment)
-        "pushl %[entry]\n\t"        // EIP
-        "iret\n\t"
-        :
-        : [entry]"r"(test_syscall), [stack]"r"(user_stack)
-        : "ax"
-    );
 }
 
 /**
@@ -498,8 +493,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     pcbA = task_create(test_syscall, "TaskA", CPU_USER_MODE);
     pcbB = task_create(task_B, "TaskB", CPU_KERNEL_MODE);
 
-    enqueue(pcbA);
     enqueue(pcbB);
+    enqueue(pcbA);
 
     process_control_block_t *t = task_list;
     printf("Task list:\n");
