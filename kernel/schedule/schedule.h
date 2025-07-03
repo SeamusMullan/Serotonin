@@ -64,6 +64,8 @@ void task_block(void);
 void task_unblock(process_control_block_t *pcb);
 void preempt_enable(void);
 void preempt_disable(void);
+void *alloc_user_stack(void);
+void *alloc_kernel_stack(void);
 
 inline void kernel_yield() {
     void *esp;

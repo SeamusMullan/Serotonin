@@ -126,7 +126,7 @@ __attribute__((noreturn)) void task_yield(int irq) {
     process_control_block_t* next = NULL;
     while ((next = dequeue()) != NULL) {
         if (next->state == PROCESS_STATE_READY) {
-            printf("found next: %p, name: %s, ring:%d, entry:%p, esp:%p\n",next, next->name,next->priv,next->entry,next->esp);
+            // printf("found next: %p, name: %s, ring:%d, entry:%p, esp:%p\n",next, next->name,next->priv,next->entry,next->esp);
             // found someone we can switch into
             next->state = PROCESS_STATE_RUNNING;
             unlock_scheduler();

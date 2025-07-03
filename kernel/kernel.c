@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <cpuid.h>
+#include "kernel.h"
 #include "tty.h"
 #include "string.h"
 #include "stdio/stdio.h"
@@ -374,19 +375,67 @@ void task_C(void) {
     }
 }
 
+process_control_block_t *kernel_load_elf(const char *path) {
+    vfs_node_t *node = vfs_open(path);
+    if (!node) {
+        return NULL;
+    }
+
+    uint32_t file_size = node->size;
+    uint8_t *elf_data = kernel_malloc(file_size);
+    if (!elf_data) {
+        vfs_close(node);
+        return NULL;
+    }
+    if (vfs_read(node, 0, file_size, (char *)elf_data) < 0) {
+        kernel_free(elf_data);
+        vfs_close(node);
+        return NULL;
+    }
+    vfs_close(node);
+
+    Elf32_Ehdr *ehdr = (Elf32_Ehdr *)elf_data;
+    if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0 ||
+        ehdr->e_ident[EI_CLASS] != ELFCLASS32 ||
+        ehdr->e_ident[EI_DATA]  != ELFDATA2LSB ||
+        ehdr->e_type             != ET_EXEC ||
+        ehdr->e_machine          != EM_386) {
+        kernel_free(elf_data);
+        return NULL;
+    }
+
+    Elf32_Phdr *phdr = (Elf32_Phdr *)(elf_data + ehdr->e_phoff);
+    for (int i = 0; i < ehdr->e_phnum; ++i) {
+        if (phdr[i].p_type != PT_LOAD) continue;
+
+        uint32_t vaddr   = phdr[i].p_vaddr;
+        uint32_t memsz   = phdr[i].p_memsz;
+        uint32_t filesz  = phdr[i].p_filesz;
+        uint32_t offset  = phdr[i].p_offset;
+        uint32_t flags   = phdr[i].p_flags;
+
+        // Copy data and zero BSS
+        memcpy((void *)vaddr, elf_data + offset, filesz);
+        if (memsz > filesz) {
+            memset((void *)(vaddr + filesz), 0, memsz - filesz);
+        }
+    }
+
+    kernel_free(elf_data);
+   
+    process_control_block_t *pcb = task_create((void (*)(void))ehdr->e_entry, "init", CPU_USER_MODE);
+
+    enqueue(pcb);
+
+    return pcb;
+}
+
+
 __attribute__((section(".userspace"))) void test_syscall() {
     volatile int someval = 2;
     while (1) {
         someval++;
         asm volatile("int $0x80");
-        // advanced systems programming right here
-        for (int i = 0; i < 999999999; i++) {
-            asm volatile("nop");
-            asm volatile("nop");
-            asm volatile("nop");
-            asm volatile("nop");
-            asm volatile("nop");
-        }
     }
 }
 
@@ -462,15 +511,14 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     printfs(PRINT_STATUS_INFO,"Attempting to mount rootfs drive 1\n");
 
-    //vfs_init();
-    //ide_init();
-    //fat32_init();
+    vfs_init();
+    ide_init();
+    fat32_init();
+    int mount_result = vfs_mount("1", "/", "fat32");
 
-    //int mount_result = vfs_mount("1", "/", "fat32");
-
-    //if (mount_result != 0) {
-    //    kernel_panic("unable to mount rootfs on drive 1");
-    //}
+    if (mount_result != 0) {
+        kernel_panic("unable to mount rootfs on drive 1");
+    }
 
     play_pc_speaker_sound(750);
     kernel_sleep(500);
@@ -478,11 +526,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     multitasking_init();
 
-    pcbA = task_create(test_syscall, "TaskA", CPU_USER_MODE);
-    //pcbB = task_create(task_B, "TaskB", CPU_KERNEL_MODE);
-
-    //enqueue(pcbB);
-    enqueue(pcbA);
+    kernel_load_elf("/bin/init");
 
     process_control_block_t *t = task_list;
     printf("Task list:\n");
