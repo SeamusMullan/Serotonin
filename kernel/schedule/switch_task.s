@@ -13,7 +13,31 @@
 .equ    OFF_CR3,   12
 .equ    OFF_ENTRY, 56
 .equ    OFF_PRIV,  61
-.equ    OFF_EBP,   64
+.equ    OFF_CTX,   64
+.equ    OFF_K_EBX,  68
+.equ    OFF_K_EBP,  72
+.equ    OFF_K_ESI,  76
+.equ    OFF_K_EDI,  80
+
+# context offsets
+.equ OFF_GS,            0
+.equ OFF_FS,            4
+.equ OFF_ES,            8
+.equ OFF_DS,           12
+.equ OFF_EDI,          16
+.equ OFF_ESI,          20
+.equ OFF_EBP,          24
+.equ OFF_ESP_AT_PUSHAL,28
+.equ OFF_EBX,          32
+.equ OFF_EDX,          36
+.equ OFF_ECX,          40
+.equ OFF_EAX,          44
+.equ OFF_STUB_EFLAGS,  48
+.equ OFF_EIP,          52
+.equ OFF_CS,           56
+.equ OFF_EFLAGS,       60
+.equ OFF_ESP_AT_TRAP,  64
+.equ OFF_SS,           68
 
 switch_task:
     # edx = next PCB
@@ -36,11 +60,19 @@ switch_task:
     movl    OFF_CR3(%edx), %eax
     movl    %eax,       %cr3
 
+    movl    OFF_K_EBP(%edx), %ebp
+    movl    OFF_K_EBX(%edx), %ebx
+    movl    OFF_K_EDI(%edx), %edi
+    movl    OFF_K_ESI(%edx), %esi
+
     # finally jump back to its saved EIP
     pushl   OFF_ENTRY(%edx)
     ret
 
 switch_task_iret:
+    movb $0x20, %al
+    outb %al, $0x20
+
     # edx = next PCB
     movl    4(%esp), %edx
     testl   %edx, %edx
@@ -56,13 +88,16 @@ switch_task_iret:
     movl    OFF_CR3(%edx), %eax
     movl    %eax,       %cr3
 
-    movb $0x20, %al
-    outb %al, $0x20
-
     # finally jump back to its saved EIP
     pushf
     push    $0x08
     pushl   OFF_ENTRY(%edx)
+
+    movl    OFF_K_EBP(%edx), %ebp
+    movl    OFF_K_EBX(%edx), %ebx
+    movl    OFF_K_EDI(%edx), %edi
+    movl    OFF_K_ESI(%edx), %esi
+
     iret
 
 .fail:
@@ -73,23 +108,38 @@ switch_task_iret:
 .switch_user_mode:
     # switch to the new PCB
     movl    %edx, current_task
-    movl    OFF_ESP(%edx), %esp
-    movl    OFF_CR3(%edx), %eax
-    movl    OFF_EBP(%edx), %ebp
-    movl    %eax,       %cr3
+    movl    OFF_CTX(%edx), %ecx
+    
+    # switch page dir
+    movl    OFF_CR3(%edx), %edx
+    movl    %edx, %cr3
 
-    mov $0x23, %ax
-    mov %ax, %ds
-    mov %ax, %es
-    mov %ax, %es
-    mov %ax, %fs
-    mov %ax, %gs
+    # restore data segment regs
+    movw    OFF_DS(%ecx), %dx
+    movw    %dx,   %ds
+    movw    OFF_ES(%ecx), %dx
+    movw    %dx,   %es
+    movw    OFF_FS(%ecx), %dx
+    movw    %dx,   %fs
+    movw    OFF_GS(%ecx), %dx
+    movw    %dx,   %gs
 
-    pushl $0x23
-    pushl %esp
-    pushf
-    pushl $0x1B
-    pushl OFF_ENTRY(%edx)
+    # build iret frame
+    pushl   OFF_SS(%ecx)
+    pushl   OFF_ESP_AT_TRAP(%ecx)
+    pushl   OFF_STUB_EFLAGS(%ecx)
+    pushl   OFF_CS(%ecx)
+    pushl   OFF_EIP(%ecx)
+
+    # restore the general purpose registers
+    movl    OFF_EDI(%ecx), %edi
+    movl    OFF_ESI(%ecx), %esi
+    movl    OFF_EBP(%ecx), %ebp
+    movl    OFF_EBX(%ecx), %ebx
+    movl    OFF_EDX(%ecx), %edx
+    movl    OFF_EAX(%ecx), %eax
+    movl    OFF_ECX(%ecx), %ecx
+
     iret
 
 .section .rodata

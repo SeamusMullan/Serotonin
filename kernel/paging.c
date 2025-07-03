@@ -56,7 +56,7 @@ void paging_init(uintptr_t fb_phys_base) {
             mk_entry((uintptr_t)&kernel_page_tables[pd_idx],PAGE_FLAGS);
     }
 
-    // Map framebuffer: 4 MiB at FB_VMA_BASE (PDE[10])
+    // Map framebuffer: 4 MiB at FB_VMA_BASE
     for (uint32_t i = 0; i < PAGE_ENTRIES; ++i)
         fb_page_table[i] = (fb_phys_base + i * PAGE_SIZE) | PAGE_FLAGS;
     page_directory[FB_VMA_BASE >> 22] = ((uintptr_t)&fb_page_table) | PAGE_FLAGS;

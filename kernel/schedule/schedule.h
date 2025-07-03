@@ -2,6 +2,7 @@
 #define _KERNEL_SCHEDULER
 
 #include <stdint.h>
+#include "../io/io.h"
 
 typedef struct process_control_block {
     uint32_t pid;
@@ -19,7 +20,12 @@ typedef struct process_control_block {
     uint8_t started;
     uint8_t priv;
 
-    void* ebp;
+    processor_context_t *processor_context;
+
+    void *ebx;
+    void *ebp;
+    void *esi;
+    void *edi;
 
 } process_control_block_t;
 
@@ -58,5 +64,35 @@ void task_block(void);
 void task_unblock(process_control_block_t *pcb);
 void preempt_enable(void);
 void preempt_disable(void);
+
+inline void kernel_yield() {
+    void *esp;
+    void *ebx;
+    void *ebp;
+    void *esi;
+    void *edi;
+    asm volatile (
+        "movl %%esp, %0\n\t"
+        "movl %%ebx, %1\n\t"
+        "movl %%ebp, %2\n\t"
+        "movl %%esi, %3\n\t"
+        "movl %%edi, %4\n\t"
+        : "=r"(esp),
+          "=r"(ebx),
+          "=r"(ebp),
+          "=r"(esi),
+          "=r"(edi)
+        :
+        :
+    );
+
+    current_task->esp = esp;
+    current_task->ebx = ebx;
+    current_task->esi = esi;
+    current_task->edi = edi;
+    current_task->ebp = ebp;  
+    
+    task_yield(0);
+}
 
 #endif

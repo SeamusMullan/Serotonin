@@ -9,6 +9,13 @@ extern volatile uint64_t last_quantum_tick;
 extern volatile int multitasking_ready;
 extern volatile int irq_disabled;
 
+typedef struct processor_context {
+    uint32_t gs, fs, es, ds;
+    uint32_t edi, esi, ebp, esp_at_pushal, ebx, edx, ecx, eax;
+    uint32_t stub_eflags;
+    uint32_t eip, cs, eflags, esp_at_trap, ss;
+} processor_context_t;
+
 static inline void outb(uint16_t port, uint8_t val)
 {
     asm volatile ( "outb %b0, %w1" : : "a"(val), "Nd"(port) : "memory");
@@ -53,7 +60,7 @@ static inline void enable_interrupts(void) {
     }
 }
 
-void irq_handler(int irq, uint32_t eip, uint32_t esp, uint32_t ebp);
+void irq_handler(int irq, processor_context_t *ctx);
 void pic_remap(int offset1, int offset2);
 void handle_scancode(uint8_t scancode);
 

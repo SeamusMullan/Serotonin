@@ -355,7 +355,7 @@ void task_B(void) {
 
         printf("esp top: %08x %08x %08x %08x\n", esp[0], esp[1], esp[2], esp[3]);
         printf("[B] tick %d, esp=%p\n", i, esp);
-        task_yield(0);
+        kernel_yield();
     }
 }
 
@@ -474,15 +474,15 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     printfs(PRINT_STATUS_INFO,"Attempting to mount rootfs drive 1\n");
 
-    vfs_init();
-    ide_init();
-    fat32_init();
+    //vfs_init();
+    //ide_init();
+    //fat32_init();
 
-    int mount_result = vfs_mount("1", "/", "fat32");
+    //int mount_result = vfs_mount("1", "/", "fat32");
 
-    if (mount_result != 0) {
-        kernel_panic("unable to mount rootfs on drive 1");
-    }
+    //if (mount_result != 0) {
+    //    kernel_panic("unable to mount rootfs on drive 1");
+    //}
 
     play_pc_speaker_sound(750);
     kernel_sleep(500);

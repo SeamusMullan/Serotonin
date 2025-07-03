@@ -103,22 +103,11 @@ void multitasking_make_ready(void) {
  * @param irq The IRQ number that caused the yield.
  */
 __attribute__((noreturn)) void task_yield(int irq) {
-    void *esp;
-
-
-    asm volatile ("movl %%esp, %0"
-        : "=r"(esp)
-        :
-        :
-    );
     lock_scheduler();
     //preempt_disable();
 
     if (current_task->state == PROCESS_STATE_RUNNING) {
         current_task->state = PROCESS_STATE_READY;
-        if (current_task->priv == CPU_KERNEL_MODE) {
-            current_task->esp = esp;
-        }
         enqueue(current_task);
     }
 
@@ -132,8 +121,9 @@ __attribute__((noreturn)) void task_yield(int irq) {
             //preempt_enable();
 
             // if nothing is pending, switch
-            if (irq == 1)
+            if (irq == 1) {
                 switch_task_iret(next);
+            }
             switch_task(next);
             __builtin_unreachable();
         }
@@ -171,12 +161,26 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
     pcb->priv  = priv;
     strncpy(pcb->name, name, sizeof(pcb->name)-1);
 
+    processor_context_t *ctx = (processor_context_t *)kernel_malloc(sizeof(*ctx));
+    memset(ctx, 0, sizeof(*ctx));
+    pcb->processor_context = ctx;
+
     // create stack
     uint8_t *stack;
     uint32_t *stk_top;
     if (priv == CPU_USER_MODE) {
         stack = (uint8_t*)alloc_user_stack();
         stk_top = (uint32_t*)(stack + USER_STACK_SIZE);
+        pcb->processor_context->ds          = 0x23;
+        pcb->processor_context->es          = 0x23;
+        pcb->processor_context->fs          = 0x23;
+        pcb->processor_context->gs          = 0x23;
+        pcb->processor_context->ss          = 0x23; 
+        pcb->processor_context->esp_at_trap = (uint32_t)stk_top;
+        pcb->processor_context->stub_eflags = 0x00000202;
+        pcb->processor_context->eflags      = 0x00000202;
+        pcb->processor_context->cs          = 0x1B; 
+        pcb->processor_context->eip         = (uint32_t)entry;
     } else {
         stack = (uint8_t*)kernel_malloc(KERNEL_STACK_SIZE);
         stk_top = (uint32_t*)(stack + KERNEL_STACK_SIZE);
