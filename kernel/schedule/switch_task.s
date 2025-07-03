@@ -45,14 +45,14 @@ switch_task:
     testl   %edx, %edx
     jz      .fail
 
-    # user mode switch
-    cmpb $3, OFF_PRIV(%edx)
-    jz .switch_user_mode
-
     # store ESP0 into the PCB and TSS
     movl    current_task, %ecx
     movl    OFF_ESP0(%ecx), %ebx
     movl    %ebx, sys_tss+4 # sys_tss.esp0
+
+    # user mode switch
+    cmpb $3, OFF_PRIV(%edx)
+    jz .switch_user_mode
 
     # switch to the new PCB
     movl    %edx, current_task
@@ -77,6 +77,11 @@ switch_task_iret:
     movl    4(%esp), %edx
     testl   %edx, %edx
     jz      .fail
+
+    # store ESP0 into the PCB and TSS
+    movl    current_task, %ecx
+    movl    OFF_ESP0(%ecx), %ebx
+    movl    %ebx, sys_tss+4 # sys_tss.esp0
 
     # user mode switch
     cmpb $3, OFF_PRIV(%edx)

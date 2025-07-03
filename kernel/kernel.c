@@ -479,9 +479,9 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     multitasking_init();
 
     pcbA = task_create(test_syscall, "TaskA", CPU_USER_MODE);
-    pcbB = task_create(task_B, "TaskB", CPU_KERNEL_MODE);
+    //pcbB = task_create(task_B, "TaskB", CPU_KERNEL_MODE);
 
-    enqueue(pcbB);
+    //enqueue(pcbB);
     enqueue(pcbA);
 
     process_control_block_t *t = task_list;
