@@ -22,7 +22,7 @@ void irq_handler(int irq, processor_context_t *ctx) {
 
         if (preempt_count == 0 && current_task->priv == CPU_USER_MODE) {
             last_quantum_tick++;
-            int schedule_quantum = MILLISECONDS_TO_TICKS(500);
+            int schedule_quantum = MILLISECONDS_TO_TICKS(100);
             if (last_quantum_tick == schedule_quantum) {
                 last_quantum_tick = 1;
                 task_yield(1);

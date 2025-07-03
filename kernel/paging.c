@@ -20,6 +20,9 @@ page_table_t user_page_tables[64];
 __attribute__((aligned(PAGE_SIZE), section(".identity_data")))
 page_table_t fb_page_table;
 
+__attribute__((aligned(PAGE_SIZE), section(".identity_data")))
+page_table_t kernel_stack_page_table;
+
 // Global paging info
 uintptr_t page_dir_ptr;
 uintptr_t fb_addr_ptr;
@@ -79,6 +82,12 @@ void paging_init(uintptr_t fb_phys_base) {
         }
         page_directory[1 + pd_idx] = ((uintptr_t)&user_page_tables[pd_idx]) | USER_PAGE_FLAGS;
     }
+
+    // Map 4 MiB at 0xF0000000 for kernel stack
+    for (uint32_t i = 0; i < PAGE_ENTRIES; ++i) {
+        kernel_stack_page_table[i] = (KERNEL_STACK_PHYS + i * PAGE_SIZE) | PAGE_FLAGS;
+    }
+    page_directory[KERNEL_STACK_VMA >> 22] = mk_entry((uintptr_t)&kernel_stack_page_table, PAGE_FLAGS);
 
 
     // Enable paging

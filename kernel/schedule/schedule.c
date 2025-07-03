@@ -16,6 +16,7 @@ process_control_block_t *current_task = NULL;
 process_control_block_t *task_list    = NULL;
 static uint32_t next_pid = 0;
 static uint32_t next_user_stack = USER_STACK_TOP;
+static uint32_t next_kernel_stack = KERNEL_STACK_TOP;
 volatile uint32_t preempt_count = 0;
 volatile uint8_t pending_schedule = 0;
 
@@ -41,6 +42,17 @@ void *alloc_user_stack(void) {
     next_user_stack -= USER_STACK_SIZE;
 
     return (void *)next_user_stack;
+}
+
+void *alloc_kernel_stack(void) {
+    if (next_kernel_stack < KERNEL_STACK_BOTTOM + KERNEL_STACK_SIZE) {
+        kernel_panic("alloc_kernel_stack: out of user stack space!");
+        return NULL;
+    }
+
+    next_kernel_stack -= KERNEL_STACK_SIZE;
+
+    return (void *)next_kernel_stack;
 }
 
 /**
@@ -182,7 +194,7 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
         pcb->processor_context->cs          = 0x1B; 
         pcb->processor_context->eip         = (uint32_t)entry;
     } else {
-        stack = (uint8_t*)kernel_malloc(KERNEL_STACK_SIZE);
+        stack = (uint8_t*)alloc_kernel_stack();
         stk_top = (uint32_t*)(stack + KERNEL_STACK_SIZE);
     }
     memset(stack, 0, sizeof(*stack));

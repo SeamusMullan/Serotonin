@@ -386,18 +386,6 @@ __attribute__((section(".userspace"))) void test_syscall() {
             asm volatile("nop");
             asm volatile("nop");
             asm volatile("nop");
-            asm volatile("nop");
-            asm volatile("nop");
-            asm volatile("nop");
-            asm volatile("nop");
-            asm volatile("nop");
-            asm volatile("nop");
-            asm volatile("nop");
-            asm volatile("nop");
-            asm volatile("nop");
-            asm volatile("nop");
-            asm volatile("nop");
-            asm volatile("nop");
         }
     }
 }
