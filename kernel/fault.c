@@ -132,7 +132,7 @@ void page_fault_handler(uint32_t error_code) {
 
     if (multitasking_ready == 1 && current_task->priv == CPU_USER_MODE) {
         printfs(PRINT_STATUS_ERROR,"Process \"%s\" (pid=%d) has attempted an illegal operation on memory and will be terminated.\n", current_task->name,current_task->pid);
-        task_exit();
+        task_exit(EXIT_SIGSEGV);
         return;
     }
 
@@ -144,7 +144,7 @@ void gp_fault_handler(uint32_t error_code) {
     
     if (multitasking_ready == 1 && current_task->priv == CPU_USER_MODE) {
         printfs(PRINT_STATUS_ERROR,"Process \"%s\" (pid=%d) has attempted to execute an illegal instruction and will be terminated.\n", current_task->name,current_task->pid);
-        task_exit();
+        task_exit(EXIT_SIGILL);
         return;
     }
 
