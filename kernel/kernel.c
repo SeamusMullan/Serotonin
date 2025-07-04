@@ -520,10 +520,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         kernel_panic("unable to mount rootfs on drive 1");
     }
 
-    play_pc_speaker_sound(750);
-    kernel_sleep(500);
-    stop_pc_speaker_sound();
-
     multitasking_init();
 
     kernel_load_elf("/bin/init");
