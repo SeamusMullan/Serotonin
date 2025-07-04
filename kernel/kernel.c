@@ -430,15 +430,6 @@ process_control_block_t *kernel_load_elf(const char *path) {
     return pcb;
 }
 
-
-__attribute__((section(".userspace"))) void test_syscall() {
-    volatile int someval = 2;
-    while (1) {
-        someval++;
-        asm volatile("int $0x80");
-    }
-}
-
 /**
  * @brief The main entry point of the kernel.
  *
@@ -522,7 +513,12 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     multitasking_init();
 
-    kernel_load_elf("/bin/init");
+    printfs(PRINT_STATUS_INFO,"Attempting to load /bin/init\n");
+
+    process_control_block_t *init = kernel_load_elf("/bin/init");
+    if (!init) {
+        kernel_panic("unable to load init process!");
+    }
 
     process_control_block_t *t = task_list;
     printf("Task list:\n");

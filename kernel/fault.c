@@ -131,6 +131,7 @@ void page_fault_handler(uint32_t error_code) {
            (error_code & (1<<5)) ? ", reserved violation of PAT bits" : "");
 
     if (multitasking_ready == 1 && current_task->priv == CPU_USER_MODE) {
+        printfs(PRINT_STATUS_ERROR,"Process \"%s\" (pid=%d) has attempted an illegal operation on memory and will be terminated.\n", current_task->name,current_task->pid);
         task_exit();
         return;
     }
@@ -140,6 +141,13 @@ void page_fault_handler(uint32_t error_code) {
 
 void gp_fault_handler(uint32_t error_code) {
     printfs(PRINT_STATUS_ERROR,"A general protection fault has occured. Error code: 0x%08x\n",error_code);
+    
+    if (multitasking_ready == 1 && current_task->priv == CPU_USER_MODE) {
+        printfs(PRINT_STATUS_ERROR,"Process \"%s\" (pid=%d) has attempted to execute an illegal instruction and will be terminated.\n", current_task->name,current_task->pid);
+        task_exit();
+        return;
+    }
+
     kernel_panic("exception - general protection fault (#GP)");
 }
 

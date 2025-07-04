@@ -18,13 +18,6 @@ SECTIONS
 		*(.identity_data)
 	}
 
-
-	. = 0x00400000;
-
-	.userspace 0x00400000 : AT(0x20000000) {
-		KEEP(*(.userspace))
-	}
-
 	. += 0xC0000000;
 	/* First put the multiboot header, as it is required to be put very early
 	   in the image or the bootloader won't recognize the file format.
