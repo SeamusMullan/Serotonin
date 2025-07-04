@@ -9,13 +9,20 @@ isr_syscall:
     push %fs
     push %gs
 
+    pushl %eax
     mov $0x10, %ax       # kernel data segment
     mov %ax, %ds
     mov %ax, %es
     mov %ax, %fs
     mov %ax, %gs
+    popl %eax
 
+    pushl %edx
+    pushl %ecx
+    pushl %ebx
+    pushl %eax
     call system_call
+    add $16, %esp
 
     pop %gs
     pop %fs
