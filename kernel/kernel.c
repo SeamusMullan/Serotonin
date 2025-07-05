@@ -24,7 +24,7 @@
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 1
-#define KERNEL_VERSION_LOW 0
+#define KERNEL_VERSION_LOW 1
 
 #define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
 #define HEAP_SIZE   (KERNEL_HEAP_SIZE)
@@ -251,17 +251,53 @@ void kernel_panic(char* str) {
     asm volatile ("mov %%cr4, %0" : "=r"(cr4));
     asm volatile ("str %0" : "=r"(tr));;
 
+    for (int y = 0; y < SCREEN_HEIGHT; ++y)
+        for (int x = 0; x < SCREEN_WIDTH; ++x)
+            vbe_fast_putpixel(x, y, 0xFF880000);
 
-    printfs(PRINT_STATUS_FATAL, "Kernel panic. Please reboot your computer.\n");
-    printfs(PRINT_STATUS_FATAL, "Reason: %s\n", str);
-    printfs(PRINT_STATUS_FATAL, "Kernel version: %d.%d.%d\n", KERNEL_VERSION_HIGH, KERNEL_VERSION_MID, KERNEL_VERSION_LOW);
-    printfs(PRINT_STATUS_FATAL, "EIP: 0x%08x\n", (unsigned int)eip);
-    printfs(PRINT_STATUS_FATAL, "EAX: 0x%08x  EBX: 0x%08x  ECX: 0x%08x  EDX: 0x%08x\n",(unsigned int)eax, (unsigned int)ebx, (unsigned int)ecx, (unsigned int)edx);
-    printfs(PRINT_STATUS_FATAL, "ESI: 0x%08x  EDI: 0x%08x  EBP: 0x%08x  ESP: 0x%08x\n",(unsigned int)esi, (unsigned int)edi, (unsigned int)ebp, (unsigned int)esp);
-    printfs(PRINT_STATUS_FATAL, "EFLAGS: 0x%08x  CS: 0x%04x  DS: 0x%04x  SS: 0x%04x\n",(unsigned int)eflags, (unsigned int)cs, (unsigned int)ds, (unsigned int)ss);
-    printfs(PRINT_STATUS_FATAL, "CR0: 0x%08x  CR2 (fault addr): 0x%08x  CR3 (page directory base): 0x%08x  CR4: 0x%08x\n",
+    vbe_set_cursor(0,0);
+    vbe_setcolor_bg(0xFF880000);
+
+    printf(" _   _   _ \n");
+    printf("| | | | | |\n");
+    printf("| | | | | |\n");
+    printf("| | | | | |\n");
+    printf("| | | | | |\n");
+    printf("|_| |_| |_|\n");
+    printf("(_) (_) (_)\n\n");
+
+    printf("The Serotonin kernel has entered into an unrecoverable state and must be restarted manually.\n");
+    printf("*** Guru Meditation: %s ***\n\n", str);
+
+    if (multitasking_ready == 1) {
+        const char *mode = (current_task->priv == 0) ? "kernel" : (current_task->priv == 3) ? "user" : "whatthefuck";
+        printf("Process: %s (pid=%d)\n",current_task->name,current_task->pid);
+        printf("Process was running in %s mode (ring:%d)\n",mode,current_task->priv);
+        printf("Last signal: %d, process state: %d\n\n", current_task->signal, current_task->state);
+    }
+
+    printf("Kernel version: %d.%d.%d\n", KERNEL_VERSION_HIGH, KERNEL_VERSION_MID, KERNEL_VERSION_LOW);
+    printf("EIP: 0x%08x\n", (unsigned int)eip);
+    printf("EAX: 0x%08x  EBX: 0x%08x  ECX: 0x%08x  EDX: 0x%08x\n",(unsigned int)eax, (unsigned int)ebx, (unsigned int)ecx, (unsigned int)edx);
+    printf("ESI: 0x%08x  EDI: 0x%08x  EBP: 0x%08x  ESP: 0x%08x\n",(unsigned int)esi, (unsigned int)edi, (unsigned int)ebp, (unsigned int)esp);
+    printf("EFLAGS: 0x%08x  CS: 0x%04x  DS: 0x%04x  SS: 0x%04x\n",(unsigned int)eflags, (unsigned int)cs, (unsigned int)ds, (unsigned int)ss);
+    printf("CR0: 0x%08x  CR2 (fault addr): 0x%08x  CR3 (page directory base): 0x%08x  CR4: 0x%08x\n",
             (unsigned int)cr0, (unsigned int)cr2, (unsigned int)cr3, (unsigned int)cr4);
-    printfs(PRINT_STATUS_FATAL, "TSS.ESP0: 0x%08x,  TSS.SS0: 0x%04x, TR: 0x%04x\n", sys_tss.esp0, sys_tss.ss0,tr);
+    printf("TSS.ESP0: 0x%08x,  TSS.SS0: 0x%04x, TR: 0x%04x\n", sys_tss.esp0, sys_tss.ss0,tr);
+
+    uint8_t* ptr = (uint8_t*)eip;
+
+    for (int i = 0; i < 0x12C; i++) {
+        if (i % 20 == 0) {
+            printf("\n0x%08x: ", (unsigned int)(ptr + i));
+        } else if (i % 4 == 0) {
+            printf(" ");
+        }
+        printf("%02x", ptr[i]);
+    }
+    printf("\n");
+
+    vbe_flip();
 
     abort();
 }
