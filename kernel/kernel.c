@@ -273,8 +273,34 @@ void kernel_panic(char* str) {
         const char *mode = (current_task->priv == 0) ? "kernel" : (current_task->priv == 3) ? "user" : "whatthefuck";
         printf("Process: %s (pid=%d)\n",current_task->name,current_task->pid);
         printf("Process was running in %s mode (ring:%d)\n",mode,current_task->priv);
-        printf("Last signal: %d, process state: %d\n\n", current_task->signal, current_task->state);
+        printf("Last signal: %d, process state: %d\n", current_task->signal, current_task->state);
+    
+        uint8_t* ptr = (uint8_t*)current_task->processor_context->eip;
+
+        for (int i = 0; i < 0x8C; i++) {
+            if (i % 20 == 0) {
+                printf("\n0x%08x: ", (unsigned int)(ptr + i));
+            } else if (i % 4 == 0) {
+                printf(" ");
+            }
+            printf("%02x", ptr[i]);
+        }
+        printf("\n");
+    } else {
+        printf("[multitasking not ready!]\n");
     }
+
+    uint8_t* ptr = (uint8_t*)eip;
+
+    for (int i = 0; i < 0x8C; i++) {
+        if (i % 20 == 0) {
+            printf("\n0x%08x: ", (unsigned int)(ptr + i));
+        } else if (i % 4 == 0) {
+            printf(" ");
+        }
+        printf("%02x", ptr[i]);
+    }
+    printf("\n\n");
 
     printf("Kernel version: %d.%d.%d\n", KERNEL_VERSION_HIGH, KERNEL_VERSION_MID, KERNEL_VERSION_LOW);
     printf("EIP: 0x%08x\n", (unsigned int)eip);
@@ -284,18 +310,6 @@ void kernel_panic(char* str) {
     printf("CR0: 0x%08x  CR2 (fault addr): 0x%08x  CR3 (page directory base): 0x%08x  CR4: 0x%08x\n",
             (unsigned int)cr0, (unsigned int)cr2, (unsigned int)cr3, (unsigned int)cr4);
     printf("TSS.ESP0: 0x%08x,  TSS.SS0: 0x%04x, TR: 0x%04x\n", sys_tss.esp0, sys_tss.ss0,tr);
-
-    uint8_t* ptr = (uint8_t*)eip;
-
-    for (int i = 0; i < 0x12C; i++) {
-        if (i % 20 == 0) {
-            printf("\n0x%08x: ", (unsigned int)(ptr + i));
-        } else if (i % 4 == 0) {
-            printf(" ");
-        }
-        printf("%02x", ptr[i]);
-    }
-    printf("\n");
 
     vbe_flip();
 
