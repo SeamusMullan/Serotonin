@@ -3,73 +3,86 @@
 #include "../../../kernel.h"
 #include <stdint.h>
 #include <stddef.h>
-#include <stdlib.h>
+#include "../../../stdlib/stdlib.h"
+#include "opl2_startup.h"
 
 /**
  * @brief
  *
- * This file has some bs audio things, including a shitty ahh startup sound.
- * - ts could be cooked
- * - ts could sound shit
- * - ts is gonna be absolutely fried brother
+ * This file has some bs audio things, including a startup sound
+ * that is arguably "not that bad" now.
  */
 
 void make_a_noise()
 {
-
     opl2_init(0x388);
 
     opl2_instrument_t bell = {
-        .mod_tl = 0x00,
+        .mod_tl = 0x10, // slightly softened
         .car_tl = 0x00,
-        .mod_mult = 10,
+        .mod_mult = 6,
         .car_mult = 1,
-        .mod_ar = 12,
-        .mod_dr = 3,
-        .mod_sl = 2,
-        .mod_rr = 4,
-        .car_ar = 12,
-        .car_dr = 3,
-        .car_sl = 2,
-        .car_rr = 4,
-        .feedback = 0,
+        .mod_ar = 15,
+        .mod_dr = 4,
+        .mod_sl = 0,
+        .mod_rr = 3,
+        .car_ar = 15,
+        .car_dr = 4,
+        .car_sl = 0,
+        .car_rr = 3,
+        .feedback = 2,
         .connection = 1,
     };
 
     opl2_set_instrument(0, &bell);
 
-    typedef struct
-    {
-        uint8_t note;
-        uint32_t duration;
-    } note_event_t;
+    play_chord_progression();
+}
 
-    static note_event_t melody[] = {
-        {NOTE_C0, 400},
-        {NOTE_C1, 400},
-        {NOTE_C2, 400},
-        {NOTE_C3, 400},
-        {NOTE_C4, 400},
-        {NOTE_C5, 400},
-        {NOTE_C6, 400},
-        {NOTE_C7, 400},
-        {NOTE_C8, 400},
+void play_chord(uint8_t ch_base, uint8_t n1, uint8_t n2, uint8_t n3, uint32_t duration)
+{
+    opl2_play_note(ch_base + 0, n1);
+    opl2_play_note(ch_base + 1, n2);
+    opl2_play_note(ch_base + 2, n3);
+
+    kernel_sleep(duration);
+
+    opl2_set_frequency(ch_base + 0, 440.0f, 0);
+    opl2_set_frequency(ch_base + 1, 440.0f, 0);
+    opl2_set_frequency(ch_base + 2, 440.0f, 0);
+}
+
+void play_chord_progression()
+{
+    opl2_init(0x388);
+
+    opl2_instrument_t saw_like = {
+        .mod_tl = 0x3F, // Silent modulator
+        .car_tl = 0x00, // Full-volume carrier
+        .mod_mult = 1,  // Irrelevant (mod is silent)
+        .car_mult = 15,  // High harmonic density
+        .mod_ar = 4,
+        .mod_dr = 8,
+        .mod_sl = 0,
+        .mod_rr = 3,
+        .car_ar = 15, // Fast attack
+        .car_dr = 6,  // Some decay
+        .car_sl = 0,
+        .car_rr = 4,     // Slight release
+        .feedback = 7,   // Maximum feedback = more raspy/buzzy
+        .connection = 1, // Additive (mod not used)
     };
 
-    /* play sequence */
-    for (size_t i = 0; i < sizeof(melody) / sizeof(*melody); ++i)
+    for (int ch = 0; ch < 3; ++ch)
     {
-        uint8_t n = melody[i].note;
-        if (n)
-        {
-            opl2_play_note_duration(0, n, melody[i].duration);
-        }
-        else
-        {
-            /* rest */
-            kernel_sleep(melody[i].duration);
-        }
-        /* brief gap between notes */
-        kernel_sleep(50);
+        opl2_set_instrument(ch, &saw_like);
     }
+
+    play_chord(0, NOTE_C5, NOTE_E5, NOTE_G5, 600); // C major
+    kernel_sleep(100);
+    play_chord(0, NOTE_A4, NOTE_C5, NOTE_E5, 600); // A minor
+    kernel_sleep(100);
+    play_chord(0, NOTE_F4, NOTE_A4, NOTE_C5, 600); // F major
+    kernel_sleep(100);
+    play_chord(0, NOTE_G4, NOTE_B4, NOTE_D5, 600); // G major
 }

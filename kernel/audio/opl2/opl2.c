@@ -17,7 +17,7 @@ static uint16_t opl2_base = 0x388;
 static const opl2_channel_t _channel_map[9] = {
     { 0,  0,  3 },  /* ch0: mod=op0, car=op3 */
     { 1,  1,  4 },  /* ch1: mod=op1, car=op4 */
-    { 2,  2,  5 },  /* ch2: mod=op2, car=op5 */
+    { 2,  2,  5 },  /* ch2: mod=op3, car=op5 */
     { 3,  6,  9 },  /* ch3: mod=op6, car=op9 */
     { 4,  7, 10 },  /* ch4: mod=op7, car=op10 */
     { 5,  8, 11 },  /* ch5: mod=op8, car=op11 */
@@ -79,7 +79,7 @@ static void _calc_fnum_block(float freq_hz,
                              uint16_t* out_fnum,
                              uint8_t *out_block)
 {
-    // clamp sensible range 
+    // clamp sensible range
     if (freq_hz < 20.0f)  freq_hz = 20.0f;
     if (freq_hz > 20000.0f) freq_hz = 20000.0f;
 
@@ -137,25 +137,25 @@ void opl2_play_note_duration(uint8_t ch, uint8_t midi_note, uint32_t duration_ms
     opl2_set_frequency(ch, freq, 0);
 }
 
-void opl2_set_instrument(uint8_t ch, const opl2_instrument_t* instr) {  
-    opl2_channel_t c;  
-    if (!opl2_get_channel(ch, &c) || !instr) return;  
+void opl2_set_instrument(uint8_t ch, const opl2_instrument_t* instr) {
+    opl2_channel_t c;
+    if (!opl2_get_channel(ch, &c) || !instr) return;
 
     // output levels
-    opl2_write(0x40 + c.mod_op, instr->mod_tl);  
-    opl2_write(0x40 + c.car_op, instr->car_tl);  
+    opl2_write(0x40 + c.mod_op, instr->mod_tl);
+    opl2_write(0x40 + c.car_op, instr->car_tl);
 
-    // multipliers  
-    opl2_write(0x20 + c.mod_op, instr->mod_mult & 0x0F);  
-    opl2_write(0x20 + c.car_op, instr->car_mult & 0x0F);  
+    // multipliers
+    opl2_write(0x20 + c.mod_op, instr->mod_mult & 0x0F);
+    opl2_write(0x20 + c.car_op, instr->car_mult & 0x0F);
 
     // ADSR
-    opl2_write(0x60 + c.mod_op, (instr->mod_ar << 4) | (instr->mod_dr & 0x0F));  
-    opl2_write(0x60 + c.car_op, (instr->car_ar << 4) | (instr->car_dr & 0x0F));  
-    opl2_write(0x80 + c.mod_op, (instr->mod_sl << 4) | (instr->mod_rr & 0x0F));  
-    opl2_write(0x80 + c.car_op, (instr->car_sl << 4) | (instr->car_rr & 0x0F));  
+    opl2_write(0x60 + c.mod_op, (instr->mod_ar << 4) | (instr->mod_dr & 0x0F));
+    opl2_write(0x60 + c.car_op, (instr->car_ar << 4) | (instr->car_dr & 0x0F));
+    opl2_write(0x80 + c.mod_op, (instr->mod_sl << 4) | (instr->mod_rr & 0x0F));
+    opl2_write(0x80 + c.car_op, (instr->car_sl << 4) | (instr->car_rr & 0x0F));
 
     // feedback & connection
-    uint8_t v = ((instr->feedback & 0x07) << 1) | (instr->connection ? 1 : 0);  
-    opl2_write(0xC0 + ch, v);  
-}  
+    uint8_t v = ((instr->feedback & 0x07) << 1) | (instr->connection ? 1 : 0);
+    opl2_write(0xC0 + ch, v);
+}
