@@ -11,7 +11,7 @@ volatile int irq_disabled = 1;
 
 /**
  * @brief Handle IRQ (Interrupt Request) signals.
- * 
+ *
  * @param irq The IRQ number.
  */
 void irq_handler(int irq, processor_context_t *ctx) {
@@ -31,6 +31,7 @@ void irq_handler(int irq, processor_context_t *ctx) {
         }
         goto end_irq;
     } else if (irq == 1) {
+        // fires every keypress
         uint8_t scancode = inb(0x60);
         handle_scancode(scancode);
     }
