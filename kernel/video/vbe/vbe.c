@@ -218,7 +218,13 @@ void vbe_flip(void) {
         dirty_lines[y] = 0;
     }
 
+    vbe_clear_dirty_bitmap();
+}
 
+void vbe_flip_all(void) {
+    uint32_t *src_buf = vbe_info.backbuffer;
+    uint32_t *dst_buf = vbe_info.framebuffer;
+    memcpy(dst_buf,src_buf, fb_size_bytes);
     vbe_clear_dirty_bitmap();
 }
 
@@ -468,4 +474,10 @@ void vbe_set_cursor(uint32_t col, uint32_t row) {
     }
     term_cursor_col = col;
     term_cursor_row = row;
+}
+
+void vbe_clear_screen(uint32_t color) {
+    uint32_t *back_buf = vbe_info.backbuffer;
+    memset(back_buf,color, fb_size_bytes);
+    vbe_clear_dirty_bitmap();
 }

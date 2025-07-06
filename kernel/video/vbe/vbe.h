@@ -57,6 +57,7 @@ void vbe_init(multiboot_info_t *mbi);
 void vbe_putpixel(uint32_t x, uint32_t y, uint32_t color);
 void vbe_fillrect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color);
 void vbe_flip(void);
+void vbe_flip_all(void);
 void vbe_drawglyph(FontGlyph *glyph, uint32_t x, uint32_t y, uint32_t color);
 void vbe_puts(const char *str, uint32_t x, uint32_t y, uint32_t color);
 static uint32_t term_max_cols(void);
@@ -73,5 +74,6 @@ void vbe_fast_draw_hline(uint32_t *buf, uint32_t pitch, uint32_t x, uint32_t y, 
 void vbe_fast_putpixel(uint32_t x, uint32_t y, uint32_t color);
 void vbe_fast_mark_dirty(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 void vbe_set_cursor(uint32_t col, uint32_t row);
+void vbe_clear_screen(uint32_t color);
 
 #endif
