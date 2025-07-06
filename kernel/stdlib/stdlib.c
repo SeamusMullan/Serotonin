@@ -1033,3 +1033,45 @@ int strcasecmp(const char *s1, const char *s2) {
 
     return tolower((unsigned char) *s1) - tolower((unsigned char) *s2);
 }
+
+/*
+ * Compute x^y for single-precision floats
+ *    powf(x,y) = 2^( y * log2(x) )
+ *
+ * NOTE: only valid for x>0.0f, no domain or range checking.
+ */
+float powf(float x, float y) {
+    float result;
+    asm volatile(
+        /* st0 = y */
+        "flds   %[y]\n\t"
+        /* st0 = x; st1 = y */
+        "flds   %[x]\n\t"
+        /* compute y * log2(x) st0 */
+        "fyl2x\n\t"
+        /* duplicate for split into int+frac */
+        "fld    %%st(0)\n\t"
+        /* round st0 to integer st0=int, st1=orig */
+        "frndint\n\t"
+        /* st1 = orig − int fractional part in st1 */
+        "fsub   %%st(0), %%st(1)\n\t"
+        /* swap so st0=frac, st1=int */
+        "fxch   %%st(1)\n\t"
+        /* compute 2^frac − 1 in st0 */
+        "f2xm1\n\t"
+        /* push +1.0, so stack is [1.0, 2^frac−1, int] */
+        "fld1\n\t"
+        /* add: 1 + (2^frac−1) = 2^frac; pop that extra slot */
+        "faddp  %%st(1), %%st(0)\n\t"
+        /* scale by 2^int st0 = 2^frac * 2^int = 2^(int+frac) */
+        "fscale\n\t"
+        /* pop the integer exponent, leaving only the result */
+        "fstp   %%st(1)\n\t"
+        "fstps  %[r]\n\t"
+        : [r]  "=m" (result)
+        : [x]  "m"  (x),
+          [y]  "m"  (y)
+        : "st", "memory"
+    );
+    return result;
+}
