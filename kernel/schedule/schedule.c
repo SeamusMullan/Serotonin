@@ -149,7 +149,7 @@ __attribute__((noreturn)) void task_yield(int irq) {
  * @brief Terminates the currently running task and switches to the next one.
  */
 void task_exit(uint8_t exit) {
-    printfs(PRINT_STATUS_DEBUG, "task_exit: Task %s (pid=%u) exited with reason %d\n", current_task->name, current_task->pid,exit);
+    printfs(PRINT_STATUS_DEBUG, "task_exit: Task %s (pid=%u) exited:%s\n", current_task->name, current_task->pid,to_signal_name(exit));
     current_task->state = PROCESS_STATE_TERMINATED;
     current_task->signal = exit;
 

@@ -118,4 +118,14 @@ inline void kernel_yield() {
     task_yield(0);
 }
 
+static inline const char* to_signal_name(int signal_id) {
+    static const char* const signal_names[16] = {
+        "SIG0",     "SIGHUP",  "SIGINT",  "SIGQUIT",
+        "SIGILL",   "SIGTRAP", "SIGABRT", "SIGBUS",
+        "SIGFPE",   "SIGKILL", "SIGUSR1", "SIGSEGV",
+        "SIGUSR2",  "SIGPIPE", "SIGALRM", "SIGTERM"
+    };
+    return (signal_id >= 0 && signal_id < 16) ? signal_names[signal_id] : "UNKNOWN";
+}
+
 #endif
