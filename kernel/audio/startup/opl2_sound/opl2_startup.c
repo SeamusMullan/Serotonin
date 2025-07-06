@@ -1,7 +1,9 @@
-#include "../opl2/opl2.h"
-#include "../../io/io.h"
+#include "../../opl2/opl2.h"
+#include "../../../io/io.h"
+#include "../../../kernel.h"
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
 
 /**
  * @brief

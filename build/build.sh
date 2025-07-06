@@ -6,8 +6,8 @@ OS_TYPE="$(uname)"
 
 cd ../kernel
 
-i686-elf-as boot.s -o boot.o 
-i686-elf-as isr.s -o isr.o 
+i686-elf-as boot.s -o boot.o
+i686-elf-as isr.s -o isr.o
 i686-elf-gcc -c idt.c -o idt.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
 i686-elf-gcc -c tty.c -o tty.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse
 i686-elf-gcc -c gdt.c -o gdt.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
@@ -32,9 +32,12 @@ i686-elf-gcc -c schedule/schedule.c -o schedule/schedule.o -std=gnu99 -ffreestan
 i686-elf-as -c schedule/switch_task.s -o schedule/switch_task.o
 i686-elf-gcc -c audio/pcspeaker/pcspeaker.c -o audio/pcspeaker/pcspeaker.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse
 i686-elf-gcc -c audio/opl2/opl2.c -o audio/opl2/opl2.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse
+i686-elf-gcc -c audio/startup/opl2_sound/opl2_startup.c -o audio/startup/opl2_sound/opl2_startup.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse
 i686-elf-as -c syscall/isr_syscall.s -o syscall/isr_syscall.o
 i686-elf-gcc -c syscall/syscall.c -o syscall/syscall.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse
-i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt.o idt.o isr.o fault.o io/irq.o io/pic.o io/keyboard.o paging.o video/vbe/vbe.o video/font.o video/splash.o filesystem/vfs.o filesystem/tmpfs/tmpfs.o filesystem/ide.o filesystem/fat32/fat32.o schedule/schedule.o schedule/switch_task.o audio/pcspeaker/pcspeaker.o audio/opl2/opl2.o syscall/isr_syscall.o syscall/syscall.o
+
+# da linker
+i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt.o idt.o isr.o fault.o io/irq.o io/pic.o io/keyboard.o paging.o video/vbe/vbe.o video/font.o video/splash.o filesystem/vfs.o filesystem/tmpfs/tmpfs.o filesystem/ide.o filesystem/fat32/fat32.o schedule/schedule.o schedule/switch_task.o audio/pcspeaker/pcspeaker.o audio/opl2/opl2.o syscall/isr_syscall.o syscall/syscall.o audio/startup/opl2_sound/opl2_startup.o
 
 cd ../build
 

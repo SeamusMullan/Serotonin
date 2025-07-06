@@ -21,6 +21,7 @@
 #include "schedule/schedule.h"
 #include "audio/pcspeaker/pcspeaker.h"
 #include "gdt.h"
+#include "audio/startup/opl2_sound/opl2_startup.h"
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 1
@@ -31,9 +32,9 @@
 
 /**
  * @brief Block header for memory allocation.
- * 
+ *
  * contains the size and amount of free space, as well as a pointer to the next block.
- * 
+ *
  */
 typedef struct block_header {
     uint32_t size;
@@ -161,7 +162,7 @@ inline void kernel_jump_to_higher_half(void (*entry)(unsigned long, unsigned lon
     uintptr_t flat_addr = (uintptr_t)entry;
     uintptr_t offset    = flat_addr - KERNEL_PHYS_BASE;
     uintptr_t high_addr = KERNEL_VMA_BASE + offset;
-    
+
     printf("calling higher half 0x%08x\n",high_addr);
 
     asm volatile (
@@ -176,7 +177,7 @@ inline void kernel_jump_to_higher_half(void (*entry)(unsigned long, unsigned lon
 
 /**
  * @brief Get the current instruction pointer (EIP).
- * 
+ *
  * @return void* The current instruction pointer.
  */
 static inline void *kernel_current_eip(void) {
@@ -193,7 +194,7 @@ static inline void *kernel_current_eip(void) {
 
 /**
  * @brief Sleep for a specified number of milliseconds.
- * 
+ *
  * This function provides a busy-wait loop to create a delay in the kernel.
  * It is not an efficient way to sleep, as it consumes CPU cycles while waiting.
  * @param mili The number of milliseconds to sleep.
@@ -210,7 +211,7 @@ void kernel_sleep(unsigned int milliseconds) {
 
 /**
  * @brief Trigger a kernel panic with a specified message.
- * 
+ *
  * This function is called when a critical error occurs in the kernel.
  * It prints the panic message along with the current state of the CPU registers
  * and halts the system.
@@ -274,7 +275,7 @@ void kernel_panic(char* str) {
         printf("Process: %s (pid=%d)\n",current_task->name,current_task->pid);
         printf("Process was running in %s mode (ring:%d)\n",mode,current_task->priv);
         printf("Last signal: %d, process state: %d\n", current_task->signal, current_task->state);
-    
+
         uint8_t* ptr = (uint8_t*)current_task->processor_context->eip;
 
         for (int i = 0; i < 0x8C; i++) {
@@ -367,7 +368,7 @@ void *kernel_malloc(uint32_t size) {
 
 /**
  * @brief Free memory allocated from the kernel heap.
- * 
+ *
  * @param ptr A pointer to the memory to free.
  */
 void kernel_free(void *ptr) {
@@ -472,7 +473,7 @@ process_control_block_t *kernel_load_elf(const char *path) {
     }
 
     kernel_free(elf_data);
-   
+
     process_control_block_t *pcb = task_create((void (*)(void))ehdr->e_entry, "init", CPU_USER_MODE);
 
     enqueue(pcb);
@@ -543,7 +544,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         printfs(PRINT_STATUS_INFO,"Total memory detected: %uKB\n", mem_total);
     }
     else {
-        kernel_panic("multiboot - unable to detect memory"); 
+        kernel_panic("multiboot - unable to detect memory");
     }
 
     if (kernel_hypervisor_present()) {
@@ -560,6 +561,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     if (mount_result != 0) {
         kernel_panic("unable to mount rootfs on drive 1");
     }
+
+    make_a_noise();
 
     multitasking_init();
 
@@ -605,5 +608,5 @@ __attribute__((target("no-sse"))) __attribute__((section(".identity"))) void ker
     kernel_setup_fpu();
     kernel_main_high(arg1,arg2);
 
-    kernel_panic("returned from higher half kernel!"); 
+    kernel_panic("returned from higher half kernel!");
 }
