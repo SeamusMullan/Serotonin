@@ -54,6 +54,7 @@ long long llabs(long long n);
 div_t div(int numer, int denom);
 ldiv_t ldiv(long numer, long denom);
 lldiv_t lldiv(long long numer, long long denom);
+float powf(float x, float y);
 
 /* Pseudo-random number generation */
 int rand(void);
