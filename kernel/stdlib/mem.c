@@ -10,16 +10,50 @@
  * @return void* Pointer to the destination.
  */
 void* memmove(void* dstptr, const void* srcptr, size_t size) {
-	unsigned char* dst = (unsigned char*) dstptr;
-	const unsigned char* src = (const unsigned char*) srcptr;
-	if (dst < src) {
-		for (size_t i = 0; i < size; i++)
-			dst[i] = src[i];
-	} else {
-		for (size_t i = size; i != 0; i--)
-			dst[i-1] = src[i-1];
-	}
-	return dstptr;
+	unsigned char *dst = dstptr;
+    const unsigned char *src = srcptr;
+
+    if (dst < src || dst >= src + size) {
+        // forward copy: identical to memcpy
+        return memcpy(dstptr, srcptr, size);
+    } else {
+        // backward copy
+        unsigned char *dend = dst + size;
+        const unsigned char *send = src + size;
+
+        // peel tail bytes until dend is 16-byte aligned
+        uintptr_t mis = (uintptr_t)dend & 15;
+        if (mis) {
+            size_t tail = mis;
+            if (tail > size) tail = size;
+            dend -= tail;
+            send -= tail;
+            size -= tail;
+            for (size_t i = 0; i < tail; i++) {
+                dend[i] = send[i];
+            }
+        }
+
+        // SSE2 backward: 16-byte blocks
+        while (size >= 16) {
+            dend -= 16;
+            send -= 16;
+            size -= 16;
+            asm volatile (
+                "movdqu (%[s]), %%xmm0\n\t"
+                "movdqa %%xmm0, (%[d])\n\t"
+                : [d] "+r"(dend), [s] "+r"(send)
+                :
+                : "xmm0","memory"
+            );
+        }
+
+        // any remaining head bytes (should be zero)
+        while (size--) {
+            *--dend = *--send;
+        }
+        return dstptr;
+    }
 }
 
 /**
@@ -31,15 +65,41 @@ void* memmove(void* dstptr, const void* srcptr, size_t size) {
  * @return int Negative if a < b, positive if a > b, zero if equal.
  */
 int memcmp(const void* aptr, const void* bptr, size_t size) {
-	const unsigned char* a = (const unsigned char*) aptr;
-	const unsigned char* b = (const unsigned char*) bptr;
-	for (size_t i = 0; i < size; i++) {
-		if (a[i] < b[i])
-			return -1;
-		else if (b[i] < a[i])
-			return 1;
-	}
-	return 0;
+	const uint8_t *a = aptr, *b = bptr;
+    size_t offset = 0;
+
+    // 16-byte SSE2 compare
+    while (size >= 16) {
+        unsigned int eqmask;
+        asm volatile (
+            "movdqu   (%[pa]), %%xmm0\n\t"
+            "movdqu   (%[pb]), %%xmm1\n\t"
+            "pcmpeqb  %%xmm1, %%xmm0\n\t"
+            "pmovmskb %%xmm0, %[mask]\n\t"
+            : [mask] "=r"(eqmask)
+            : [pa] "r"(a + offset), [pb] "r"(b + offset)
+            : "xmm0","xmm1","memory"
+        );
+        if (eqmask != 0xFFFFu) {
+            // find first differing byte
+            unsigned int diff = (~eqmask) & 0xFFFFu;
+            unsigned int idx;
+            asm ("bsf %1, %0" : "=r"(idx) : "r"(diff));
+            uint8_t ca = a[offset + idx],
+                    cb = b[offset + idx];
+            return (ca < cb) ? -1 : 1;
+        }
+        offset += 16;
+        size   -= 16;
+    }
+
+    // remaining bytes
+    for (size_t i = 0; i < size; i++) {
+        uint8_t ca = a[offset + i],
+                cb = b[offset + i];
+        if (ca != cb) return (ca < cb) ? -1 : 1;
+    }
+    return 0;
 }
 
 /**
@@ -51,10 +111,49 @@ int memcmp(const void* aptr, const void* bptr, size_t size) {
  * @return void* Pointer to the memory area.
  */
 void* memset(void* bufptr, int value, size_t size) {
-	unsigned char* buf = (unsigned char*) bufptr;
-	for (size_t i = 0; i < size; i++)
-		buf[i] = (unsigned char) value;
-	return bufptr;
+	unsigned char* dst = bufptr;
+    size_t n = size;
+
+    // head: align dst to 16 bytes
+    uintptr_t mis = (uintptr_t)dst & 15;
+    if (mis) {
+        size_t head = 16 - mis;
+        if (head > n) head = n;
+        for (size_t i = 0; i < head; i++)
+            *dst++ = (unsigned char)value;
+        n -= head;
+    }
+
+    // SSE2 main loop: 16 bytes at a time
+    if (n >= 16) {
+        uint32_t c = (uint8_t)value;
+        c |= c << 8;
+        c |= c << 16;
+        asm volatile (
+            "movd   %0, %%xmm0       \n\t" // load 32‐bit
+            "pshufd $0, %%xmm0, %%xmm0\n\t" // broadcast to all lanes
+            : : "r"(c) : "xmm0"
+        );
+
+        size_t cnt = n / 16;
+        asm volatile (
+            "1:                        \n\t"
+            "movdqa %%xmm0, (%[p])     \n\t"
+            "add    $16, %[p]          \n\t"
+            "dec    %[c]               \n\t"
+            "jnz    1b                 \n\t"
+            : [p] "+r"(dst), [c] "+r"(cnt)
+            :
+            : "xmm0","memory"
+        );
+        n &= 15;
+    }
+
+    // tail: leftover bytes
+    while (n--) {
+        *dst++ = (unsigned char)value;
+    }
+    return bufptr;
 }
 
 /**
@@ -66,57 +165,58 @@ void* memset(void* bufptr, int value, size_t size) {
  * @return void* Pointer to the destination.
  */
 void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
-    unsigned char* dst = (unsigned char*)dstptr;
-    const unsigned char* src = (const unsigned char*)srcptr;
+    unsigned char *dst = dstptr;
+    const unsigned char *src = srcptr;
 
-    // Align destination to 16 bytes
-    while (size > 0 && ((uintptr_t)dst & 15)) {
-        *dst++ = *src++;
-        size--;
+    // align dst up to 16 bytes
+    uintptr_t mis = (uintptr_t)dst & 15;
+    if (mis) {
+        size_t head = 16 - mis;
+        if (head > size) head = size;
+        for (size_t i = 0; i < head; i++) {
+            *dst++ = *src++;
+        }
+        size -= head;
     }
 
-    // Copy 64 bytes per loop (4 x 16-byte SSE moves)
+    // main copy: 64 bytes per iteration (4×16)
     while (size >= 64) {
         asm volatile (
-            "movups 0(%0), %%xmm0\n"
-            "movups 16(%0), %%xmm1\n"
-            "movups 32(%0), %%xmm2\n"
-            "movups 48(%0), %%xmm3\n"
-
-            "movaps %%xmm0, 0(%1)\n"
-            "movaps %%xmm1, 16(%1)\n"
-            "movaps %%xmm2, 32(%1)\n"
-            "movaps %%xmm3, 48(%1)\n"
+            "movdqu 0(%[s]), %%xmm0\n\t"
+            "movdqu 16(%[s]), %%xmm1\n\t"
+            "movdqu 32(%[s]), %%xmm2\n\t"
+            "movdqu 48(%[s]), %%xmm3\n\t"
+            "movdqa %%xmm0, 0(%[d])\n\t"
+            "movdqa %%xmm1, 16(%[d])\n\t"
+            "movdqa %%xmm2, 32(%[d])\n\t"
+            "movdqa %%xmm3, 48(%[d])\n\t"
+            : [d] "+r"(dst), [s] "+r"(src)
             :
-            : "r"(src), "r"(dst)
-            : "memory", "xmm0", "xmm1", "xmm2", "xmm3"
+            : "xmm0","xmm1","xmm2","xmm3","memory"
         );
-
-        src += 64;
         dst += 64;
+        src += 64;
         size -= 64;
     }
 
-    // Copy 16 bytes at a time
+    // remainder 16-byte chunks
     while (size >= 16) {
         asm volatile (
-            "movups (%0), %%xmm0\n"
-            "movaps %%xmm0, (%1)\n"
+            "movdqu (%[s]), %%xmm0\n\t"
+            "movdqa %%xmm0, (%[d])\n\t"
+            : [d] "+r"(dst), [s] "+r"(src)
             :
-            : "r"(src), "r"(dst)
-            : "memory", "xmm0"
+            : "xmm0","memory"
         );
-
-        src += 16;
         dst += 16;
+        src += 16;
         size -= 16;
     }
 
-    // Copy remaining tail bytes
-    while (size-- > 0) {
+    // tail bytes
+    while (size--) {
         *dst++ = *src++;
     }
-
     return dstptr;
 }
 

@@ -81,7 +81,7 @@ __attribute__((target("no-sse"))) static inline void kernel_write_cr4(uint32_t v
 }
 
 
-__attribute__((target("no-sse"))) static int kernel_cpu_has_sse(void) {
+__attribute__((target("no-sse"))) static int kernel_cpu_has_sse2(void) {
     unsigned int eax, ebx, ecx, edx;
     unsigned int ret;
 
@@ -90,8 +90,8 @@ __attribute__((target("no-sse"))) static int kernel_cpu_has_sse(void) {
         abort();
     }
 
-    // Bit 25 of EDX = SSE, Bit 26 = SSE2
-    return (edx & (1 << 25)) != 0;
+    // Bit 26 = SSE2
+    return (edx & (1 << 26)) != 0;
 }
 
 static int kernel_hypervisor_present(void) {
@@ -129,16 +129,16 @@ static char* kernel_get_cpu_manufacturer(void) {
 __attribute__((target("no-sse"))) void kernel_setup_fpu(void) {
     // Enable FPU in CR0
     uint32_t cr0 = kernel_read_cr0();
-    cr0 &= ~(1 << 2); // Clear EM → allow FPU instructions
-    cr0 |=  (1 << 1); // Set MP → required for FPU exceptions
-    cr0 &= ~(1 << 3); // Clear TS → don't disable FPU
+    cr0 &= ~(1 << 2); // Clear EM
+    cr0 |=  (1 << 1); // Set MP
+    cr0 &= ~(1 << 3); // Clear TS
     kernel_write_cr0(cr0);
 
-    // Check for SSE support
-    if (kernel_cpu_has_sse()) {
+    // Check for SSE2 support
+    if (kernel_cpu_has_sse2()) {
         uint32_t cr4 = kernel_read_cr4();
-        cr4 |= (1 << 9);  // OSFXSR → enable fxsave/fxrstor
-        cr4 |= (1 << 10); // OSXMMEXCPT → enable SSE exceptions (optional)
+        cr4 |= (1 << 9);  // OSFXSR
+        cr4 |= (1 << 10); // OSXMMEXCPT
         kernel_write_cr4(cr4);
     }
     else {
@@ -191,7 +191,49 @@ static inline void *kernel_current_eip(void) {
     return eip;
 }
 
-/**
+/**unsigned char* dst = bufptr;
+    size_t n = size;
+
+    // 1) Head: align dst to 16 bytes
+    uintptr_t mis = (uintptr_t)dst & 15;
+    if (mis) {
+        size_t head = 16 - mis;
+        if (head > n) head = n;
+        for (size_t i = 0; i < head; i++)
+            *dst++ = (unsigned char)value;
+        n -= head;
+    }
+
+    // 2) SSE2 main loop: 16 bytes at a time
+    if (n >= 16) {
+        uint32_t c = (uint8_t)value;
+        c |= c << 8;
+        c |= c << 16;
+        __asm__ __volatile__ (
+            "movd   %0, %%xmm0       \n\t" // load 32‐bit
+            "pshufd $0, %%xmm0, %%xmm0\n\t" // broadcast to all lanes
+            : : "r"(c) : "xmm0"
+        );
+
+        size_t cnt = n / 16;
+        __asm__ __volatile__ (
+            "1:                        \n\t"
+            "movdqa %%xmm0, (%[p])     \n\t"
+            "add    $16, %[p]          \n\t"
+            "dec    %[c]               \n\t"
+            "jnz    1b                 \n\t"
+            : [p] "+r"(dst), [c] "+r"(cnt)
+            :
+            : "xmm0","memory"
+        );
+        n &= 15;
+    }
+
+    // 3) Tail: leftover bytes
+    while (n--) {
+        *dst++ = (unsigned char)value;
+    }
+    return bufptr;
  * @brief Sleep for a specified number of milliseconds.
  * 
  * This function provides a busy-wait loop to create a delay in the kernel.
