@@ -191,49 +191,7 @@ static inline void *kernel_current_eip(void) {
     return eip;
 }
 
-/**unsigned char* dst = bufptr;
-    size_t n = size;
-
-    // 1) Head: align dst to 16 bytes
-    uintptr_t mis = (uintptr_t)dst & 15;
-    if (mis) {
-        size_t head = 16 - mis;
-        if (head > n) head = n;
-        for (size_t i = 0; i < head; i++)
-            *dst++ = (unsigned char)value;
-        n -= head;
-    }
-
-    // 2) SSE2 main loop: 16 bytes at a time
-    if (n >= 16) {
-        uint32_t c = (uint8_t)value;
-        c |= c << 8;
-        c |= c << 16;
-        __asm__ __volatile__ (
-            "movd   %0, %%xmm0       \n\t" // load 32‐bit
-            "pshufd $0, %%xmm0, %%xmm0\n\t" // broadcast to all lanes
-            : : "r"(c) : "xmm0"
-        );
-
-        size_t cnt = n / 16;
-        __asm__ __volatile__ (
-            "1:                        \n\t"
-            "movdqa %%xmm0, (%[p])     \n\t"
-            "add    $16, %[p]          \n\t"
-            "dec    %[c]               \n\t"
-            "jnz    1b                 \n\t"
-            : [p] "+r"(dst), [c] "+r"(cnt)
-            :
-            : "xmm0","memory"
-        );
-        n &= 15;
-    }
-
-    // 3) Tail: leftover bytes
-    while (n--) {
-        *dst++ = (unsigned char)value;
-    }
-    return bufptr;
+/**
  * @brief Sleep for a specified number of milliseconds.
  * 
  * This function provides a busy-wait loop to create a delay in the kernel.
