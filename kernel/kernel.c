@@ -378,52 +378,9 @@ void kernel_free(void *ptr) {
     block->free = 1;
 }
 
-void task_A(void) {
-    unsigned int i;
-    while (true) {
-        i++;
-        unsigned int esp;
-        asm volatile (
-            "movl %%esp, %0"
-            : "=r" (esp)
-            :
-            :
-        );
-        printf("[A] tick %d, esp=%p, since_last_quantum=%d\n", i, esp,last_quantum_tick);
-    }
-}
-
-void task_B(void) {
-    unsigned int i;
-    while (true) {
-        i++;
-        uint32_t* esp;
-        asm volatile (
-            "movl %%esp, %0"
-            : "=r" (esp)
-            :
-            :
-        );
-
-        printf("esp top: %08x %08x %08x %08x\n", esp[0], esp[1], esp[2], esp[3]);
-        printf("[B] tick %d, esp=%p\n", i, esp);
-        kernel_yield();
-    }
-}
-
-void task_C(void) {
-    unsigned int i = 0;
-    while (true) {
-        i++;
-        unsigned int esp;
-        asm volatile (
-            "movl %%esp, %0"
-            : "=r" (esp)
-            :
-            :
-        );
-        printf("[C] tick %d, esp=%p\n", i, esp);
-    }
+void kernel_idle_task(void) {
+    asm volatile ("hlt");
+    kernel_yield();
 }
 
 process_control_block_t *kernel_load_elf(const char *path) {
@@ -562,9 +519,10 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         kernel_panic("unable to mount rootfs on drive 1");
     }
 
-    demo_arpeggio();
-
     multitasking_init();
+
+    process_control_block_t *idle_task = task_create(kernel_idle_task, "System Idle Task", CPU_KERNEL_MODE);
+    enqueue(idle_task);
 
     printfs(PRINT_STATUS_INFO,"Attempting to load /bin/init\n");
 

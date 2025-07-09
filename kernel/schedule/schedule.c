@@ -98,7 +98,7 @@ void multitasking_init(void) {
     init_task->esp0   = get_esp();
     init_task->cr3    = read_cr3_register();
     init_task->state  = PROCESS_STATE_BLOCKED;
-    strncpy(init_task->name, "kernel_init", 32);
+    strncpy(init_task->name, "Serotonin Kernel", 32);
 
     // single‐element list
     task_list             = init_task;
