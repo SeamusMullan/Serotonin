@@ -114,7 +114,7 @@ void multitasking_make_ready(void) {
  * @brief Yields control from the current task and switches to the next ready task.
  * @param irq The IRQ number that caused the yield.
  */
-__attribute__((noreturn)) void task_yield(int irq) {
+void task_yield(int irq) {
     lock_scheduler();
     //preempt_disable();
 
@@ -137,12 +137,10 @@ __attribute__((noreturn)) void task_yield(int irq) {
                 switch_task_iret(next);
             }
             switch_task(next);
-            __builtin_unreachable();
         }
     }
 
     kernel_panic("task_yield: no valid task to switch to");
-    __builtin_unreachable();
 }
 
 /**
@@ -274,4 +272,42 @@ void task_unblock(process_control_block_t *pcb) {
     pcb->state = PROCESS_STATE_READY;
     enqueue(pcb);
     unlock_scheduler();
+}
+
+__attribute__((naked)) void kernel_yield(void) {
+    void *esp;
+    void *ebx;
+    void *ebp;
+    void *esi;
+    void *edi;
+    asm volatile (
+        "movl %%esp, %0\n\t"
+        "movl %%ebx, %1\n\t"
+        "movl %%ebp, %2\n\t"
+        "movl %%esi, %3\n\t"
+        "movl %%edi, %4\n\t"
+        : "=r"(esp),
+          "=r"(ebx),
+          "=r"(ebp),
+          "=r"(esi),
+          "=r"(edi)
+        :
+        :
+    );
+    
+    current_task->esp = esp;
+    current_task->ebx = ebx;
+    current_task->esi = esi;
+    current_task->edi = edi;
+    current_task->ebp = ebp;  
+    current_task->entry = &&after_yield;
+
+    //printf("lol: esp:%p, ebx:%p, esi:%p, edi:%p, entry:%08x\n",esp,ebx,esi,edi,ebp,current_task->entry);
+    
+    task_yield(0);
+
+    return;
+
+after_yield:
+    return;
 }

@@ -87,36 +87,7 @@ void preempt_enable(void);
 void preempt_disable(void);
 void *alloc_user_stack(void);
 void *alloc_kernel_stack(void);
-
-inline void kernel_yield() {
-    void *esp;
-    void *ebx;
-    void *ebp;
-    void *esi;
-    void *edi;
-    asm volatile (
-        "movl %%esp, %0\n\t"
-        "movl %%ebx, %1\n\t"
-        "movl %%ebp, %2\n\t"
-        "movl %%esi, %3\n\t"
-        "movl %%edi, %4\n\t"
-        : "=r"(esp),
-          "=r"(ebx),
-          "=r"(ebp),
-          "=r"(esi),
-          "=r"(edi)
-        :
-        :
-    );
-
-    current_task->esp = esp;
-    current_task->ebx = ebx;
-    current_task->esi = esi;
-    current_task->edi = edi;
-    current_task->ebp = ebp;  
-    
-    task_yield(0);
-}
+void kernel_yield(void);
 
 static inline const char* to_signal_name(int signal_id) {
     static const char* const signal_names[16] = {

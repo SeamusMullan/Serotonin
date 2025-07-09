@@ -379,8 +379,10 @@ void kernel_free(void *ptr) {
 }
 
 void kernel_idle_task(void) {
-    asm volatile ("hlt");
-    kernel_yield();
+    while (1) {
+        asm volatile ("hlt");
+        kernel_yield();
+    }
 }
 
 process_control_block_t *kernel_load_elf(const char *path) {
