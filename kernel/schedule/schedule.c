@@ -290,13 +290,8 @@ __attribute__((naked)) void kernel_yield(void) {
     current_task->edi = edi;
     current_task->ebp = ebp;  
     current_task->entry = entry;
-
-    //printf("lol: esp:%p, ebx:%p, esi:%p, edi:%p, entry:%08x\n",esp,ebx,esi,edi,ebp,current_task->entry);
     
     task_yield(0);
 
-    return;
-
-after_yield:
     return;
 }

@@ -130,24 +130,34 @@ void page_fault_handler(uint32_t error_code) {
            user ? "user" : "kernel",
            (error_code & (1<<5)) ? ", reserved violation of PAT bits" : "");
 
-    if (multitasking_ready == 1 && current_task->priv == CPU_USER_MODE) {
+    if (multitasking_ready == 1) {
         printfs(PRINT_STATUS_ERROR,"Process \"%s\" (pid=%d) has attempted an illegal operation on memory and will be terminated.\n", current_task->name,current_task->pid);
         task_exit(EXIT_SIGSEGV);
         return;
     }
 
-    kernel_panic("exception - page fault (#PF)");
+    kernel_panic("unhandled exception - page fault (#PF)");
 }
 
 void gp_fault_handler(uint32_t error_code) {
     printfs(PRINT_STATUS_ERROR,"A general protection fault has occured. Error code: 0x%08x\n",error_code);
     
-    if (multitasking_ready == 1 && current_task->priv == CPU_USER_MODE) {
+    if (multitasking_ready == 1) {
         printfs(PRINT_STATUS_ERROR,"Process \"%s\" (pid=%d) has attempted to execute an illegal instruction and will be terminated.\n", current_task->name,current_task->pid);
         task_exit(EXIT_SIGILL);
         return;
     }
 
-    kernel_panic("exception - general protection fault (#GP)");
+    kernel_panic("unhandled exception - general protection fault (#GP)");
 }
 
+void div_zero_fault_handler(void) {
+
+    if (multitasking_ready == 1) {
+        printfs(PRINT_STATUS_ERROR,"Process \"%s\" attempted to divide by zero.\n",current_task->name);
+        task_exit(EXIT_SIGILL);
+        return;
+    }
+
+    kernel_panic("unhandled exception - divide by zero (#DE)");
+}

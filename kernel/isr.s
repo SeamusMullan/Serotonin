@@ -4,8 +4,7 @@
 isr0:
     cli
     pushl $0
-    call fault_handler
-    add $4, %esp
+    call div_zero_fault_handler
     iret
 
 .global isr1
