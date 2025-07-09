@@ -25,7 +25,7 @@
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 1
-#define KERNEL_VERSION_LOW 1
+#define KERNEL_VERSION_LOW 2
 
 #define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
 #define HEAP_SIZE   (KERNEL_HEAP_SIZE)
@@ -461,20 +461,12 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     vbe_init(mbi);
     vbe_palette_init();
     vbe_flip();
-    splash_render(0,10);
-    create_color_render(275);
+    splash_render(0,0);
+    //create_color_render(275);
 
-    vbe_set_cursor(0,15);
+    vbe_set_cursor(0,13);
 
-    printf("   _____                _              _       \n");
-    printf("  / ____|              | |            (_)      \n");
-    printf(" | (___   ___ _ __ ___ | |_ ___  _ __  _ _ __  \n");
-    printf("  \\___ \\ / _ \\ '__/ _ \\| __/ _ \\| '_ \\| | '_ \\ \n");
-    printf("  ____) |  __/ | | (_) | || (_) | | | | | | | |\n");
-    printf(" |_____/ \\___|_|  \\___/ \\__\\___/|_| |_|_|_| |_|\n");
-
-
-	printf(" serotonin kernel (higher half) - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
+	printf("serotonin kernel (higher half) - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
     printf("kernel now (eip): 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x, cpu:%s\n",kernel_current_eip(),HEAP_START,magic,addr,cpu_manufacturer);
     printfs(PRINT_STATUS_INFO, "Booted with command line arguments: %s\n",cmdline);
     printfs(PRINT_STATUS_INFO,"Running in VESA VBE Graphics Mode: %dx%dx%d, pitch: %d\n",vbe_info.width,vbe_info.height,vbe_info.bpp,vbe_info.pitch);
