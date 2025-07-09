@@ -126,7 +126,7 @@ void task_yield(int irq) {
     process_control_block_t* next = NULL;
     while ((next = dequeue()) != NULL) {
         if (next->state == PROCESS_STATE_READY) {
-            // printf("found next: %p, name: %s, ring:%d, entry:%p, esp:%p\n",next, next->name,next->priv,next->entry,next->esp);
+            //printf("found next: %p, name: %s, ring:%d, entry:%p, esp:%p\n",next, next->name,next->priv,next->entry,next->esp);
             // found someone we can switch into
             next->state = PROCESS_STATE_RUNNING;
             unlock_scheduler();
@@ -280,13 +280,16 @@ __attribute__((naked)) void kernel_yield(void) {
     void *ebp;
     void *esi;
     void *edi;
+    void *entry;
     asm volatile (
-        "movl %%esp, %0\n\t"
-        "movl %%ebx, %1\n\t"
-        "movl %%ebp, %2\n\t"
-        "movl %%esi, %3\n\t"
-        "movl %%edi, %4\n\t"
-        : "=r"(esp),
+        "movl 0(%%esp), %0\n\t"
+        "movl %%esp, %1\n\t"
+        "movl %%ebx, %2\n\t"
+        "movl %%ebp, %3\n\t"
+        "movl %%esi, %4\n\t"
+        "movl %%edi, %5\n\t"
+        : "=r"(entry),
+          "=r"(esp),
           "=r"(ebx),
           "=r"(ebp),
           "=r"(esi),
@@ -300,7 +303,7 @@ __attribute__((naked)) void kernel_yield(void) {
     current_task->esi = esi;
     current_task->edi = edi;
     current_task->ebp = ebp;  
-    current_task->entry = &&after_yield;
+    current_task->entry = entry;
 
     //printf("lol: esp:%p, ebx:%p, esi:%p, edi:%p, entry:%08x\n",esp,ebx,esi,edi,ebp,current_task->entry);
     
