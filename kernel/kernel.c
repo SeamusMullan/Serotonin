@@ -453,8 +453,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         kernel_panic("multiboot - invalid magic number");
     }
     multiboot_info_t *mbi = (multiboot_info_t *) addr;
-
     page_directory_t *page_dir = (page_directory_t*)page_dir_ptr;
+    const char *cmdline = (const char *)(uintptr_t)mbi->cmdline;
 
     char* cpu_manufacturer = kernel_get_cpu_manufacturer();
 
@@ -476,6 +476,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
 	printf(" serotonin kernel (higher half) - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
     printf("kernel now (eip): 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x, cpu:%s\n",kernel_current_eip(),HEAP_START,magic,addr,cpu_manufacturer);
+    printfs(PRINT_STATUS_INFO, "Booted with command line arguments: %s\n",cmdline);
     printfs(PRINT_STATUS_INFO,"Running in VESA VBE Graphics Mode: %dx%dx%d, pitch: %d\n",vbe_info.width,vbe_info.height,vbe_info.bpp,vbe_info.pitch);
 
     pic_remap(0x20, 0x28);

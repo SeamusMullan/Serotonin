@@ -73,18 +73,6 @@ void unlock_scheduler(void) {
     enable_interrupts();
 }
 
-void preempt_enable(void) {
-    preempt_count--;
-    if (pending_schedule == 1 && preempt_count == 0&& current_task->state == PROCESS_STATE_RUNNING) {
-        pending_schedule = 0;
-        task_yield(0);
-    }
-}
-
-void preempt_disable(void) {
-    preempt_count++;
-}
-
 /**
  * @brief Initializes multitasking by creating the initial kernel task.
  */
@@ -116,7 +104,6 @@ void multitasking_make_ready(void) {
  */
 void task_yield(int irq) {
     lock_scheduler();
-    //preempt_disable();
 
     if (current_task->state == PROCESS_STATE_RUNNING) {
         current_task->state = PROCESS_STATE_READY;
@@ -130,7 +117,6 @@ void task_yield(int irq) {
             // found someone we can switch into
             next->state = PROCESS_STATE_RUNNING;
             unlock_scheduler();
-            //preempt_enable();
 
             // if nothing is pending, switch
             if (irq == 1) {
