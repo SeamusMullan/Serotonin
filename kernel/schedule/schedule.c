@@ -250,8 +250,8 @@ void task_set_state(process_control_block_t *pcb, int state) {
  * @brief Blocks the current task and yields to the next one.
  */
 void task_block(void) {
-    task_set_state(current_task,PROCESS_STATE_BLOCKED);
-    task_yield(0);
+    current_task->state = PROCESS_STATE_BLOCKED;
+    task_yield(1);
     __builtin_unreachable();
 }
 
@@ -264,6 +264,7 @@ void task_unblock(process_control_block_t *pcb) {
     pcb->state = PROCESS_STATE_READY;
     enqueue(pcb);
     unlock_scheduler();
+    task_yield(1);
 }
 
 /**

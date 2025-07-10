@@ -20,7 +20,7 @@ void irq_handler(int irq, processor_context_t *ctx) {
         if (multitasking_ready == 0)
             goto end_irq;
 
-        if (preempt_count == 0 && current_task->priv == CPU_USER_MODE) {
+        if (preempt_count == 0 && current_task->priv == CPU_USER_MODE && current_task->state == PROCESS_STATE_RUNNING) {
             last_quantum_tick++;
             memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
             int schedule_quantum = MILLISECONDS_TO_TICKS(100);

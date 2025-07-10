@@ -464,7 +464,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     splash_render(0,0);
     //create_color_render(275);
 
-    vbe_set_cursor(0,20);
+    vbe_set_cursor(0,13);
 
 	printf("serotonin kernel (higher half) - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
     printf("kernel now (eip): 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x, cpu:%s\n",kernel_current_eip(),HEAP_START,magic,addr,cpu_manufacturer);

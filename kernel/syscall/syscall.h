@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 #include "../io/io.h"
+#include "../schedule/schedule.h"
+
+#define STDIN_BUFFER_SIZE 4096
 
 enum {
     SYSTEM_CALL_EXIT     = 0,
@@ -29,7 +32,17 @@ enum {
     WRITE_STDERR = 1,
     WRITE_FRMBUF = 2,
     WRITE_FS     = 3
-}
+};
+
+enum {
+    READ_STDIN = 0,
+    READ_FS    = 1
+};
+
+extern char* stdin_ptr;
+extern int stdin_lock;
+extern int stdin_idx;
+extern process_control_block_t* stdin_pcb;
 
 void system_call(processor_context_t *ctx);
 extern void isr_syscall(void);

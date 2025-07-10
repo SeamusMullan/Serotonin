@@ -1,5 +1,8 @@
 #include "../stdio/stdio.h"
 #include "../video/vbe/vbe.h"
+#include "../syscall/syscall.h"
+#include "../schedule/schedule.h"
+#include "../io/io.h"
 #include <stdint.h>
 
 static const char scancode_map[128] = {
@@ -19,6 +22,9 @@ static const char scancode_map[128] = {
  * @param scancode The scancode received from the keyboard.
  */
 void handle_scancode(uint8_t scancode) {
+    if (!stdin_lock)
+        return;
+    
     if (scancode > 127)
         return;
 
@@ -27,17 +33,26 @@ void handle_scancode(uint8_t scancode) {
     } 
     else if (scancode == 0x1C) 
     {
+        stdin_ptr[stdin_idx] = '\0';
+        stdin_idx++;
         printf("\n");
+        stdin_lock = 0;
+        task_unblock(stdin_pcb);
     }
     else if (scancode == 0x0E) 
     {
+        stdin_ptr[stdin_idx] = '\0';
+        stdin_idx--;
         vbe_terminal_back();
     }
     else 
     {
         char c = scancode_map[scancode];
-        if (c)
+        if (c) {
+            stdin_ptr[stdin_idx] = c;
+            stdin_idx++;
             printf("%c", c);
+        }
     }
     vbe_flip();
 }
