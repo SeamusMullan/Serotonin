@@ -3,31 +3,24 @@
 
 isr_syscall:
     cli
-    pusha                # push all general-purpose registers
-    push %ds
-    push %es
-    push %fs
-    push %gs
+    pushfl
+    pushal
 
-    pushl %eax
-    mov $0x10, %ax       # kernel data segment
-    mov %ax, %ds
-    mov %ax, %es
-    mov %ax, %fs
-    mov %ax, %gs
-    popl %eax
+    pushl   %gs
+    pushl   %fs
+    pushl   %es
+    pushl   %ds
 
-    pushl %edx
-    pushl %ecx
-    pushl %ebx
-    pushl %eax
-    call system_call
-    add $16, %esp
+    movl    %esp, %eax
+    pushl   %eax
+    call    system_call
+    addl    $4, %esp
 
-    pop %gs
-    pop %fs
-    pop %es
-    pop %ds
-    popa
+    popl    %ds
+    popl    %es
+    popl    %fs
+    popl    %gs
+    popal
+    popfl
     sti
     iret
