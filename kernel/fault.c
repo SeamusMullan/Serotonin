@@ -15,64 +15,64 @@ void fault_handler(int vector) {
 
     switch ((isr_vector_t)vector) {
         case ISR_DIVIDE_ERROR: 
-            kernel_panic("exception - divide by zero (#DE)");
+            kernel_panic("unhandled exception - divide by zero (#DE)");
             break;
         case ISR_DEBUG:
-            kernel_panic("exception - debug (#DB)");
+            kernel_panic("unhandled exception - debug (#DB)");
             break;
         case ISR_NON_MASKABLE_INT:
-            kernel_panic("exception - non-maskable interrupt (NMI)");
+            kernel_panic("unhandled exception - non-maskable interrupt (NMI)");
             break;
         case ISR_BREAKPOINT:
-            kernel_panic("exception - breakpoint (#BP)");
+            kernel_panic("unhandled exception - breakpoint (#BP)");
             break;
         case ISR_OVERFLOW:
-            kernel_panic("exception - overflow (#OF)");
+            kernel_panic("unhandled exception - overflow (#OF)");
             break;
         case ISR_BOUND_RANGE_EXCEEDED:
-            kernel_panic("exception - bound range exceeded (#BR)");
+            kernel_panic("unhandled exception - bound range exceeded (#BR)");
             break;
         case ISR_INVALID_OPCODE: 
-            kernel_panic("exception - invalid opcode (#UD)"); 
+            kernel_panic("unhandled exception - invalid opcode (#UD)"); 
             break;
         case ISR_DEVICE_NOT_AVAILABLE:
-            kernel_panic("exception - device not available (#NM)");
+            kernel_panic("unhandled exception - device not available (#NM)");
             break;
         case ISR_DOUBLE_FAULT:
-            kernel_panic("exception - double fault (#DF)");
+            kernel_panic("unhandled exception - double fault (#DF)");
             break;
         case ISR_COPROC_SEG_OVERRUN:
-            kernel_panic("exception - coprocessor segment overrun");
+            kernel_panic("unhandled exception - coprocessor segment overrun");
             break;
         case ISR_INVALID_TSS:
-            kernel_panic("exception - invalid TSS (#TS)");
+            kernel_panic("unhandled exception - invalid TSS (#TS)");
             break;
         case ISR_SEG_NOT_PRESENT:
-            kernel_panic("exception - segment not present (#NP)");
+            kernel_panic("unhandled exception - segment not present (#NP)");
             break;
         case ISR_STACK_SEG_FAULT:
-            kernel_panic("exception - stack segment fault (#SS)");
+            kernel_panic("unhandled exception - stack segment fault (#SS)");
             break;
         case ISR_GENERAL_PROTECTION: 
-            kernel_panic("exception - general protection fault (#GP)"); 
+            kernel_panic("unhandled exception - general protection fault (#GP)"); 
             break;
         case ISR_PAGE_FAULT: 
-            kernel_panic("exception - page fault (#PF)"); 
+            kernel_panic("unhandled exception - page fault (#PF)"); 
             break;
         case ISR_FPU_ERROR:
-            kernel_panic("exception - x87 floating point error (#MF)");
+            kernel_panic("unhandled exception - x87 floating point error (#MF)");
             break;
         case ISR_ALIGNMENT_CHECK:
-            kernel_panic("exception - alignment check (#AC)");
+            kernel_panic("unhandled exception - alignment check (#AC)");
             break;
         case ISR_MACHINE_CHECK:
-            kernel_panic("exception - machine check (#MC)");
+            kernel_panic("unhandled exception - machine check (#MC)");
             break;
         case ISR_SIMD_FP_EXCEPTION:
-            kernel_panic("exception - SIMD floating-point exception (#XF)");
+            kernel_panic("unhandled exception - SIMD floating-point exception (#XF)");
             break;
         case ISR_VIRTUALIZATION:
-            kernel_panic("exception - virtualization exception");
+            kernel_panic("unhandled exception - virtualization exception");
             break;
 
         case ISR_RESERVED_15:
@@ -152,7 +152,6 @@ void gp_fault_handler(uint32_t error_code) {
 }
 
 void div_zero_fault_handler(void) {
-
     if (multitasking_ready == 1) {
         printfs(PRINT_STATUS_ERROR,"Process \"%s\" attempted to divide by zero.\n",current_task->name);
         task_exit(EXIT_SIGILL);

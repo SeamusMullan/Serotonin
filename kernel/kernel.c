@@ -464,7 +464,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     splash_render(0,0);
     //create_color_render(275);
 
-    vbe_set_cursor(0,13);
+    vbe_set_cursor(0,20);
 
 	printf("serotonin kernel (higher half) - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
     printf("kernel now (eip): 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x, cpu:%s\n",kernel_current_eip(),HEAP_START,magic,addr,cpu_manufacturer);
@@ -476,11 +476,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     init_idt();
     struct idt_ptr idtp_read;
     asm volatile ("sidt %0" : "=m"(idtp_read));
-    printfs(PRINT_STATUS_INFO,"IDT base:  0x%08x\n", idtp_read.base);
-    printfs(PRINT_STATUS_INFO,"IDT limit: 0x%04x\n", idtp_read.limit);
-
-    // Interrupts ready to be enabled
     enable_interrupts();
+    printfs(PRINT_STATUS_INFO,"Interrupts enabled! IDT: base:0x%08x,limit:0x%08x\n", idtp_read.base,idtp_read.limit);
 
     uint32_t mem_lower;
     uint32_t mem_upper;

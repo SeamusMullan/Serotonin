@@ -266,7 +266,11 @@ void task_unblock(process_control_block_t *pcb) {
     unlock_scheduler();
 }
 
-__attribute__((naked)) void kernel_yield(void) {
+/**
+ * @brief Yield control from the current kernel mode task and switches to the next task. Kernel mode tasks only.
+ */
+__attribute__((naked)) 
+void kernel_yield(void) {
     void *esp;
     void *ebx;
     void *ebp;
