@@ -40,7 +40,7 @@ extern page_directory_t page_directory;
 
 #define KERNEL_STACK_VMA    0xF0000000U
 #define KERNEL_STACK_PHYS   0x30000000U
-#define USER_STACK_SIZE     0x00100000U
+#define KERNEL_STACK_SIZE   16384
 #define KERNEL_STACK_TOP    0xF0400000U
 #define KERNEL_STACK_BOTTOM (KERNEL_STACK_TOP - USER_STACK_SIZE)
 
@@ -50,7 +50,6 @@ extern page_directory_t page_directory;
 #define BLOCK_ALIGN 8
 #define PAGE_ALIGN(addr) (((addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))
 
-#define KERNEL_STACK_SIZE 16384
 
 extern uintptr_t page_dir_ptr;
 void paging_init(uintptr_t fb_phys_base);

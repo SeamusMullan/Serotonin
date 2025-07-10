@@ -29,6 +29,7 @@ typedef struct process_control_block {
 
     uint8_t signal;
 
+    void* esp_max;
 } process_control_block_t;
 
 enum {

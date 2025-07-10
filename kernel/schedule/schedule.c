@@ -81,11 +81,12 @@ void multitasking_init(void) {
     memset(init_task, 0, sizeof(*init_task));
 
     // populate fields
-    init_task->pid    = next_pid++;
-    init_task->esp    = get_esp();
-    init_task->esp0   = get_esp();
-    init_task->cr3    = read_cr3_register();
-    init_task->state  = PROCESS_STATE_BLOCKED;
+    init_task->pid     = next_pid++;
+    init_task->esp     = get_esp();
+    init_task->esp_max = (void*)0x00200000;
+    init_task->esp0    = get_esp();
+    init_task->cr3     = read_cr3_register();
+    init_task->state   = PROCESS_STATE_BLOCKED;
     strncpy(init_task->name, "Serotonin Kernel", 32);
 
     // single‐element list
@@ -106,6 +107,10 @@ void task_yield(int irq) {
     lock_scheduler();
 
     if (current_task->state == PROCESS_STATE_RUNNING) {
+        if ((unsigned int)current_task->esp < (unsigned int)current_task->esp_max) {
+            printfs(PRINT_STATUS_ERROR, "Stack overflow detected in task '%s' (attempted esp=%p, esp_max=%p)\n", current_task->name, current_task->esp,current_task->esp_max);
+            task_exit(EXIT_SIGSEGV);
+        }
         current_task->state = PROCESS_STATE_READY;
         enqueue(current_task);
     }
@@ -113,7 +118,7 @@ void task_yield(int irq) {
     process_control_block_t* next = NULL;
     while ((next = dequeue()) != NULL) {
         if (next->state == PROCESS_STATE_READY) {
-            //printf("found next: %p, name: %s, ring:%d, entry:%p, esp:%p\n",next, next->name,next->priv,next->entry,next->esp);
+            // printf("found next: %p, name: %s, ring:%d, entry:%p, esp:%p\n",next, next->name,next->priv,next->entry,next->esp);
             // found someone we can switch into
             next->state = PROCESS_STATE_RUNNING;
             unlock_scheduler();
@@ -186,6 +191,7 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
 
     pcb->esp = stk_top;
     pcb->esp0 = get_esp();
+    pcb->esp_max = stack;
     pcb->entry = entry;
 
     printfs(PRINT_STATUS_DEBUG,"Creating task '%s', esp=%p, esp0=%p\n", name, pcb->esp,pcb->esp0);
@@ -284,7 +290,7 @@ __attribute__((naked)) void kernel_yield(void) {
         :
     );
     
-    current_task->esp = esp;
+    current_task->esp = (void*)((unsigned int)esp+0x4); // (return addr was pushed to stack)
     current_task->ebx = ebx;
     current_task->esi = esi;
     current_task->edi = edi;
