@@ -22,7 +22,7 @@ static const char scancode_map[128] = {
  * @param scancode The scancode received from the keyboard.
  */
 void handle_scancode(uint8_t scancode) {
-    if (!stdin_lock)
+    if (!stdin_lock->held)
         return;
     
     if (scancode > 127)
@@ -36,8 +36,7 @@ void handle_scancode(uint8_t scancode) {
         stdin_ptr[stdin_idx] = '\0';
         stdin_idx++;
         printf("\n");
-        stdin_lock = 0;
-        task_unblock(stdin_pcb);
+        task_lock_release(stdin_lock);
     }
     else if (scancode == 0x0E) 
     {

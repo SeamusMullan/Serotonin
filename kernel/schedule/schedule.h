@@ -32,6 +32,19 @@ typedef struct process_control_block {
     void* esp_max;
 } process_control_block_t;
 
+typedef struct wait_node {
+    struct process_control_block *task;
+    struct wait_node           *next;
+} wait_node_t;
+
+typedef struct lock {
+    uint8_t held;
+    uint8_t block_on_hold;
+    process_control_block_t *owner;
+    wait_node_t *waiters_head;
+    wait_node_t *waiters_tail;
+} lock_t;
+
 enum {
     PROCESS_STATE_UNUSED = 0,
     PROCESS_STATE_RUNNING = 1,
@@ -68,6 +81,7 @@ extern process_control_block_t *current_task;
 extern process_control_block_t *task_list;
 extern volatile uint32_t preempt_count;
 extern volatile uint8_t pending_schedule;
+extern lock_t *stdin_lock;
 
 void multitasking_init(void);
 void multitasking_make_ready(void);
@@ -87,6 +101,9 @@ void task_unblock(process_control_block_t *pcb);
 void *alloc_user_stack(void);
 void *alloc_kernel_stack(void);
 void kernel_yield(void);
+void task_lock_init(lock_t *lock, uint8_t block_on_hold);
+void task_lock_acquire(lock_t *lock);
+void task_lock_release(lock_t *lock);
 
 static inline const char* to_signal_name(int signal_id) {
     static const char* const signal_names[16] = {

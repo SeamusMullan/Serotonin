@@ -40,7 +40,6 @@ enum {
 };
 
 extern char* stdin_ptr;
-extern int stdin_lock;
 extern int stdin_idx;
 extern process_control_block_t* stdin_pcb;
 

@@ -14,6 +14,7 @@
 
 process_control_block_t *current_task = NULL;
 process_control_block_t *task_list    = NULL;
+lock_t *stdin_lock;
 static uint32_t next_pid = 0;
 static uint32_t next_user_stack = USER_STACK_TOP;
 static uint32_t next_kernel_stack = KERNEL_STACK_TOP;
@@ -92,6 +93,9 @@ void multitasking_init(void) {
     // single‐element list
     task_list             = init_task;
     current_task          = init_task;
+
+
+    task_lock_init(stdin_lock, 1);
 }
 
 
@@ -305,4 +309,69 @@ void kernel_yield(void) {
     task_yield(0);
 
     return;
+}
+
+static void enqueue_waiter(lock_t *lock, process_control_block_t *pcb) {
+    wait_node_t *node = kernel_malloc(sizeof(*node));
+    node->task = pcb;
+    node->next = NULL;
+    if (lock->waiters_tail) {
+        lock->waiters_tail->next = node;
+        lock->waiters_tail = node;
+    } else {
+        lock->waiters_head = lock->waiters_tail = node;
+    }
+}
+
+process_control_block_t *dequeue_waiter(lock_t *lock) {
+    if (!lock->waiters_head) return NULL;
+    wait_node_t *node = lock->waiters_head;
+    process_control_block_t *pcb = node->task;
+    lock->waiters_head = node->next;
+    if (!lock->waiters_head)
+        lock->waiters_tail = NULL;
+    kernel_free(node);
+    return pcb;
+}
+
+void task_lock_init(lock_t *lock, uint8_t block_on_hold) {
+    lock->held          = 0;
+    lock->block_on_hold = block_on_hold;
+    lock->owner         = NULL;
+    lock->waiters_head  = NULL;
+    lock->waiters_tail  = NULL;
+}
+
+void task_lock_acquire(lock_t *lock) {
+    if (!lock->held) {
+        printfs(PRINT_STATUS_DEBUG,"stdin lock acquired by '%s'\n", current_task->name);
+        lock->held = 1;
+        lock->owner = current_task;
+        if (lock->block_on_hold) {
+            task_block();
+        }
+    } else {
+        enqueue_waiter(lock, current_task);
+        task_block();
+    }
+}
+
+void task_lock_release(lock_t *lock) {
+    process_control_block_t *owner = lock->owner;
+    if (lock->held) {
+        printfs(PRINT_STATUS_DEBUG,"stdin lock released by '%s'\n", owner->name);
+        process_control_block_t *next = dequeue_waiter(lock);
+        if (next) {
+            lock->owner = next;
+            if (lock->block_on_hold) {
+                task_unblock(owner);
+            }
+        } else {
+            lock->held = 0;
+            lock->owner = NULL;
+            if (lock->block_on_hold) {
+                task_unblock(owner);
+            }
+        }
+    }
 }

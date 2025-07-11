@@ -7,9 +7,7 @@
 #include <stdint.h>
 
 char* stdin_ptr = 0;
-int stdin_lock = 0;
 int stdin_idx = 0;
-process_control_block_t* stdin_pcb = 0;
 
 void handle_illegal_call(void) {
     printfs(PRINT_STATUS_WARNING,"Illegal system call from %s (pid=%d)!\n", current_task->name, current_task->pid);
@@ -45,12 +43,10 @@ void system_call(processor_context_t *ctx) {
         case SYSTEM_CALL_READ:
             switch (arg2) {
                 case READ_STDIN:
-                    stdin_lock = 1;
-                    stdin_pcb = current_task;
                     memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
                     stdin_idx = 0;
                     stdin_ptr = (char*)arg3;
-                    task_block();
+                    task_lock_acquire(stdin_lock);
                     __builtin_unreachable();
                 default:
                     handle_illegal_call();
