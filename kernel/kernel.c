@@ -483,7 +483,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     uint32_t mem_upper;
     uint32_t mem_total;
 
-    if (CHECK_FLAG (mbi->flags, 0))
+    if (CHECK_FLAG (mbi->flags, 6) && CHECK_FLAG (mbi->flags, 0))
     {
         mem_lower = (unsigned) mbi->mem_lower;
         mem_upper = (unsigned) mbi->mem_upper;
@@ -491,9 +491,37 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         printfs(PRINT_STATUS_INFO,"Detected lower memory: %uKB\n", mem_lower);
         printfs(PRINT_STATUS_INFO,"Detected extended memory: %uKB\n", mem_upper);
         printfs(PRINT_STATUS_INFO,"Total memory detected: %uKB\n", mem_total);
+
+        printfs(PRINT_STATUS_INFO, "Memory map: \n");
+        for(int i = 0; i < mbi->mmap_length; i += sizeof(multiboot_memory_map_t)) 
+        {
+            multiboot_memory_map_t* mmmt = (multiboot_memory_map_t*) (mbi->mmap_addr + i);
+            printf("    addr:0x%08x, length:0x%08x, size:0x%08x, type:0x%08x", mmmt->addr, mmmt->len, mmmt->size, mmmt->type);
+            switch (mmmt->type) {
+                case MULTIBOOT_MEMORY_AVAILABLE:
+                    printf(" ... available\n");
+                    break;
+                case MULTIBOOT_MEMORY_RESERVED:
+                    printf(" ... reserved\n");
+                    break;
+                case MULTIBOOT_MEMORY_ACPI_RECLAIMABLE:
+                    printf(" ... acpi reclaimable\n");
+                    break;
+                case MULTIBOOT_MEMORY_NVS:
+                    printf(" ... non volatile\n");
+                    break;
+                case MULTIBOOT_MEMORY_BADRAM:
+                    printf(" ... BAD!\n");
+                    break;
+                default:
+                    printf(" ... wtf?\n");
+                    break;
+            }
+        
+        }
     }
     else {
-        kernel_panic("multiboot - unable to detect memory");
+        kernel_panic("multiboot: invalid memory map provided by bootloader");
     }
 
     if (kernel_hypervisor_present()) {
