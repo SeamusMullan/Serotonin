@@ -547,7 +547,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     printfs(PRINT_STATUS_INFO,"Attempting to load /bin/init\n");
 
     process_control_block_t *init = kernel_load_elf("/bin/init","init");
-    process_control_block_t *inittroll = kernel_load_elf("/bin/init","init2");
     if (!init) {
         kernel_panic("unable to load init process!");
     }

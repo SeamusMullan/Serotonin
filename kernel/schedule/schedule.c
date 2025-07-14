@@ -350,14 +350,12 @@ void task_lock_init(lock_t *lock, uint8_t block_on_hold) {
 
 void task_lock_acquire(lock_t *lock) {
     if (!lock->held) {
-        printfs(PRINT_STATUS_DEBUG,"stdin lock acquired by '%s'\n", current_task->name);
         lock->held = 1;
         lock->owner = current_task;
         if (lock->block_on_hold) {
             task_block();
         }
     } else {
-        printfs(PRINT_STATUS_DEBUG,"stdin lock queued by '%s'\n", current_task->name);
         enqueue_waiter(lock, current_task);
         task_block();
     }
@@ -367,10 +365,8 @@ void task_lock_release(lock_t *lock) {
     process_control_block_t *owner = lock->owner;
     if (lock->held) {
         kernel_free(owner->ipc_ptr);
-        printfs(PRINT_STATUS_DEBUG,"stdin lock released by '%s'\n", owner->name);
         process_control_block_t *next = dequeue_waiter(lock);
         if (next) {
-            printf("found next waiter!\n");
             lock->owner = next;
             lock->held  = 1;
             if (lock->block_on_hold) {
