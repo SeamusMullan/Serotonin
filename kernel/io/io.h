@@ -4,6 +4,8 @@
 #include <stdint.h>
 
 #define MILLISECONDS_TO_TICKS(ms) (ms)
+#define STDIO_INPUT_BUFFER 1024
+
 extern volatile uint64_t timer_ticks;
 extern volatile uint64_t last_quantum_tick;
 extern volatile int multitasking_ready;

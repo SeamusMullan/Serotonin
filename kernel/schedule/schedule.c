@@ -11,6 +11,7 @@
 #include "../stdio/stdio.h"
 #include "../io/io.h"
 #include "../video/vbe/vbe.h"
+#include "../gdt.h"
 
 process_control_block_t *current_task = NULL;
 process_control_block_t *task_list    = NULL;
@@ -22,6 +23,8 @@ volatile uint32_t preempt_count = 0;
 volatile uint8_t pending_schedule = 0;
 
 // TODO: I should probably not scatter a repeat function but fuck it later issue
+// TODO: What I meant by this is this is probably better off defined later elsewhere, sorry for bed england.
+//       Don't care, will do it later :troll:
 static inline void* get_esp(void) {
     void* esp;
     asm volatile("mov %%esp, %0" : "=r"(esp));
@@ -36,6 +39,7 @@ static inline void* read_cr3_register(void) {
 
 void *alloc_user_stack(void) {
     if (next_user_stack < USER_STACK_BOTTOM + USER_STACK_SIZE) {
+        // TODO: Maybe try terminating some tasks or deny creating a new task.
         kernel_panic("alloc_user_stack: out of user stack space!");
         return NULL;
     }
@@ -47,7 +51,8 @@ void *alloc_user_stack(void) {
 
 void *alloc_kernel_stack(void) {
     if (next_kernel_stack < KERNEL_STACK_BOTTOM + KERNEL_STACK_SIZE) {
-        kernel_panic("alloc_kernel_stack: out of user stack space!");
+        // TODO: !!
+        kernel_panic("alloc_kernel_stack: out of kernel stack space!");
         return NULL;
     }
 
@@ -93,7 +98,6 @@ void multitasking_init(void) {
     // single‐element list
     task_list             = init_task;
     current_task          = init_task;
-
 
     task_lock_init(stdin_lock, 1);
 }
@@ -276,6 +280,8 @@ void task_unblock(process_control_block_t *pcb) {
  */
 __attribute__((naked)) 
 void kernel_yield(void) {
+    // TODO: maybe better off doing all of this in asm
+
     void *esp;
     void *ebx;
     void *ebp;
@@ -351,6 +357,7 @@ void task_lock_acquire(lock_t *lock) {
             task_block();
         }
     } else {
+        printfs(PRINT_STATUS_DEBUG,"stdin lock queued by '%s'\n", current_task->name);
         enqueue_waiter(lock, current_task);
         task_block();
     }
@@ -359,10 +366,13 @@ void task_lock_acquire(lock_t *lock) {
 void task_lock_release(lock_t *lock) {
     process_control_block_t *owner = lock->owner;
     if (lock->held) {
+        kernel_free(owner->ipc_ptr);
         printfs(PRINT_STATUS_DEBUG,"stdin lock released by '%s'\n", owner->name);
         process_control_block_t *next = dequeue_waiter(lock);
         if (next) {
+            printf("found next waiter!\n");
             lock->owner = next;
+            lock->held  = 1;
             if (lock->block_on_hold) {
                 task_unblock(owner);
             }

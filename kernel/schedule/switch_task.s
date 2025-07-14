@@ -60,6 +60,7 @@ switch_task:
     movl    OFF_CR3(%edx), %eax
     movl    %eax,       %cr3
 
+    # restore caller-saved registers
     movl    OFF_K_EBP(%edx), %ebp
     movl    OFF_K_EBX(%edx), %ebx
     movl    OFF_K_EDI(%edx), %edi
@@ -98,6 +99,7 @@ switch_task_iret:
     push    $0x08
     pushl   OFF_ENTRY(%edx)
 
+    # restore caller-saved registers
     movl    OFF_K_EBP(%edx), %ebp
     movl    OFF_K_EBX(%edx), %ebx
     movl    OFF_K_EDI(%edx), %edi

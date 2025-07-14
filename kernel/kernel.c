@@ -385,7 +385,7 @@ void kernel_idle_task(void) {
     }
 }
 
-process_control_block_t *kernel_load_elf(const char *path) {
+process_control_block_t *kernel_load_elf(const char *path, const char *pname) {
     vfs_node_t *node = vfs_open(path);
     if (!node) {
         return NULL;
@@ -433,7 +433,7 @@ process_control_block_t *kernel_load_elf(const char *path) {
 
     kernel_free(elf_data);
 
-    process_control_block_t *pcb = task_create((void (*)(void))ehdr->e_entry, "init", CPU_USER_MODE);
+    process_control_block_t *pcb = task_create((void (*)(void))ehdr->e_entry, pname, CPU_USER_MODE);
 
     enqueue(pcb);
 
@@ -546,7 +546,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     printfs(PRINT_STATUS_INFO,"Attempting to load /bin/init\n");
 
-    process_control_block_t *init = kernel_load_elf("/bin/init");
+    process_control_block_t *init = kernel_load_elf("/bin/init","init");
+    process_control_block_t *inittroll = kernel_load_elf("/bin/init","init2");
     if (!init) {
         kernel_panic("unable to load init process!");
     }
