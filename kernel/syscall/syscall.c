@@ -4,6 +4,7 @@
 #include "../io/io.h"
 #include "../kernel.h"
 #include "../stdlib/stdlib.h"
+#include "../paging.h"
 #include <stdint.h>
 
 char* stdin_ptr = 0;
@@ -15,7 +16,6 @@ void handle_illegal_call(void) {
 }
 
 void system_call(processor_context_t *ctx) {
-    stdin_ptr = kernel_malloc(STDIN_BUFFER_SIZE);
     uint32_t operation = ctx->eax;
     uint32_t arg2      = ctx->ebx;
     uint32_t arg3      = ctx->ecx;
@@ -43,9 +43,15 @@ void system_call(processor_context_t *ctx) {
         case SYSTEM_CALL_READ:
             switch (arg2) {
                 case READ_STDIN:
+                    if ((uint32_t)arg3 > (uint32_t)USER_SPACE_END) {
+                        handle_illegal_call();
+                        __builtin_unreachable();
+                    }
+
                     memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
-                    stdin_idx = 0;
-                    stdin_ptr = (char*)arg3;
+                    stdio_ipc_t *syscall_stdio = (stdio_ipc_t *)kernel_malloc(sizeof(stdio_ipc_t));
+                    syscall_stdio->stdin_ptr = (char*)arg3;
+                    current_task->ipc_ptr = (void*)syscall_stdio;
                     task_lock_acquire(stdin_lock);
                     __builtin_unreachable();
                 default:

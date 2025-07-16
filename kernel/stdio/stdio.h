@@ -1,9 +1,16 @@
 #ifndef _KERNEL_STDIO
 #define _KERNEL_STDIO
 
+#include <stdint.h>
+
 #ifndef NULL
 #define NULL ((void*)0)
 #endif
+
+typedef struct stdio_ipc {
+    void* stdin_ptr;
+    uint32_t* stdin_idx;
+} stdio_ipc_t; 
 
 enum print_status_types {
     PRINT_STATUS_DEBUG = 0,

@@ -30,6 +30,7 @@ typedef struct process_control_block {
     uint8_t signal;
 
     void* esp_max;
+    void* ipc_ptr;
 } process_control_block_t;
 
 typedef struct wait_node {

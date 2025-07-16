@@ -1,4 +1,5 @@
 #include "../stdio/stdio.h"
+#include "../stdlib/stdlib.h"
 #include "../video/vbe/vbe.h"
 #include "../syscall/syscall.h"
 #include "../schedule/schedule.h"
@@ -12,6 +13,8 @@ static const char scancode_map[128] = {
     'z','x','c','v','b','n','m',',','.','/',   0, '*',  0, ' ',
 };
 
+char stdio_buffer[STDIO_INPUT_BUFFER];
+
 /**
  * @brief Handle keyboard scancodes.
  * 
@@ -22,7 +25,18 @@ static const char scancode_map[128] = {
  * @param scancode The scancode received from the keyboard.
  */
 void handle_scancode(uint8_t scancode) {
+    static uint32_t stdin_idx = 0;
+
+    if (stdin_idx < 0)
+        stdin_idx = 0;
+
     if (!stdin_lock->held)
+        return;
+
+    stdio_ipc_t *task_stdio = (stdio_ipc_t*)stdin_lock->owner->ipc_ptr;
+    void* stdin_ptr = task_stdio->stdin_ptr;
+
+    if (stdin_idx >= STDIO_INPUT_BUFFER)
         return;
     
     if (scancode > 127)
@@ -33,14 +47,14 @@ void handle_scancode(uint8_t scancode) {
     } 
     else if (scancode == 0x1C) 
     {
-        stdin_ptr[stdin_idx] = '\0';
-        stdin_idx++;
-        printf("\n");
+        stdio_buffer[stdin_idx] = '\0';
+        memcpy(stdin_ptr,stdio_buffer,stdin_idx+1);
+        stdin_idx = 0;
         task_lock_release(stdin_lock);
     }
     else if (scancode == 0x0E) 
     {
-        stdin_ptr[stdin_idx] = '\0';
+        stdio_buffer[stdin_idx] = '\0';
         stdin_idx--;
         vbe_terminal_back();
     }
@@ -48,7 +62,7 @@ void handle_scancode(uint8_t scancode) {
     {
         char c = scancode_map[scancode];
         if (c) {
-            stdin_ptr[stdin_idx] = c;
+            stdio_buffer[stdin_idx] = (unsigned char)c;
             stdin_idx++;
             printf("%c", c);
         }

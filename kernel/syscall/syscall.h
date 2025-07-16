@@ -39,10 +39,6 @@ enum {
     READ_FS    = 1
 };
 
-extern char* stdin_ptr;
-extern int stdin_idx;
-extern process_control_block_t* stdin_pcb;
-
 void system_call(processor_context_t *ctx);
 extern void isr_syscall(void);
 
