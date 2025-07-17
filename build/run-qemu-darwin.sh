@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-qemu-img create -f raw serotonin.img 1G
-qemu-system-x86_64 -m 2048 -boot d -cdrom serotonin.iso -vga std -drive file=serotonin.img,if=ide,index=1,media=disKaterrak
-=======
 #!/bin/bash
 
 # --- Configuration ---
@@ -30,4 +26,3 @@ echo "Done. $IMG_FILE is now formatted as FAT32."
 
 
 qemu-system-x86_64 -m 2048 -boot d -cdrom serotonin.iso -vga std -drive file=serotonin.img,if=ide,index=1,media=disk
->>>>>>> 613a40898fd49988be36b29f33753fb545e3def4
