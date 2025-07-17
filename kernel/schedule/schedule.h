@@ -90,7 +90,6 @@ __attribute__((naked,noreturn)) extern void switch_task(process_control_block_t*
 __attribute__((naked,noreturn)) extern void switch_task_iret(process_control_block_t* next_thread);
 process_control_block_t* task_create(void (*entry)(void), const char *name, uint8_t priv);
 void task_yield(int irq);
-void task_trampoline(void);
 void task_exit(uint8_t exit);
 void enqueue(process_control_block_t* pcb);
 process_control_block_t* dequeue();
@@ -105,6 +104,9 @@ void kernel_yield(void);
 void task_lock_init(lock_t *lock, uint8_t block_on_hold);
 void task_lock_acquire(lock_t *lock);
 void task_lock_release(lock_t *lock);
+process_control_block_t* task_fork(process_control_block_t *parent);
+void preempt_disable();
+void preempt_enable();
 
 static inline const char* to_signal_name(int signal_id) {
     static const char* const signal_names[16] = {

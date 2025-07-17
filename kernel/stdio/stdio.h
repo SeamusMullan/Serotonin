@@ -9,7 +9,7 @@
 
 typedef struct stdio_ipc {
     void* stdin_ptr;
-    uint32_t* stdin_idx;
+    uint32_t  stdin_buf_size;
 } stdio_ipc_t; 
 
 enum print_status_types {

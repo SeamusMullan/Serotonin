@@ -16,25 +16,27 @@ void handle_illegal_call(void) {
 }
 
 void system_call(processor_context_t *ctx) {
+    preempt_disable();
+
     uint32_t operation = ctx->eax;
     uint32_t arg2      = ctx->ebx;
     uint32_t arg3      = ctx->ecx;
     uint32_t arg4      = ctx->edx;
 
-    printfs(PRINT_STATUS_DEBUG, "[SYSCALL] Recieved system call from %s (pid=%d): operation:%d, arg2:%d, arg3:%d, arg4:%d\n",current_task->name, current_task->pid, operation,arg2,arg3,arg4);
+    printfs(PRINT_STATUS_DEBUG, "[SYSCALL] eip=%p Recieved system call from %s (pid=%d): operation:%d, arg2:%p, arg3:%p, arg4:%p\n",ctx->eip,current_task->name, current_task->pid, operation,arg2,arg3,arg4);
     switch (operation) {
         case SYSTEM_CALL_EXIT:
             // should do validation at some point lol
             task_exit(arg2);
-            return;
+            break;
         case SYSTEM_CALL_WRITE:
             switch (arg2) {
                 case WRITE_STDOUT:
                     printf("%s",arg3);
-                    return;
+                    break;
                 case WRITE_STDERR:
                     printfs(PRINT_STATUS_ERROR,"%s",arg3);
-                    return;
+                    break;
                 default:
                     handle_illegal_call();
                     __builtin_unreachable();
@@ -43,7 +45,7 @@ void system_call(processor_context_t *ctx) {
         case SYSTEM_CALL_READ:
             switch (arg2) {
                 case READ_STDIN:
-                    if ((uint32_t)arg3 > (uint32_t)USER_SPACE_END) {
+                    if (arg3 > USER_SPACE_END) {
                         handle_illegal_call();
                         __builtin_unreachable();
                     }
@@ -51,6 +53,7 @@ void system_call(processor_context_t *ctx) {
                     memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
                     stdio_ipc_t *syscall_stdio = (stdio_ipc_t *)kernel_malloc(sizeof(stdio_ipc_t));
                     syscall_stdio->stdin_ptr = (char*)arg3;
+                    syscall_stdio->stdin_buf_size = arg4;
                     current_task->ipc_ptr = (void*)syscall_stdio;
                     task_lock_acquire(stdin_lock);
                     __builtin_unreachable();
@@ -58,9 +61,16 @@ void system_call(processor_context_t *ctx) {
                     handle_illegal_call();
                     __builtin_unreachable();
             }
-
+        case SYSTEM_CALL_FORK:
+            memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
+            process_control_block_t *pcb = task_fork(current_task);
+            enqueue(pcb);
+            current_task->processor_context->eax = pcb->pid;
+            pcb->processor_context->eax = 0;
+            break;
         default:
             handle_illegal_call();
             __builtin_unreachable();
     }
+    preempt_enable();
 }

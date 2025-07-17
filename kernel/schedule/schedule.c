@@ -37,6 +37,15 @@ static inline void* read_cr3_register(void) {
     return cr3;
 }
 
+void preempt_disable() {
+    preempt_count++;
+}
+
+void preempt_enable() {
+    if (preempt_count > 0)
+        preempt_count--;
+}
+
 void *alloc_user_stack(void) {
     if (next_user_stack < USER_STACK_BOTTOM + USER_STACK_SIZE) {
         // TODO: Maybe try terminating some tasks or deny creating a new task.
@@ -130,6 +139,7 @@ void task_yield(int irq) {
             // found someone we can switch into
             next->state = PROCESS_STATE_RUNNING;
             unlock_scheduler();
+            preempt_enable();
 
             // if nothing is pending, switch
             if (irq == 1) {
@@ -377,7 +387,36 @@ void task_lock_release(lock_t *lock) {
             lock->owner = NULL;
             if (lock->block_on_hold) {
                 task_unblock(owner);
-            }
+            };
         }
     }
+}
+
+process_control_block_t* task_fork(process_control_block_t *parent) {
+    process_control_block_t *pcb = (process_control_block_t*)kernel_malloc(sizeof(process_control_block_t));
+    memcpy(pcb, parent, sizeof(process_control_block_t));
+    memcpy(pcb->processor_context, parent->processor_context, sizeof(processor_context_t));
+    memcpy(pcb->esp_max, parent->esp_max, USER_STACK_SIZE);
+    pcb->state = PROCESS_STATE_READY;
+    pcb->pid   = next_pid++;
+
+    // create stack
+    uint8_t *stack;
+    uint32_t *stk_top;
+    if (pcb->priv == CPU_USER_MODE) {
+        stack = (uint8_t*)alloc_user_stack();
+        stk_top = (uint32_t*)(stack + USER_STACK_SIZE);
+    } else {
+        stack = (uint8_t*)alloc_kernel_stack();
+        stk_top = (uint32_t*)(stack + KERNEL_STACK_SIZE);
+    }
+    memset(stack, 0, sizeof(*stack));
+
+    pcb->esp = stk_top;
+    pcb->esp_max = stack;
+    pcb->processor_context->esp_at_trap = (uint32_t)stk_top;
+
+    printfs(PRINT_STATUS_DEBUG,"Forking task '%s', esp=%p, esp0=%p\n", pcb->name, pcb->esp,pcb->esp0);
+
+    return pcb;
 }

@@ -34,9 +34,10 @@ void handle_scancode(uint8_t scancode) {
         return;
 
     stdio_ipc_t *task_stdio = (stdio_ipc_t*)stdin_lock->owner->ipc_ptr;
+    uint32_t stdio_buf_size = task_stdio->stdio_buf_size;
     void* stdin_ptr = task_stdio->stdin_ptr;
 
-    if (stdin_idx >= STDIO_INPUT_BUFFER)
+    if (stdin_idx >= STDIO_INPUT_BUFFER || stdin_idx >= stdio_buf_size)
         return;
     
     if (scancode > 127)
