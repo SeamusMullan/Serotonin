@@ -18,6 +18,18 @@ echo "Attached to $DEVICE"
 echo "Formatting $DEVICE to FAT32..."
 sudo diskutil eraseDisk FAT32 "$VOLUME_NAME" MBRFormat "$DEVICE"
 
+# --- Copy the init ELF to the drive ---
+echo "Copying init ELF to the volume..."
+INIT_ELF="../user/init/init.elf"
+if [ -f "$INIT_ELF" ]; then
+    sudo mkdir -p "/Volumes/$VOLUME_NAME/bin"
+    sudo chmod 755 "/Volumes/$VOLUME_NAME/bin"
+    sudo cp "$INIT_ELF" "/Volumes/$VOLUME_NAME/bin/init"
+else
+    echo "Error: $INIT_ELF not found!"
+    exit 1
+fi
+
 # --- Detach the image ---
 echo "Detaching $DEVICE..."
 hdiutil detach "$DEVICE"
