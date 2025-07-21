@@ -125,7 +125,7 @@ void page_fault_handler(uint32_t error_code) {
     } else {
       printfs(PRINT_STATUS_ERROR,"     protection violation\n");
     }
-    printfs(PRINT_STATUS_ERROR,"       %s access in %s mode%s\n",
+    printfs(PRINT_STATUS_ERROR,  "     %s access in %s mode%s\n",
            write ? "write" : (ifetch ? "instruction-fetch" : "read"),
            user ? "user" : "kernel",
            (error_code & (1<<5)) ? ", reserved violation of PAT bits" : "");

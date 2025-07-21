@@ -22,14 +22,15 @@ typedef struct process_control_block {
 
     processor_context_t *processor_context;
 
-    void *ebx;
-    void *ebp;
-    void *esi;
-    void *edi;
+    void* ebx;
+    void* ebp;
+    void* esi;
+    void* edi;
 
     uint8_t signal;
 
     void* esp_max;
+    void* esp_min;
     void* ipc_ptr;
 } process_control_block_t;
 

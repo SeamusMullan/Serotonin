@@ -2,6 +2,7 @@
 *.bin
 *.iso
 *.img
+*.elf
 build-tools/bin
 build-tools/src
 docs/html
