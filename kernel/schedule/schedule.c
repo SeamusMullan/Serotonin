@@ -401,30 +401,33 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     pcb->state = PROCESS_STATE_READY;
     pcb->pid   = next_pid++;
 
+    uint32_t stk_offset = ((uint32_t)parent->esp_min - (uint32_t)parent->processor_context->esp_at_trap);
+    uint32_t bp_offset = ((uint32_t)parent->esp_min - (uint32_t)parent->processor_context->ebp);
+
     // create stack
     uint8_t *stack;
-    uint32_t stk_top;
+    uint32_t *stk_top;
     uint32_t ebp;
     if (pcb->priv == CPU_USER_MODE) {
         stack = (uint8_t*)alloc_user_stack();
+        stk_top = (uint32_t*)(stack + USER_STACK_SIZE);
     } else {
         stack = (uint8_t*)alloc_kernel_stack();
+        stk_top = (uint32_t*)(stack + KERNEL_STACK_SIZE);
     }
     memset(stack, 0, sizeof(*stack));
 
-    stk_top = (uint32_t)parent->processor_context->esp_at_trap - USER_STACK_SIZE;
-    ebp = (uint32_t)parent->processor_context->ebp - USER_STACK_SIZE;
-
-    printf("THE GHOST OF TERRY DAVIS SAYS: esp:%p ebp:%p, retard: esp:%p, ebp:%p\n",stk_top,ebp,parent->processor_context->esp_at_trap,parent->processor_context->ebp);
+    ebp = (uint32_t)stk_top - bp_offset;
+    stk_top = (uint32_t*)((uint32_t)stk_top - stk_offset);
 
     pcb->esp = (uint32_t*)stk_top;
     pcb->esp_max = stack;
     pcb->processor_context->esp_at_trap = (uint32_t)stk_top;
-    pcb->processor_context->ebp = (uint32_t)ebp;
-
-    memcpy(pcb->esp_max, parent->esp_max, USER_STACK_SIZE);
+    pcb->processor_context->ebp = ebp;
 
     printfs(PRINT_STATUS_DEBUG,"Forking task '%s', esp=%p, esp0=%p\n", pcb->name, pcb->esp,pcb->esp0);
+
+    memcpy(pcb->esp_max, parent->esp_max, USER_STACK_SIZE);
 
     return pcb;
 }
