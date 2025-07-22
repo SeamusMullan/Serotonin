@@ -7,6 +7,8 @@
 #include "../video/vbe/vbe.h"
 #include "../schedule/schedule.h"
 
+static uint32_t printfs_status_mask = 0xFFFFFFFF; 
+
 /**
  * @brief Internal printf function.
  * 
@@ -170,6 +172,14 @@ void printf(const char* fmt, ...)
     printf_internal(p, arg_ptr);
 }
 
+void printfs_set_mask(uint32_t mask) {
+    printfs_status_mask = mask;
+}
+
+int printfs_masked(enum print_status_types status_type) {
+    return (printfs_status_mask & (1 << status_type)) != 0;
+}
+
 /**
  * @brief Write the status to the TTY.
  *
@@ -216,6 +226,9 @@ void printfs_write_status(enum print_status_types status_type) {
  */
 void printfs(enum print_status_types status_type, const char* fmt, ...) 
 {
+    if (!printfs_masked(status_type))
+        return;
+
     const char* p = fmt;
 
     void** arg_ptr = (void**)(&fmt);

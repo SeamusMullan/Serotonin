@@ -46,9 +46,7 @@ static uint32_t heap_start = (uint32_t)HEAP_START;
 static uint32_t heap_end = (uint32_t)(KERNEL_HEAP_VMA + KERNEL_HEAP_SIZE);
 static uint32_t current_heap = (uint32_t)KERNEL_HEAP_VMA;
 static block_header_t *heap_list = NULL;
-process_control_block_t *pcbA;
-process_control_block_t *pcbB;
-process_control_block_t *pcbC;
+static uint8_t debug_mode = 0;
 
 #define CHECK_FLAG(flags,bit)   ((flags) & (1 << (bit)))
 
@@ -149,30 +147,6 @@ __attribute__((target("no-sse"))) void kernel_setup_fpu(void) {
 
     // Initialize the FPU to default state
     asm volatile("fninit");
-}
-
-/**
- * @brief Jump to the higher half of the kernel address space.
- *
- * @param entry The entry point of the kernel.
- * @param magic The magic number passed by the bootloader.
- * @param multiboot_info The multiboot information structure.
- */
-inline void kernel_jump_to_higher_half(void (*entry)(unsigned long, unsigned long), unsigned long magic, unsigned long multiboot_info) {
-    uintptr_t flat_addr = (uintptr_t)entry;
-    uintptr_t offset    = flat_addr - KERNEL_PHYS_BASE;
-    uintptr_t high_addr = KERNEL_VMA_BASE + offset;
-
-    printf("calling higher half 0x%08x\n",high_addr);
-
-    asm volatile (
-    "push %[arg2]\n"
-    "push %[arg1]\n"
-    "call *%[func]\n"
-    :
-    : [func] "r"(high_addr), [arg1] "r"(magic), [arg2] "r"(multiboot_info)
-    : "memory"
-    );
 }
 
 /**
@@ -455,7 +429,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     multiboot_info_t *mbi = (multiboot_info_t *) addr;
     page_directory_t *page_dir = (page_directory_t*)page_dir_ptr;
     const char *cmdline = (const char *)(uintptr_t)mbi->cmdline;
-
     char* cpu_manufacturer = kernel_get_cpu_manufacturer();
 
     vbe_init(mbi);
@@ -463,6 +436,35 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     vbe_flip();
     splash_render(0,0);
     //create_color_render(275);
+
+    printfs_set_mask(
+        (1 << PRINT_STATUS_WARNING) |
+        (1 << PRINT_STATUS_ERROR) |
+        (1 << PRINT_STATUS_FATAL)
+    );
+
+    char cmdline_buf[256];
+
+    if (strlen(cmdline) >= sizeof(cmdline_buf)) {
+        kernel_panic("cmdline too long");
+    }
+
+    strncpy(cmdline_buf, cmdline, sizeof(cmdline_buf));
+    cmdline_buf[sizeof(cmdline_buf) - 1] = '\0'; 
+
+    for (char* token = strtok(cmdline_buf, " "); token != NULL; token = strtok(NULL, " ")) {
+        // yanderedev, should use a struct table in the future, but for now, we only have one arg.
+        if (strcmp(token, "debug") == 0) {
+            printfs_set_mask(
+                (1 << PRINT_STATUS_DEBUG) |
+                (1 << PRINT_STATUS_INFO) |
+                (1 << PRINT_STATUS_WARNING) |
+                (1 << PRINT_STATUS_ERROR) |
+                (1 << PRINT_STATUS_FATAL)
+            );
+            debug_mode = 1;
+        }
+    }
 
     vbe_set_cursor(0,13);
 
@@ -492,11 +494,12 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         printfs(PRINT_STATUS_INFO,"Detected extended memory: %uKB\n", mem_upper);
         printfs(PRINT_STATUS_INFO,"Total memory detected: %uKB\n", mem_total);
 
+        /*
         printfs(PRINT_STATUS_INFO, "Memory map: \n");
         for(int i = 0; i < mbi->mmap_length; i += sizeof(multiboot_memory_map_t)) 
         {
             multiboot_memory_map_t* mmmt = (multiboot_memory_map_t*) (mbi->mmap_addr + i);
-            printf("    addr:0x%08x, length:0x%08x, size:0x%08x, type:0x%08x", mmmt->addr, mmmt->len, mmmt->size, mmmt->type);
+            printfs(PRINT_STATUS_INFO,"    addr:0x%08x, length:0x%08x, size:0x%08x, type:0x%08x", mmmt->addr, mmmt->len, mmmt->size, mmmt->type);
             switch (mmmt->type) {
                 case MULTIBOOT_MEMORY_AVAILABLE:
                     printf(" ... available\n");
@@ -519,6 +522,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
             }
         
         }
+        */
     }
     else {
         kernel_panic("multiboot: invalid memory map provided by bootloader");
@@ -554,8 +558,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     process_control_block_t *t = task_list;
     printf("Task list:\n");
     do {
-        printf("  Task %s (pid=%u), esp=%p, cr3=%p, state=%d\n",
-               t->name, t->pid, t->esp, t->cr3, t->state);
+        printf("  Task %s (pid=%u), esp=%p, cr3=%p, state=%d, ring=%d\n",
+               t->name, t->pid, t->esp, t->cr3, t->state, t->priv);
         t = t->next;
         if (t == NULL) {
             break;

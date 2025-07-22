@@ -23,5 +23,6 @@ enum print_status_types {
 
 void printf(const char* fmt, ...);
 void printfs(enum print_status_types status_type, const char* fmt, ...);
+void printfs_set_mask(uint32_t mask);
 
 #endif
