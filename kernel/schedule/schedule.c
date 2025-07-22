@@ -54,6 +54,17 @@ void rotate_runqueue(void) {
     enqueue(pcb);
 }
 
+void enqueue_task_list(process_control_block_t* pcb) {
+    if (!task_list) {
+        task_list = pcb;
+    } else {
+        process_control_block_t *tail = task_list;
+        while (tail->next)
+            tail = tail->next;
+        tail->next = pcb;
+    }
+}
+
 void preempt_disable() {
     preempt_count++;
 }
@@ -234,6 +245,8 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
     pcb->entry = entry;
 
     printfs(PRINT_STATUS_DEBUG,"Creating task '%s', esp=%p, esp0=%p\n", name, pcb->esp,pcb->esp0);
+
+    enqueue_task_list(pcb);
 
     return pcb;
 }
@@ -439,6 +452,8 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     printfs(PRINT_STATUS_DEBUG,"Forking task '%s', esp=%p, esp0=%p\n", pcb->name, pcb->esp,pcb->esp0);
 
     memcpy(pcb->esp_max, parent->esp_max, USER_STACK_SIZE);
+
+    enqueue_task_list(pcb);
 
     return pcb;
 }
