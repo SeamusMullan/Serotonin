@@ -191,21 +191,22 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
     if (priv == CPU_USER_MODE) {
         stack = (uint8_t*)alloc_user_stack();
         stk_top = (uint32_t*)(stack + USER_STACK_SIZE);
-        pcb->processor_context->ds          = 0x23;
-        pcb->processor_context->es          = 0x23;
-        pcb->processor_context->fs          = 0x23;
-        pcb->processor_context->gs          = 0x23;
-        pcb->processor_context->ss          = 0x23; 
+        pcb->processor_context->ds          = USER_MODE_SEGMENT;
+        pcb->processor_context->es          = USER_MODE_SEGMENT;
+        pcb->processor_context->fs          = USER_MODE_SEGMENT;
+        pcb->processor_context->gs          = USER_MODE_SEGMENT;
+        pcb->processor_context->ss          = USER_MODE_SEGMENT; 
         pcb->processor_context->esp_at_trap = (uint32_t)stk_top;
-        pcb->processor_context->stub_eflags = 0x00000202;
-        pcb->processor_context->eflags      = 0x00000202;
-        pcb->processor_context->cs          = 0x1B; 
+        pcb->processor_context->stub_eflags = USER_MODE_EFLAGS;
+        pcb->processor_context->eflags      = USER_MODE_EFLAGS;
+        pcb->processor_context->cs          = USER_MODE_CODE_SEGMENT; 
         pcb->processor_context->eip         = (uint32_t)entry;
+        memset(stack, 0, USER_STACK_SIZE);
     } else {
         stack = (uint8_t*)alloc_kernel_stack();
         stk_top = (uint32_t*)(stack + KERNEL_STACK_SIZE);
+        memset(stack, 0, KERNEL_STACK_SIZE);
     }
-    memset(stack, 0, sizeof(*stack));
 
     pcb->esp = stk_top;
     pcb->esp0 = get_esp();
@@ -394,7 +395,11 @@ void task_lock_release(lock_t *lock) {
 }
 
 process_control_block_t* task_fork(process_control_block_t *parent) {
-    // TODO: fix for kernel mode, if i should support fork in kmode in the first place (lol)
+    if (pcb->priv == CPU_KERNEL_MODE) {
+        printfs(PRINT_STATUS_ERROR,"Process '%s' attempted fork in kernel mode and will be terminated.\n",current_task->name);
+        task_exit(EXIT_SIGILL);
+    }
+
     process_control_block_t *pcb = (process_control_block_t*)kernel_malloc(sizeof(process_control_block_t));
     memcpy(pcb, parent, sizeof(process_control_block_t));
     memcpy(pcb->processor_context, parent->processor_context, sizeof(processor_context_t));
@@ -408,14 +413,9 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     uint8_t *stack;
     uint32_t *stk_top;
     uint32_t ebp;
-    if (pcb->priv == CPU_USER_MODE) {
-        stack = (uint8_t*)alloc_user_stack();
-        stk_top = (uint32_t*)(stack + USER_STACK_SIZE);
-    } else {
-        stack = (uint8_t*)alloc_kernel_stack();
-        stk_top = (uint32_t*)(stack + KERNEL_STACK_SIZE);
-    }
-    memset(stack, 0, sizeof(*stack));
+    stack = (uint8_t*)alloc_user_stack();
+    stk_top = (uint32_t*)(stack + USER_STACK_SIZE);
+    memset(stack, 0, USER_STACK_SIZE);
 
     ebp = (uint32_t)stk_top - bp_offset;
     stk_top = (uint32_t*)((uint32_t)stk_top - stk_offset);
