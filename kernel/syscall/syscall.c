@@ -65,7 +65,7 @@ void system_call(processor_context_t *ctx) {
             memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
             process_control_block_t *pcb = task_fork(current_task);
             enqueue(pcb);
-            current_task->processor_context->eax = pcb->pid;
+            ctx->eax = pcb->pid;
             pcb->processor_context->eax = 0;
             break;
         default:
