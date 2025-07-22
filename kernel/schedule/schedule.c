@@ -16,6 +16,9 @@
 process_control_block_t *current_task = NULL;
 process_control_block_t *task_list    = NULL;
 lock_t *stdin_lock;
+static process_control_block_t *runqueue[MAX_TASKS];
+static int rq_head = 0;
+static int rq_tail = 0;
 static uint32_t next_pid = 0;
 static uint32_t next_user_stack = USER_STACK_TOP;
 static uint32_t next_kernel_stack = KERNEL_STACK_TOP;
@@ -35,6 +38,20 @@ static inline void* read_cr3_register(void) {
     void* cr3;
     asm volatile("mov %%cr3, %0" : "=r"(cr3));
     return cr3;
+}
+
+static inline int rq_next(int i) {
+    return (i + 1) % MAX_TASKS;
+}
+
+static inline int runqueue_is_empty(void) {
+    return rq_head == rq_tail;
+}
+
+void rotate_runqueue(void) {
+    if (runqueue_is_empty()) return;
+    process_control_block_t *pcb = dequeue();
+    enqueue(pcb);
 }
 
 void preempt_disable() {
@@ -159,6 +176,8 @@ void task_exit(uint8_t exit) {
     printfs(PRINT_STATUS_DEBUG, "task_exit: Task %s (pid=%u) exited:%s\n", current_task->name, current_task->pid,to_signal_name(exit));
     current_task->state = PROCESS_STATE_TERMINATED;
     current_task->signal = exit;
+    kernel_free(current_task->processor_context);
+    kernel_free(current_task);
 
     task_yield(0);  // pick the next runnable task
     kernel_panic("task_exit: nothing to switch to");
@@ -226,17 +245,12 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
 void enqueue(process_control_block_t* pcb) {
     lock_scheduler();
 
-    pcb->next = NULL;
-
-    // insert into scheduler
-    if (!task_list) {
-        task_list = pcb;
-    } else {
-        process_control_block_t *tail = task_list;
-        while (tail->next)
-            tail = tail->next;
-        tail->next = pcb;
+    int next = rq_next(rq_tail);
+    if (next == rq_head) {
+        kernel_panic("runqueue full!");
     }
+    runqueue[rq_tail] = pcb;
+    rq_tail = next;
 
     unlock_scheduler();
 }
@@ -246,13 +260,10 @@ void enqueue(process_control_block_t* pcb) {
  * @return Pointer to the dequeued process control block.
  */
 process_control_block_t* dequeue() {
-    if (!task_list)
-        return NULL;
-
-    process_control_block_t* head = task_list;
-    task_list = task_list->next;
-    head->next = NULL;
-    return head;
+    if (runqueue_is_empty()) return NULL;
+    process_control_block_t *pcb = runqueue[rq_head];
+    rq_head = rq_next(rq_head);
+    return pcb;
 }
 
 /**
@@ -395,7 +406,7 @@ void task_lock_release(lock_t *lock) {
 }
 
 process_control_block_t* task_fork(process_control_block_t *parent) {
-    if (pcb->priv == CPU_KERNEL_MODE) {
+    if (parent->priv == CPU_KERNEL_MODE) {
         printfs(PRINT_STATUS_ERROR,"Process '%s' attempted fork in kernel mode and will be terminated.\n",current_task->name);
         task_exit(EXIT_SIGILL);
     }

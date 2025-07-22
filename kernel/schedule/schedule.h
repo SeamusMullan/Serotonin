@@ -7,6 +7,7 @@
 #define USER_MODE_SEGMENT      0x23
 #define USER_MODE_CODE_SEGMENT 0x1B
 #define USER_MODE_EFLAGS       0x00000202 // RSVD, IF
+#define MAX_TASKS              256
 
 typedef struct process_control_block {
     uint32_t pid;
