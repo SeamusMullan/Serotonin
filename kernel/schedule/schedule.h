@@ -32,6 +32,7 @@ typedef struct process_control_block {
     void* esp_max;
     void* esp_min;
     void* ipc_ptr;
+    void* lck_ptr;
 } process_control_block_t;
 
 typedef struct wait_node {

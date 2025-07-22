@@ -7,10 +7,10 @@
 #define NULL ((void*)0)
 #endif
 
-typedef struct stdio_ipc {
+typedef struct stdio_lck {
     void* stdin_ptr;
     uint32_t  stdin_buf_size;
-} stdio_ipc_t; 
+} stdio_lck_t; 
 
 enum print_status_types {
     PRINT_STATUS_DEBUG = 0,

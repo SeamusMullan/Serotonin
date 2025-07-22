@@ -89,7 +89,7 @@ vfs_node_t *fat32_mount(const char *device) {
     uint8_t *mbr = kernel_malloc(512);
     ide_read_sector(drive, 0, mbr);
     if (mbr[510] != 0x55 || mbr[511] != 0xAA) {
-        printfs(PRINT_STATUS_DEBUG,"fat32_mount: invalid MBR signature %02X %02X\n",
+        printfs(PRINT_STATUS_ERROR,"fat32_mount: invalid MBR signature %02x %02x\n",
                mbr[510], mbr[511]);
         kernel_free(mbr);
         return NULL;

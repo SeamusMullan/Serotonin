@@ -51,10 +51,10 @@ void system_call(processor_context_t *ctx) {
                     }
 
                     memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
-                    stdio_ipc_t *syscall_stdio = (stdio_ipc_t *)kernel_malloc(sizeof(stdio_ipc_t));
+                    stdio_lck_t *syscall_stdio = (stdio_lck_t *)kernel_malloc(sizeof(stdio_lck_t));
                     syscall_stdio->stdin_ptr = (char*)arg3;
                     syscall_stdio->stdin_buf_size = arg4;
-                    current_task->ipc_ptr = (void*)syscall_stdio;
+                    current_task->lck_ptr = (void*)syscall_stdio;
                     task_lock_acquire(stdin_lock);
                     __builtin_unreachable();
                 default:

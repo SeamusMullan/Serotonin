@@ -33,7 +33,7 @@ void handle_scancode(uint8_t scancode) {
     if (!stdin_lock->held)
         return;
 
-    stdio_ipc_t *task_stdio = (stdio_ipc_t*)stdin_lock->owner->ipc_ptr;
+    stdio_lck_t *task_stdio = (stdio_lck_t*)stdin_lock->owner->lck_ptr;
     uint32_t stdio_buf_size = task_stdio->stdin_buf_size;
     void* stdin_ptr = task_stdio->stdin_ptr;
 

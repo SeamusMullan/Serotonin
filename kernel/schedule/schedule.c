@@ -375,7 +375,7 @@ void task_lock_acquire(lock_t *lock) {
 void task_lock_release(lock_t *lock) {
     process_control_block_t *owner = lock->owner;
     if (lock->held) {
-        kernel_free(owner->ipc_ptr);
+        kernel_free(owner->lck_ptr);
         process_control_block_t *next = dequeue_waiter(lock);
         if (next) {
             lock->owner = next;

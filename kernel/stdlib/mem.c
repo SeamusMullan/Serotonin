@@ -179,7 +179,7 @@ void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
         size -= head;
     }
 
-    // main copy: 64 bytes per iteration (4×16)
+    // SHOCKING: MAN GIVES SMALL HYPERACTIVE CHILD METHAMPHETAMINE! YOU WON'T BELIEVE HOW FAST HE COPIES MEMORY!
     while (size >= 64) {
         asm volatile (
             "movdqu 0(%[s]), %%xmm0\n\t"

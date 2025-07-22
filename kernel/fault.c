@@ -153,7 +153,7 @@ void gp_fault_handler(uint32_t error_code) {
 
 void div_zero_fault_handler(void) {
     if (multitasking_ready == 1) {
-        printfs(PRINT_STATUS_ERROR,"Process \"%s\" attempted to divide by zero.\n",current_task->name);
+        printfs(PRINT_STATUS_ERROR,"Process \"%s\" attempted to divide by zero and will be terminated.\n",current_task->name);
         task_exit(EXIT_SIGILL);
         return;
     }
