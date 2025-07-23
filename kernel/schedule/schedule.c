@@ -311,48 +311,6 @@ void task_unblock(process_control_block_t *pcb) {
     task_yield(1);
 }
 
-/**
- * @brief Yield control from the current kernel mode task and switches to the next task. Kernel mode tasks only.
- */
-__attribute__((naked)) 
-void kernel_yield(void) {
-    // TODO: maybe better off doing all of this in asm
-
-    void *esp;
-    void *ebx;
-    void *ebp;
-    void *esi;
-    void *edi;
-    void *entry;
-    asm volatile (
-        "movl 0(%%esp), %0\n\t"
-        "movl %%esp, %1\n\t"
-        "movl %%ebx, %2\n\t"
-        "movl %%ebp, %3\n\t"
-        "movl %%esi, %4\n\t"
-        "movl %%edi, %5\n\t"
-        : "=r"(entry),
-          "=r"(esp),
-          "=r"(ebx),
-          "=r"(ebp),
-          "=r"(esi),
-          "=r"(edi)
-        :
-        :
-    );
-    
-    current_task->esp = (void*)((unsigned int)esp+0x4); // (return addr was pushed to stack)
-    current_task->ebx = ebx;
-    current_task->esi = esi;
-    current_task->edi = edi;
-    current_task->ebp = ebp;  
-    current_task->entry = entry;
-    
-    task_yield(0);
-
-    return;
-}
-
 static void enqueue_waiter(lock_t *lock, process_control_block_t *pcb) {
     wait_node_t *node = kernel_malloc(sizeof(*node));
     node->task = pcb;
