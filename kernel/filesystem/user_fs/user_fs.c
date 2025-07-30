@@ -5,7 +5,7 @@
 
 file_handle_t *file_handle_create(file_handle_list_t *lst, vfs_node_t *node, uint32_t flags)
 {
-    file_handle_t *fh = kernel_malloc(sizeof(*fh));
+    file_handle_t *fh = kernel_malloc(sizeof(file_handle_t));
     if (!fh) return NULL;
     fh->node     = node;
     fh->flags    = flags;
