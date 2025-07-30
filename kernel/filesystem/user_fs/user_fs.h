@@ -9,13 +9,7 @@ typedef struct file_handle {
     uint32_t       flags;     // open flags
     uint32_t       offset;    // current file offset for reads/writes
     uint32_t       refcount;  // # of FDs/share this same handle
-    struct file_handle *next; // next handle in the process's open file list
 } file_handle_t;
-
-typedef struct file_handle_list {
-    file_handle_t *head;
-    file_handle_t *tail;
-} file_handle_list_t;
 
 static inline void file_handle_list_init(file_handle_list_t *lst) {
     lst->head = lst->tail = NULL;
