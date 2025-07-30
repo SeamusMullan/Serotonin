@@ -35,8 +35,7 @@ enum {
 };
 
 enum {
-    READ_STDIN = 0,
-    READ_FS    = 1
+    READ_STDIN = 0
 };
 
 void system_call(processor_context_t *ctx);

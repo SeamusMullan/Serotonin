@@ -52,19 +52,42 @@ static void handle_write(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
     }
 }
 
-static void handle_read(uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
-    if (arg3 > USER_SPACE_END) {
+static void handle_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
+    uint32_t fd = arg2;
+    char* read_ptr = (char*)arg3;
+    uint32_t buf_size = arg4;
+    if (read_ptr > USER_SPACE_END || fd >= FD_MAX) {
         handle_illegal_call();
         __builtin_unreachable();
     }
 
-    memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
-    stdio_lck_t *syscall_stdio = (stdio_lck_t *)kernel_malloc(sizeof(stdio_lck_t));
-    syscall_stdio->stdin_ptr = (char*)arg3;
-    syscall_stdio->stdin_buf_size = arg4;
-    current_task->lck_ptr = (void*)syscall_stdio;
-    task_lock_acquire(stdin_lock);
-    __builtin_unreachable();
+    if (fd == READ_STDIN) {
+        memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
+        stdio_lck_t *syscall_stdio = (stdio_lck_t *)kernel_malloc(sizeof(stdio_lck_t));
+        syscall_stdio->stdin_ptr = read_ptr;
+        syscall_stdio->stdin_buf_size = buf_size;
+        current_task->lck_ptr = (void*)syscall_stdio;
+        task_lock_acquire(stdin_lock);
+        __builtin_unreachable();
+    }
+
+    if (current_task->fd_table[fd] == NULL) {
+        handle_illegal_call();
+        __builtin_unreachable();
+    }
+
+    file_handle_t *handle = current_task->fd_table[fd];
+
+    char* read_buf = kernel_malloc(buf_size);
+
+    int read_bytes = vfs_read(handle->node, handle->offset, buf_size, read_buf);
+    if (read_bytes > 0) {
+        handle->offset += read_bytes;
+    }
+
+    memcpy(read_ptr, read_buf, buf_size);
+
+    kernel_free(read_buf);
 }
 
 static void handle_fork(processor_context_t *ctx) {
@@ -127,7 +150,7 @@ void system_call(processor_context_t *ctx) {
             handle_write(arg2, arg3, arg4);
             return;
         case SYSTEM_CALL_READ:
-            handle_read(arg3, arg4, ctx);
+            handle_read(arg2, arg3, arg4, ctx);
             return;
         case SYSTEM_CALL_FORK:
             handle_fork(ctx);
