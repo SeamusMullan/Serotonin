@@ -6,6 +6,7 @@
 #include "../schedule/schedule.h"
 
 #define STDIN_BUFFER_SIZE 4096
+#define FIRST_FD 3
 
 enum {
     SYSTEM_CALL_EXIT     = 0,
@@ -30,8 +31,7 @@ enum {
 enum {
     WRITE_STDOUT = 0,
     WRITE_STDERR = 1,
-    WRITE_FRMBUF = 2,
-    WRITE_FS     = 3
+    WRITE_FRMBUF = 2
 };
 
 enum {

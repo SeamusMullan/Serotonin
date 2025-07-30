@@ -5,14 +5,89 @@
 #include "../kernel.h"
 #include "../stdlib/stdlib.h"
 #include "../paging.h"
+#include "../string.h"
+#include "../filesystem/vfs.h"
+#include "../filesystem/user_fs/user_fs.h"
+#include "../video/vbe/vbe.h"
 #include <stdint.h>
 
-char* stdin_ptr = 0;
-int stdin_idx = 0;
+static uint32_t next_fd = FIRST_FD;
 
 void handle_illegal_call(void) {
     printfs(PRINT_STATUS_WARNING,"Illegal system call from %s (pid=%d)!\n", current_task->name, current_task->pid);
     task_exit(EXIT_SIGKILL);
+}
+
+static void handle_exit(uint32_t arg2) {
+    task_exit(arg2);
+}
+
+static void frmbuf_write(uint32_t arg3, uint32_t arg4) {
+    uint32_t zbuf = arg3;
+    uint32_t* frmbufptr = (uint32_t*)arg4;
+
+    uint32_t* krnl_frm_buf = (uint32_t *)kernel_malloc(fb_size_bytes);
+    memcpy(krnl_frm_buf, frmbufptr, fb_size_bytes);
+    memcpy(vbe_info.backbuffer, krnl_frm_buf, fb_size_bytes);
+    vbe_flip_all();
+    kernel_free(krnl_frm_buf);
+
+    return;
+}
+
+static void handle_write(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+    switch (arg2) {
+        case WRITE_STDOUT:
+            printf("%s", (char*)arg3);
+            break;
+        case WRITE_STDERR:
+            printfs(PRINT_STATUS_ERROR, "%s", (char*)arg3);
+            break;
+        case WRITE_FRMBUF:
+            frmbuf_write(arg3, arg4);
+            break;
+        default:
+            handle_illegal_call();
+            __builtin_unreachable();
+    }
+}
+
+static void handle_read(uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
+    if (arg3 > USER_SPACE_END) {
+        handle_illegal_call();
+        __builtin_unreachable();
+    }
+
+    memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
+    stdio_lck_t *syscall_stdio = (stdio_lck_t *)kernel_malloc(sizeof(stdio_lck_t));
+    syscall_stdio->stdin_ptr = (char*)arg3;
+    syscall_stdio->stdin_buf_size = arg4;
+    current_task->lck_ptr = (void*)syscall_stdio;
+    task_lock_acquire(stdin_lock);
+    __builtin_unreachable();
+}
+
+static void handle_fork(processor_context_t *ctx) {
+    memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
+    process_control_block_t *pcb = task_fork(current_task);
+    enqueue(pcb);
+    ctx->eax = pcb->pid;
+    pcb->processor_context->eax = 0;
+}
+
+static void handle_get_pid(processor_context_t *ctx) {
+    ctx->eax = current_task->pid;
+}
+
+static void handle_open(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+    char *path = (char*)arg2;
+    uint32_t flags = arg3;
+    uint32_t char_len = arg4;
+    if (strlen(path) > char_len) {
+        handle_illegal_call();
+        __builtin_unreachable();
+    }
+    vfs_node_t *node = vfs_open(path);
 }
 
 void system_call(processor_context_t *ctx) {
@@ -23,54 +98,32 @@ void system_call(processor_context_t *ctx) {
     uint32_t arg3      = ctx->ecx;
     uint32_t arg4      = ctx->edx;
 
-    printfs(PRINT_STATUS_DEBUG, "[SYSCALL] eip=%p Recieved system call from %s (pid=%d): operation:%d, arg2:%p, arg3:%p, arg4:%p\n",ctx->eip,current_task->name, current_task->pid, operation,arg2,arg3,arg4);
+    printfs(PRINT_STATUS_DEBUG, "[SYSCALL] eip=%p Recieved system call from %s (pid=%d): operation:%d, arg2:%p, arg3:%p, arg4:%p\n",
+            ctx->eip, current_task->name, current_task->pid, operation, arg2, arg3, arg4);
+
     switch (operation) {
         case SYSTEM_CALL_EXIT:
-            // should do validation at some point lol
-            task_exit(arg2);
+            handle_exit(arg2);
             break;
         case SYSTEM_CALL_WRITE:
-            switch (arg2) {
-                case WRITE_STDOUT:
-                    printf("%s",arg3);
-                    break;
-                case WRITE_STDERR:
-                    printfs(PRINT_STATUS_ERROR,"%s",arg3);
-                    break;
-                default:
-                    handle_illegal_call();
-                    __builtin_unreachable();
-            }
+            handle_write(arg2, arg3, arg4);
             return;
         case SYSTEM_CALL_READ:
-            switch (arg2) {
-                case READ_STDIN:
-                    if (arg3 > USER_SPACE_END) {
-                        handle_illegal_call();
-                        __builtin_unreachable();
-                    }
-
-                    memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
-                    stdio_lck_t *syscall_stdio = (stdio_lck_t *)kernel_malloc(sizeof(stdio_lck_t));
-                    syscall_stdio->stdin_ptr = (char*)arg3;
-                    syscall_stdio->stdin_buf_size = arg4;
-                    current_task->lck_ptr = (void*)syscall_stdio;
-                    task_lock_acquire(stdin_lock);
-                    __builtin_unreachable();
-                default:
-                    handle_illegal_call();
-                    __builtin_unreachable();
-            }
+            handle_read(arg3, arg4, ctx);
+            return;
         case SYSTEM_CALL_FORK:
-            memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
-            process_control_block_t *pcb = task_fork(current_task);
-            enqueue(pcb);
-            ctx->eax = pcb->pid;
-            pcb->processor_context->eax = 0;
+            handle_fork(ctx);
+            break;
+        case SYSTEM_CALL_GET_PID:
+            handle_get_pid(ctx);
+            break;
+        case SYSTEM_CALL_OPEN:
+            handle_open(arg2, arg3, arg4);
             break;
         default:
             handle_illegal_call();
             __builtin_unreachable();
     }
+
     preempt_enable();
 }
