@@ -4,6 +4,12 @@
 #include "../vfs.h"
 #include <stddef.h>
 
+#define FD_MAX 64
+#define FIRST_FD 3
+
+// terry davis was right, gcc is a piece of shit
+typedef struct process_control_block process_control_block_t;
+
 typedef struct file_handle {
     vfs_node_t    *node;      // VFS node
     uint32_t       flags;     // open flags
@@ -11,38 +17,7 @@ typedef struct file_handle {
     uint32_t       refcount;  // # of FDs/share this same handle
 } file_handle_t;
 
-static inline void file_handle_list_init(file_handle_list_t *lst) {
-    lst->head = lst->tail = NULL;
-}
-
-static inline void _fh_list_append(file_handle_list_t *lst, file_handle_t *fh) {
-    fh->next = NULL;
-    if (lst->tail) {
-        lst->tail->next = fh;
-    } else {
-        lst->head = fh;
-    }
-    lst->tail = fh;
-}
-
-static void _fh_list_remove(file_handle_list_t *lst, file_handle_t *fh) {
-    file_handle_t *prev = NULL, *cur = lst->head;
-    while (cur && cur != fh) {
-        prev = cur;
-        cur  = cur->next;
-    }
-    if (!cur) return;
-    if (prev) {
-        prev->next = cur->next;
-    } else {
-        lst->head = cur->next;
-    }
-    if (lst->tail == cur) {
-        lst->tail = prev;
-    }
-}
-
-file_handle_t *file_handle_create(file_handle_list_t *lst, vfs_node_t *node, uint32_t flags);
-void file_handle_close(file_handle_list_t *lst,file_handle_t *fh);
+int alloc_fd(process_control_block_t *pcb, file_handle_t *handle);
+int close_fd(process_control_block_t *pcb, int fd);
 
 #endif

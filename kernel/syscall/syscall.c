@@ -79,15 +79,33 @@ static void handle_get_pid(processor_context_t *ctx) {
     ctx->eax = current_task->pid;
 }
 
-static void handle_open(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+static void handle_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
     char *path = (char*)arg2;
-    uint32_t flags = arg3;
-    uint32_t char_len = arg4;
-    if (strlen(path) > char_len) {
-        handle_illegal_call();
-        __builtin_unreachable();
-    }
+    int flags = (int)arg3;
+    int mode = (int)arg4;
+
     vfs_node_t *node = vfs_open(path);
+    if (!node)
+        ctx->eax = (uint32_t)-1;
+
+    file_handle_t *handle = kernel_malloc(sizeof(file_handle_t));
+    if (!handle) {
+        vfs_close(node);
+        ctx->eax = (uint32_t)-1;
+    }
+
+    handle->node = node;
+    handle->flags = flags;
+    handle->offset = 0;
+    handle->refcount = 1;
+
+    int fd = alloc_fd(current_task, handle);
+    if (fd < 0) {
+        vfs_close(node);
+        kernel_free(handle);
+    }
+
+    ctx->eax = (uint32_t)fd;
 }
 
 void system_call(processor_context_t *ctx) {
@@ -118,7 +136,7 @@ void system_call(processor_context_t *ctx) {
             handle_get_pid(ctx);
             break;
         case SYSTEM_CALL_OPEN:
-            handle_open(arg2, arg3, arg4);
+            handle_open(arg2, arg3, arg4, ctx);
             break;
         default:
             handle_illegal_call();
