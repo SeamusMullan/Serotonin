@@ -35,20 +35,35 @@ static void frmbuf_write(uint32_t arg3, uint32_t arg4) {
     return;
 }
 
-static void handle_write(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+static void handle_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
+    uint32_t fd = arg2;
+    char* write_ptr = (char*)arg3;
+    uint32_t buf_size = arg4;
+
     switch (arg2) {
         case WRITE_STDOUT:
-            printf("%s", (char*)arg3);
+            printf("%s", write_ptr);
+            ctx->eax = buf_size;
             break;
         case WRITE_STDERR:
-            printfs(PRINT_STATUS_ERROR, "%s", (char*)arg3);
+            printfs(PRINT_STATUS_ERROR, "%s", write_ptr);
+            ctx->eax = buf_size;
             break;
         case WRITE_FRMBUF:
-            frmbuf_write(arg3, arg4);
+            //frmbuf_write(write_ptr, buf_size);
+            //ctx->eax = buf_size;
             break;
         default:
-            handle_illegal_call();
-            __builtin_unreachable();
+            if (fd >= FD_MAX || current_task->fd_table[fd] == NULL) {
+                handle_illegal_call();
+                __builtin_unreachable();
+            }
+
+            file_handle_t *handle = current_task->fd_table[fd];
+
+            int written = vfs_write(handle->node, 0, buf_size, write_ptr);
+            ctx->eax = written;
+            break;
     }
 }
 
@@ -80,10 +95,7 @@ static void handle_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_c
 
     char* read_buf = kernel_malloc(buf_size);
 
-    int read_bytes = vfs_read(handle->node, handle->offset, buf_size, read_buf);
-    if (read_bytes > 0) {
-        handle->offset += read_bytes;
-    }
+    int read_bytes = vfs_read(handle->node, 0, buf_size, read_buf);
 
     memcpy(read_ptr, read_buf, buf_size);
 
@@ -147,7 +159,7 @@ void system_call(processor_context_t *ctx) {
             handle_exit(arg2);
             break;
         case SYSTEM_CALL_WRITE:
-            handle_write(arg2, arg3, arg4);
+            handle_write(arg2, arg3, arg4, ctx);
             return;
         case SYSTEM_CALL_READ:
             handle_read(arg2, arg3, arg4, ctx);
