@@ -23,20 +23,20 @@ kernel_yield:
     pop %eax 
 
     # save callee saved registers and stack pointer
-    mov %esp, %ecx          # ecx = esp
-    mov %ebx, %edx          # edx = ebx
-    mov %ebp, %ebx          # ebx = ebp
-    mov %esi, %ebp          # ebp = esi
-    mov %edi, %esi          # esi = edi
+    movl %esp, %ecx          # ecx = esp
+    movl %ebx, %edx          # edx = ebx
+    movl %ebp, %ebx          # ebx = ebp
+    movl %esi, %ebp          # ebp = esi
+    movl %edi, %esi          # esi = edi
 
-    mov current_task, %edi  # edi = current_task
+    movl current_task, %edi  # edi = current_task
 
     # save ESP, EIP and registers into PCB
-    mov %ecx, OFF_ESP(%edi)
-    mov %eax, OFF_ENTRY(%edi)
-    mov %edx, OFF_K_EBX(%edi)
-    mov %ebx, OFF_K_EBP(%edi)
-    mov %ebp, OFF_K_ESI(%edi)
-    mov %esi, OFF_K_EDI(%edi)
+    movl %ecx, OFF_ESP(%edi)
+    movl %eax, OFF_ENTRY(%edi)
+    movl %edx, OFF_K_EBX(%edi)
+    movl %ebx, OFF_K_EBP(%edi)
+    movl %ebp, OFF_K_ESI(%edi)
+    movl %esi, OFF_K_EDI(%edi)
 
     call task_yield
