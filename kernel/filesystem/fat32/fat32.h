@@ -64,6 +64,7 @@ typedef struct fat32_node_info {
     fat32_fs_info_t *fs_info;
     uint32_t cluster_number;
     uint32_t size;
+    uint32_t parent_cluster;
 } fat32_node_info_t;
 
 typedef struct fat_dir_entry {

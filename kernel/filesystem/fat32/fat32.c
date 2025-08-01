@@ -102,7 +102,7 @@ vfs_node_t *fat32_mount(const char *device) {
     uint8_t *boot = kernel_malloc(512);
     ide_read_sector(drive, part1, boot);
     if (boot[510] != 0x55 || boot[511] != 0xAA) {
-        printfs(PRINT_STATUS_DEBUG,"fat32_mount: invalid BS sig %02X %02X\n",
+        printfs(PRINT_STATUS_DEBUG,"fat32_mount: invalid BS sig %02x %02x\n",
                boot[510], boot[511]);
         kernel_free(boot);
         return NULL;
@@ -214,6 +214,7 @@ vfs_node_t *fat32_readdir(vfs_node_t *node, uint32_t index) {
                 fat32_node_info_t *child_info = kernel_malloc(sizeof(fat32_node_info_t));
                 child_info->fs_info = fs_info;
                 child_info->cluster_number = ((entries[i].first_cluster_high << 16) | entries[i].first_cluster_low);
+                child_info->parent_cluster = cluster;
                 child->fs_data = child_info;
 
                 return child;
@@ -340,6 +341,7 @@ static vfs_node_t *fat32_finddir(vfs_node_t *dir, const char *name) {
                 cni->fs_info        = fs;
                 cni->cluster_number = (ents[i].first_cluster_high << 16)
                                       | ents[i].first_cluster_low;
+                cni->parent_cluster = cluster;
                 child->fs_data      = cni;
                 return child;
             }
@@ -400,6 +402,33 @@ static void fat32_write_cluster(fat32_fs_info_t *fs, uint32_t cluster, const uin
                          first_sector + i,
                          buffer + (i * fs->bytes_per_sector));
     }
+}
+
+static void fat32_update_dir_entry(fat32_node_info_t *ni, const char *name, uint32_t new_size) {
+    fat32_fs_info_t *fs = ni->fs_info;
+    uint8_t  key[11];
+    fat32_build_name_key(name, key);
+
+    uint32_t cluster = ni->parent_cluster;
+    uint32_t csize   = fs->sectors_per_cluster * fs->bytes_per_sector;
+    uint8_t *buf     = kernel_malloc(csize);
+
+    while (cluster < FAT32_CLUSTER_END) {
+        fat32_read_cluster(fs, cluster, buf);
+        fat_dir_entry_t *ents = (fat_dir_entry_t*)buf;
+        uint32_t per_cl = csize / sizeof(*ents);
+
+        for (uint32_t i = 0; i < per_cl; i++) {
+            if (memcmp(ents[i].name, key, 11) == 0) {
+                ents[i].file_size = new_size;
+                fat32_write_cluster(fs, cluster, buf);
+                kernel_free(buf);
+                return;
+            }
+        }
+        cluster = fat32_read_fat_entry(fs, cluster);
+    }
+    kernel_free(buf);
 }
 
 static int fat32_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer)
@@ -471,6 +500,7 @@ static int fat32_write(vfs_node_t *node, uint32_t offset, uint32_t size, const c
     }
 
     kernel_free(clusbuf);
+    fat32_update_dir_entry(ni, node->name, node->size);
     return written;
 }
 
@@ -569,6 +599,7 @@ got_slot:
     fat32_node_info_t *cni = kernel_malloc(sizeof(*cni));
     cni->fs_info        = fs;
     cni->cluster_number = newcl;
+    cni->parent_cluster = cluster;
     child->fs_data      = cni;
     return child;
 }
@@ -667,6 +698,7 @@ static vfs_node_t *fat32_mkdir(vfs_node_t *parent, const char *name) {
     fat32_node_info_t *cni = kernel_malloc(sizeof(*cni));
     cni->fs_info        = fs;
     cni->cluster_number = newcl;
+    cni->parent_cluster = parent_cl;
     child->fs_data      = cni;
 
     return child;
