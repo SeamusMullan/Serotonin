@@ -25,7 +25,7 @@
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 1
-#define KERNEL_VERSION_LOW 2
+#define KERNEL_VERSION_LOW 3
 
 #define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
 #define HEAP_SIZE   (KERNEL_HEAP_SIZE)
@@ -147,6 +147,137 @@ __attribute__((target("no-sse"))) void kernel_setup_fpu(void) {
 
     // Initialize the FPU to default state
     asm volatile("fninit");
+}
+
+static void kernel_get_cpu_features(cpu_features_t *f) {
+    unsigned int eax, ebx, ecx, edx;
+
+    /* Leaf 1 */
+    if (__get_cpuid(1, &eax, &ebx, &ecx, &edx)) {
+        f->sse3       = (ecx & BIT(0))  != 0;
+        f->pclmulqdq  = (ecx & BIT(1))  != 0;
+        f->monitor    = (ecx & BIT(3))  != 0;
+        f->ssse3      = (ecx & BIT(9))  != 0;
+        f->fma        = (ecx & BIT(12)) != 0;
+        f->cx16       = (ecx & BIT(13)) != 0;
+        f->sse4_1     = (ecx & BIT(19)) != 0;
+        f->sse4_2     = (ecx & BIT(20)) != 0;
+        f->x2apic     = (ecx & BIT(21)) != 0;
+        f->popcnt     = (ecx & BIT(23)) != 0;
+        f->aes        = (ecx & BIT(25)) != 0;
+        f->xsave      = (ecx & BIT(26)) != 0;
+        f->osxsave    = (ecx & BIT(27)) != 0;
+        f->avx        = (ecx & BIT(28)) != 0;
+        f->f16c       = (ecx & BIT(29)) != 0;
+        f->rdrand     = (ecx & BIT(30)) != 0;
+
+        f->fpu        = (edx & BIT(0))  != 0;
+        f->mmx        = (edx & BIT(23)) != 0;
+        f->sse        = (edx & BIT(25)) != 0;
+        f->sse2       = (edx & BIT(26)) != 0;
+        f->htt        = (edx & BIT(28)) != 0;
+    }
+
+    /* Leaf 7/subleaf 0 */
+    if (__get_cpuid_max(0, NULL) >= 7) {
+        __cpuid_count(7, 0, eax, ebx, ecx, edx);
+        f->bmi1           = (ebx & BIT(3))  != 0;
+        f->hle            = (ebx & BIT(4))  != 0;
+        f->avx2           = (ebx & BIT(5))  != 0;
+        f->smep           = (ebx & BIT(7))  != 0;
+        f->bmi2           = (ebx & BIT(8))  != 0;
+        f->erms           = (ebx & BIT(9))  != 0;
+        f->invpcid        = (ebx & BIT(10)) != 0;
+        f->rtm            = (ebx & BIT(11)) != 0;
+
+        f->pku            = (ecx & BIT(3))  != 0;
+        f->avx512f        = (ecx & BIT(16)) != 0;
+        f->avx512dq       = (ecx & BIT(17)) != 0;
+        f->avx512pf       = (ecx & BIT(26)) != 0;
+        f->avx512er       = (ecx & BIT(27)) != 0;
+        f->avx512cd       = (ecx & BIT(28)) != 0;
+        f->sha            = (ecx & BIT(29)) != 0;
+        f->avx512_vbmi    = (ecx & BIT(1))  != 0;
+
+        f->avx512bw       = (edx & BIT(30)) != 0;
+        f->avx512vl       = (edx & BIT(31)) != 0;
+    }
+
+    /* Extended leaf 0x80000001 */
+    unsigned int max_ext = __get_cpuid_max(0x80000000, NULL);
+    if (max_ext >= 0x80000001) {
+        __get_cpuid(0x80000001, &eax, &ebx, &ecx, &edx);
+        f->lahf_lm        = (ecx & BIT(0))  != 0;
+        f->abm            = (ecx & BIT(5))  != 0;
+        f->sse4a          = (ecx & BIT(6))  != 0;
+        f->fma4           = (ecx & BIT(16)) != 0;
+        f->xop            = (ecx & BIT(11)) != 0;
+
+        f->syscall_sysret = (edx & BIT(11)) != 0;
+        f->mmxext         = (edx & BIT(22)) != 0;
+        f->rdtscp         = (edx & BIT(27)) != 0;
+        f->lm             = (edx & BIT(29)) != 0;
+    }
+}
+
+static void kernel_print_cpu_features(const cpu_features_t *f) {
+    struct { const char *name; uint8_t val; } feat_map[] = {
+        {"sse3",         f->sse3},
+        {"pclmulqdq",    f->pclmulqdq},
+        {"monitor",      f->monitor},
+        {"ssse3",        f->ssse3},
+        {"fma",          f->fma},
+        {"cx16",         f->cx16},
+        {"sse4_1",       f->sse4_1},
+        {"sse4_2",       f->sse4_2},
+        {"x2apic",       f->x2apic},
+        {"popcnt",       f->popcnt},
+        {"aes",          f->aes},
+        {"xsave",        f->xsave},
+        {"osxsave",      f->osxsave},
+        {"avx",          f->avx},
+        {"f16c",         f->f16c},
+        {"rdrand",       f->rdrand},
+        {"fpu",          f->fpu},
+        {"mmx",          f->mmx},
+        {"sse",          f->sse},
+        {"sse2",         f->sse2},
+        {"htt",          f->htt},
+        {"bmi1",         f->bmi1},
+        {"hle",          f->hle},
+        {"avx2",         f->avx2},
+        {"smep",         f->smep},
+        {"bmi2",         f->bmi2},
+        {"erms",         f->erms},
+        {"invpcid",      f->invpcid},
+        {"rtm",          f->rtm},
+        {"pku",          f->pku},
+        {"avx512f",      f->avx512f},
+        {"avx512dq",     f->avx512dq},
+        {"avx512pf",     f->avx512pf},
+        {"avx512er",     f->avx512er},
+        {"avx512cd",     f->avx512cd},
+        {"sha",          f->sha},
+        {"avx512bw",     f->avx512bw},
+        {"avx512vl",     f->avx512vl},
+        {"avx512_vbmi",  f->avx512_vbmi},
+        {"lahf_lm",      f->lahf_lm},
+        {"abm",          f->abm},
+        {"sse4a",        f->sse4a},
+        {"fma4",         f->fma4},
+        {"xop",          f->xop},
+        {"syscall_sysret", f->syscall_sysret},
+        {"mmxext",       f->mmxext},
+        {"rdtscp",       f->rdtscp},
+        {"lm",           f->lm},
+    };
+
+    printf("CPU features:\n");
+    for (size_t i = 0; i < sizeof(feat_map)/sizeof(feat_map[0]); i++) {
+        if (feat_map[i].val)
+            printf("  %s", feat_map[i].name);
+    }
+    printf("\n");
 }
 
 /**
@@ -466,11 +597,15 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         }
     }
 
-    vbe_set_cursor(0,13);
+    vbe_set_cursor(0,18);
 
-	printf("serotonin kernel (higher half) - version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
-    printf("kernel now (eip): 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x, cpu:%s\n",kernel_current_eip(),HEAP_START,magic,addr,cpu_manufacturer);
-    printfs(PRINT_STATUS_INFO, "Booted with command line arguments: %s\n",cmdline);
+    cpu_features_t processor_features = {0};
+    kernel_get_cpu_features(&processor_features);
+
+	printf("Serotonin Kernel - Version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
+    kernel_print_cpu_features(&processor_features);
+    printfs(PRINT_STATUS_INFO,"kernel now (eip): 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x, cpu:%s\n",kernel_current_eip(),HEAP_START,magic,addr,cpu_manufacturer);
+    printfs(PRINT_STATUS_INFO,"Booted with command line arguments: %s\n",cmdline);
     printfs(PRINT_STATUS_INFO,"Running in VESA VBE Graphics Mode: %dx%dx%d, pitch: %d\n",vbe_info.width,vbe_info.height,vbe_info.bpp,vbe_info.pitch);
 
     pic_remap(0x20, 0x28);

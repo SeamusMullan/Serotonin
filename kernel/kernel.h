@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define BIT(n) (1u << (n))
+
 /* ELF identification indexes */
 #define EI_MAG0       0
 #define EI_MAG1       1
@@ -91,6 +93,70 @@ typedef struct {
     uint32_t p_flags;  /* Segment flags */
     uint32_t p_align;  /* Segment alignment */
 } Elf32_Phdr;
+
+typedef struct {
+    /* Leaf 1, ECX */
+    uint8_t sse3;       /* ECX[0]   */
+    uint8_t pclmulqdq;  /* ECX[1]   */
+    uint8_t monitor;    /* ECX[3]   */
+    uint8_t ssse3;      /* ECX[9]   */
+    uint8_t fma;        /* ECX[12]  */
+    uint8_t cx16;       /* ECX[13]  */
+    uint8_t sse4_1;     /* ECX[19]  */
+    uint8_t sse4_2;     /* ECX[20]  */
+    uint8_t x2apic;     /* ECX[21]  */
+    uint8_t popcnt;     /* ECX[23]  */
+    uint8_t aes;        /* ECX[25]  */
+    uint8_t xsave;      /* ECX[26]  */
+    uint8_t osxsave;    /* ECX[27]  */
+    uint8_t avx;        /* ECX[28]  */
+    uint8_t f16c;       /* ECX[29]  */
+    uint8_t rdrand;     /* ECX[30]  */
+
+    /* Leaf 1, EDX */
+    uint8_t fpu;        /* EDX[0]   */
+    uint8_t mmx;        /* EDX[23]  */
+    uint8_t sse;        /* EDX[25]  */
+    uint8_t sse2;       /* EDX[26]  */
+    uint8_t htt;        /* EDX[28]  */
+
+    /* Leaf 7, subleaf 0, EBX */
+    uint8_t bmi1;       /* EBX[3]   */
+    uint8_t hle;        /* EBX[4]   */
+    uint8_t avx2;       /* EBX[5]   */
+    uint8_t smep;       /* EBX[7]   */
+    uint8_t bmi2;       /* EBX[8]   */
+    uint8_t erms;       /* EBX[9]   */
+    uint8_t invpcid;    /* EBX[10]  */
+    uint8_t rtm;        /* EBX[11]  */
+
+    /* Leaf 7, subleaf 0, ECX */
+    uint8_t pku;            /* ECX[3]   */
+    uint8_t avx512f;        /* ECX[16]  */
+    uint8_t avx512dq;       /* ECX[17]  */
+    uint8_t avx512pf;       /* ECX[26]  */
+    uint8_t avx512er;       /* ECX[27]  */
+    uint8_t avx512cd;       /* ECX[28]  */
+    uint8_t sha;            /* ECX[29]  */
+    uint8_t avx512_vbmi;    /* ECX[1]   */
+
+    /* Leaf 7, subleaf 0, EDX */
+    uint8_t avx512bw;       /* EDX[30]  */
+    uint8_t avx512vl;       /* EDX[31]  */
+
+    /* Extended leaf 0x80000001, ECX */
+    uint8_t lahf_lm;    /* ECX[0]   */
+    uint8_t abm;        /* ECX[5]   */
+    uint8_t sse4a;      /* ECX[6]   */
+    uint8_t fma4;       /* ECX[16]  */
+    uint8_t xop;        /* ECX[11]  */
+
+    /* Extended leaf 0x80000001, EDX */
+    uint8_t syscall_sysret; /* EDX[11] */
+    uint8_t mmxext;         /* EDX[22] */
+    uint8_t rdtscp;         /* EDX[27] */
+    uint8_t lm;             /* EDX[29] */
+} cpu_features_t;
 
 void kernel_panic(char* str);
 void *kernel_malloc(uint32_t size);
