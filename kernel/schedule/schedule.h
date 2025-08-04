@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "../io/io.h"
+#include "../filesystem/user_fs/user_fs.h"
 
 #define USER_MODE_SEGMENT      0x23
 #define USER_MODE_CODE_SEGMENT 0x1B
@@ -38,6 +39,8 @@ typedef struct process_control_block {
     void* esp_min;
     void* ipc_ptr;
     void* lck_ptr;
+
+    file_handle_t* fd_table[FD_MAX];
 } process_control_block_t;
 
 typedef struct wait_node {
@@ -109,7 +112,7 @@ void *alloc_user_stack(void);
 void *alloc_kernel_stack(void);
 void kernel_yield(void);
 void task_lock_init(lock_t *lock, uint8_t block_on_hold);
-void task_lock_acquire(lock_t *lock);
+int task_lock_acquire(lock_t *lock);
 void task_lock_release(lock_t *lock);
 process_control_block_t* task_fork(process_control_block_t *parent);
 void preempt_disable();

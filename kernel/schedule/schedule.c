@@ -123,16 +123,14 @@ void multitasking_init(void) {
     process_control_block_t *init_task = (process_control_block_t*)kernel_malloc(sizeof(process_control_block_t));
     memset(init_task, 0, sizeof(*init_task));
 
-    // populate fields
     init_task->pid     = next_pid++;
     init_task->esp     = get_esp();
-    init_task->esp_max = (void*)0x00200000;
+    init_task->esp_max = (void*)0x00200000; // piratesoftware
     init_task->esp0    = get_esp();
     init_task->cr3     = read_cr3_register();
     init_task->state   = PROCESS_STATE_BLOCKED;
     strncpy(init_task->name, "Serotonin Kernel", 32);
 
-    // single‐element list
     task_list             = init_task;
     current_task          = init_task;
 
@@ -342,7 +340,7 @@ void task_lock_init(lock_t *lock, uint8_t block_on_hold) {
     lock->waiters_tail  = NULL;
 }
 
-void task_lock_acquire(lock_t *lock) {
+int task_lock_acquire(lock_t *lock) {
     if (!lock->held) {
         lock->held = 1;
         lock->owner = current_task;
@@ -350,8 +348,12 @@ void task_lock_acquire(lock_t *lock) {
             task_block();
         }
     } else {
-        enqueue_waiter(lock, current_task);
-        task_block();
+        if (lock->block_on_hold) {
+            enqueue_waiter(lock, current_task);
+            task_block();
+        } else {
+            return -1;
+        }
     }
 }
 
