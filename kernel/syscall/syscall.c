@@ -143,6 +143,22 @@ static void handle_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_c
     ctx->eax = (uint32_t)fd;
 }
 
+static void handle_close(uint32_t arg2) {
+    int fd = arg2;
+
+    if (fd >= FD_MAX) {
+        handle_illegal_call();
+        __builtin_unreachable();
+    }
+
+    file_handle_t *handle = current_task->fd_table[fd];
+    close_fd(current_task, fd);
+
+    vfs_close(handle->node);
+
+    kernel_free(handle);
+}
+
 void system_call(processor_context_t *ctx) {
     preempt_disable();
 
@@ -172,6 +188,9 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_OPEN:
             handle_open(arg2, arg3, arg4, ctx);
+            break;
+        case SYSTEM_CALL_CLOSE: 
+            handle_close(arg2);
             break;
         default:
             handle_illegal_call();
