@@ -218,8 +218,9 @@ void ulltoa_hex(unsigned long long value, char* str) {
 __attribute__((__noreturn__))
 void abort() {
     printf("abort() called - system halted\n");
+sys_halt:
     asm volatile("cli; hlt");
-    while (1) { }
+    goto sys_halt;
     __builtin_unreachable();
 }
 
