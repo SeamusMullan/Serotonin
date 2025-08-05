@@ -5,6 +5,7 @@
 
 #define MILLISECONDS_TO_TICKS(ms) (ms)
 #define STDIO_INPUT_BUFFER 1024
+#define SCHEDULE_QUANTUM = MILLISECONDS_TO_TICKS(100);
 
 extern volatile uint64_t timer_ticks;
 extern volatile uint64_t last_quantum_tick;
