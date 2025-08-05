@@ -34,6 +34,7 @@ i686-elf-gcc -c audio/startup/opl2_sound/opl2_startup.c -o audio/startup/opl2_so
 i686-elf-gcc -c io/irq.c -o io/irq.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
 i686-elf-gcc -c io/pic.c -o io/pic.o $CFLAGS
 i686-elf-gcc -c io/keyboard.c -o io/keyboard.o $CFLAGS
+i686-elf-gcc -c io/rtc.c -o io/rtc.o $CFLAGS
 
 i686-elf-gcc -c stdlib/stdlib.c -o stdlib/stdlib.o $CFLAGS
 i686-elf-gcc -c stdlib/mem.c -o stdlib/mem.o $CFLAGS
@@ -61,7 +62,7 @@ i686-elf-gcc -c filesystem/fat32/fat32.c -o filesystem/fat32/fat32.o $CFLAGS
 i686-elf-gcc -c filesystem/user_fs/user_fs.c -o filesystem/user_fs/user_fs.o $CFLAGS
 
 # da linker
-i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt.o idt.o isr.o fault.o io/irq.o io/pic.o io/keyboard.o paging.o video/vbe/vbe.o video/font.o video/splash.o filesystem/vfs.o filesystem/tmpfs/tmpfs.o filesystem/ide.o filesystem/fat32/fat32.o schedule/schedule.o schedule/switch_task.o audio/pcspeaker/pcspeaker.o audio/opl2/opl2.o syscall/isr_syscall.o syscall/syscall.o audio/startup/opl2_sound/opl2_startup.o schedule/kernel_yield.o filesystem/user_fs/user_fs.o
+i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt.o idt.o isr.o fault.o io/irq.o io/pic.o io/keyboard.o paging.o video/vbe/vbe.o video/font.o video/splash.o filesystem/vfs.o filesystem/tmpfs/tmpfs.o filesystem/ide.o filesystem/fat32/fat32.o schedule/schedule.o schedule/switch_task.o audio/pcspeaker/pcspeaker.o audio/opl2/opl2.o syscall/isr_syscall.o syscall/syscall.o audio/startup/opl2_sound/opl2_startup.o schedule/kernel_yield.o filesystem/user_fs/user_fs.o io/rtc.o
 
 cd ../build
 
