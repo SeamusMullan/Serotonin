@@ -59,6 +59,8 @@ void irq_handler(int irq, processor_context_t *ctx) {
             t.year   = bcd_to_bin(t.year);
         }
 
+        t.century = 2000; // sure look its fine until 2099
+
         if (!hour_24) {
             uint8_t pm = t.hour & 0x80;
             t.hour &= 0x7F;
@@ -66,7 +68,7 @@ void irq_handler(int irq, processor_context_t *ctx) {
             else if (!pm && t.hour == 12) t.hour = 0;
         }
 
-        printf("time: %d:%d:%d %d/%d/%d \n", t.hour,t.minute,t.second,t.day,t.month,t.year);
+        printf("time: %d:%d:%d %d/%d/%d \n", t.hour,t.minute,t.second,t.day,t.month,t.year+t.century);
     }
 
 end_irq:

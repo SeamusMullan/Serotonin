@@ -35,6 +35,7 @@ typedef struct {
     uint8_t day;
     uint8_t month;
     uint16_t year;
+    uint16_t century;
 } rtc_time_t;
 
 extern volatile uint64_t timer_ticks;
