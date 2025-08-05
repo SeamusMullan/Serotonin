@@ -42,5 +42,6 @@ void pic_remap(int offset1, int offset2) {
 
     outb(0x21, inb(0x21) & ~(1 << 0)); 
     outb(0x21, inb(0x21) & ~(1 << 8)); 
+    io_wait();
     //asm volatile ("sti");
 }
