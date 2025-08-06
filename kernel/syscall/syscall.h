@@ -19,7 +19,8 @@ enum {
     SYSTEM_CALL_OPEN     = 7,
     SYSTEM_CALL_CLOSE    = 8,
     SYSTEM_CALL_WAIT     = 9,
-    SYSTEM_CALL_TOD      = 10
+    SYSTEM_CALL_TOD      = 10,
+    SYSTEM_CALL_SBRK     = 11
 };
 
 enum {

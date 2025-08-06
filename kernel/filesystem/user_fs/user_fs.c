@@ -21,7 +21,7 @@ int close_fd(process_control_block_t *pcb, int fd) {
 
     file_handle_t *handle = pcb->fd_table[fd];
     if (--handle->refcount == 0) {
-        // free shit idk
+        kernel_free(pcb->fd_table[fd]);
     }
     pcb->fd_table[fd] = NULL;
     return 0;

@@ -150,7 +150,10 @@ __attribute__((target("no-sse"))) void kernel_setup_fpu(void) {
 }
 
 static void kernel_get_cpu_features(cpu_features_t *f) {
-    unsigned int eax, ebx, ecx, edx;
+    unsigned int eax = 0;
+    unsigned int ebx = 0;
+    unsigned int ecx = 0;
+    unsigned int edx = 0;
 
     /* Leaf 1 */
     if (__get_cpuid(1, &eax, &ebx, &ecx, &edx)) {
@@ -417,7 +420,7 @@ void kernel_panic(char* str) {
             (unsigned int)cr0, (unsigned int)cr2, (unsigned int)cr3, (unsigned int)cr4);
     printf("TSS.ESP0: 0x%08x,  TSS.SS0: 0x%04x, TR: 0x%04x\n", sys_tss.esp0, sys_tss.ss0,tr);
 
-    vbe_flip();
+    vbe_flip_all();
 
     abort();
 }
@@ -562,6 +565,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     const char *cmdline = (const char *)(uintptr_t)mbi->cmdline;
     char* cpu_manufacturer = kernel_get_cpu_manufacturer();
 
+    rtc_init();
     vbe_init(mbi);
     vbe_palette_init();
     vbe_flip();
