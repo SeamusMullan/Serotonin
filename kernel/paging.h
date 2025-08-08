@@ -2,6 +2,8 @@
 #define _KERNEL_PAGING
 #include <stdint.h>
 
+// if you cannot understand this i dont know why you're even here..
+// go consume and further capitalism or something...
 #define PAGE_SIZE      4096
 #define PAGE_ENTRIES   1024
 #define PAGE_PRESENT   0x1

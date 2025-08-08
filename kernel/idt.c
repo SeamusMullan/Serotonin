@@ -8,7 +8,7 @@
 
 struct idt_entry idt[256];
 
-// lol
+// Interrupt (ISR) Stubs (bless this is cooked) 
 extern void isr0(void);
 extern void isr1(void);
 extern void isr2(void);
@@ -42,7 +42,7 @@ extern void isr29(void);
 extern void isr30(void);
 extern void isr31(void);
 
-// lol2
+// Interrupt Request (IRQ) Stubs
 extern void irq0(void);
 extern void irq1(void);
 extern void irq2(void);

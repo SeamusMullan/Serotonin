@@ -151,6 +151,9 @@ void tty_writestring(const char* data)
 	tty_write(data, strlen(data));
 }
 
+/**
+ * @brief Move the cursor back by one character.
+ */
 void tty_back(void)
 {
     if (terminal_column == 0 && terminal_row == 0) {
@@ -168,6 +171,11 @@ void tty_back(void)
     tty_set_cursor(terminal_column, terminal_row);
 }
 
+/**
+ * @brief Set the cursor position on the terminal.
+ * @param column The column to set the cursor to.
+ * @param row The row to set the cursor to.
+ */
 void tty_set_cursor(int column, int row)
 {
     uint16_t position = row * VGA_WIDTH + column;

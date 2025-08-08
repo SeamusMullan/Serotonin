@@ -3,6 +3,10 @@
 
 #include <stdint.h>
 
+/**
+ * @brief IDT entry structure.
+ * Defines the structure of an IDT (Interrupt Descriptor Table) entry.
+ */
 struct idt_entry {
     uint16_t offset_low;   // Lower 16 bits of ISR address
     uint16_t selector;     // Code segment selector in GDT
@@ -11,6 +15,10 @@ struct idt_entry {
     uint16_t offset_high;  // Upper 16 bits of ISR address
 } __attribute__((packed));
 
+/**
+ * @brief IDT pointer structure.
+ * Defines the structure of an IDT (Interrupt Descriptor Table) pointer.
+ */
 struct idt_ptr {
     uint16_t limit;
     uint32_t base;

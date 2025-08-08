@@ -27,6 +27,13 @@ page_table_t kernel_stack_page_table;
 uintptr_t page_dir_ptr;
 uintptr_t fb_addr_ptr;
 
+/**
+ * @brief Create a page table entry.
+ * 
+ * @param phys The physical address.
+ * @param flags The flags for the entry.
+ * @return uint32_t The page table entry.
+ */
 static inline uint32_t mk_entry(uint32_t phys, uint32_t flags)
 {
     return (phys & 0xFFFFF000) | flags;   //bits 0-11 must be 0 except legal flags
