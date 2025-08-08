@@ -19,8 +19,10 @@ static uint32_t next_fd = FIRST_FD;
  *
  * This function is called when a task attempts to make an illegal system call.
  */
-void handle_illegal_call(void) {
+void handle_illegal_call(uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t arg4) {
     printfs(PRINT_STATUS_WARNING,"Illegal system call from %s (pid=%d)!\n", current_task->name, current_task->pid);
+    printfs(PRINT_STATUS_WARNING,"EIP: %p\n", current_task->processor_context->eip);
+    printfs(PRINT_STATUS_WARNING,"Args: %p %p %p %p\n", arg1, arg2, arg3, arg4);
     task_exit(EXIT_SIGKILL);
 }
 
@@ -79,7 +81,7 @@ static void handle_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_
             break;
         default:
             if (fd >= FD_MAX || current_task->fd_table[fd] == NULL) {
-                handle_illegal_call();
+                handle_illegal_call(arg2, arg3, arg4, ctx->eip);
                 __builtin_unreachable();
             }
 
@@ -104,7 +106,7 @@ static void handle_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_c
     char* read_ptr = (char*)arg3;
     uint32_t buf_size = arg4;
     if (read_ptr > USER_SPACE_END || fd >= FD_MAX) {
-        handle_illegal_call();
+        handle_illegal_call(arg2, arg3, arg4, ctx->eip);
         __builtin_unreachable();
     }
 
@@ -119,7 +121,7 @@ static void handle_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_c
     }
 
     if (current_task->fd_table[fd] == NULL) {
-        handle_illegal_call();
+        handle_illegal_call(arg2, arg3, arg4, ctx->eip);
         __builtin_unreachable();
     }
 
@@ -202,7 +204,7 @@ static void handle_close(uint32_t arg2) {
     int fd = arg2;
 
     if (fd >= FD_MAX) {
-        handle_illegal_call();
+        handle_illegal_call(arg2, 0, 0, 0);
         __builtin_unreachable();
     }
 
@@ -253,7 +255,7 @@ void system_call(processor_context_t *ctx) {
             handle_close(arg2);
             break;
         default:
-            handle_illegal_call();
+            handle_illegal_call(arg2, arg3, arg4, ctx->eip);
             __builtin_unreachable();
     }
 

@@ -24,7 +24,7 @@ uint8_t dirty_lines[SCREEN_HEIGHT];
 
 vbe_mode_info_t vbe_info;
 
-static uint32_t fb_size_bytes;
+uint32_t fb_size_bytes;
 
 uint32_t vbe_palette[256];
 
