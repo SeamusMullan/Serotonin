@@ -1,5 +1,11 @@
 #include "io.h"
 
+/**
+ * @brief Initialize the RTC.
+ *
+ * This function initializes the real-time clock (RTC) by configuring the
+ * necessary registers and enabling interrupts.
+ */
 void rtc_init() {
     clear_interrupts();
     

@@ -21,6 +21,12 @@
 #define CMOS_RTC_STATUS_B 0x0B
 #define CMOS_RTC_STATUS_C 0x0C
 
+/**
+ * @brief Processor context structure.
+ *
+ * This structure holds the context of a processor, including all general-purpose registers
+ * and segment registers.
+ */
 typedef struct processor_context {
     uint32_t gs, fs, es, ds;
     uint32_t edi, esi, ebp, esp_at_pushal, ebx, edx, ecx, eax;
@@ -28,6 +34,11 @@ typedef struct processor_context {
     uint32_t eip, cs, eflags, esp_at_trap, ss;
 } processor_context_t;
 
+/**
+ * @brief Real-time clock (RTC) time structure.
+ *
+ * This structure holds the time information from the RTC.
+ */
 typedef struct {
     uint8_t second;
     uint8_t minute;
@@ -44,11 +55,23 @@ extern volatile int multitasking_ready;
 extern volatile int irq_disabled;
 extern volatile rtc_time_t last_rtc_time;
 
+/**
+ * @brief Output a byte to a port.
+ *
+ * @param port The port number.
+ * @param val The value to output.
+ */
 static inline void outb(uint16_t port, uint8_t val)
 {
     asm volatile ( "outb %b0, %w1" : : "a"(val), "Nd"(port) : "memory");
 }
 
+/**
+ * @brief Input a byte from a port.
+ *
+ * @param port The port number.
+ * @return uint8_t The value read from the port.
+ */
 static inline uint8_t inb(uint16_t port)
 {
     uint8_t ret;
@@ -59,21 +82,44 @@ static inline uint8_t inb(uint16_t port)
     return ret;
 }
 
+/**
+ * @brief Wait for I/O operations to complete.
+ *
+ * This function waits for I/O operations to complete by reading from the
+ * specified port.
+ */
 static inline void io_wait(void)
 {
     outb(0x80, 0);
 }
 
+/**
+ * @brief Input a word from a port.
+ *
+ * @param port The port number.
+ * @return uint16_t The value read from the port.
+ */
 static inline uint16_t inw(uint16_t port) {
     uint16_t ret;
     asm volatile ("inw %1, %0" : "=a"(ret) : "Nd"(port));
     return ret;
 }
 
+/**
+ * @brief Output a word to a port.
+ *
+ * @param port The port number.
+ * @param val The value to output.
+ */
 static inline void outw(uint16_t port, uint16_t val) {
     asm volatile ("outw %0, %1" : : "a"(val), "Nd"(port));
 }
 
+/**
+ * @brief Clear interrupts.
+ *
+ * This function disables interrupts by incrementing the IRQ disabled counter.
+ */
 static inline void clear_interrupts(void) {
     if (irq_disabled == 0) {
         irq_disabled++;
@@ -81,6 +127,11 @@ static inline void clear_interrupts(void) {
     }
 }
 
+/**
+ * @brief Enable interrupts.
+ *
+ * This function enables interrupts by decrementing the IRQ disabled counter.
+ */
 static inline void enable_interrupts(void) {
     if (irq_disabled == 1) {
         irq_disabled--;
@@ -88,15 +139,33 @@ static inline void enable_interrupts(void) {
     }
 }
 
+/**
+ * @brief Read a byte from the CMOS.
+ *
+ * @param reg The CMOS register to read from.
+ * @return uint8_t The value read from the CMOS register.
+ */
 static inline uint8_t cmos_read(uint8_t reg) {
     outb(CMOS_STATUS_REGISTER_A, reg);
     return inb(CMOS_STATUS_REGISTER_B);
 }
 
+/**
+ * @brief Convert BCD to binary.
+ *
+ * @param val The BCD value to convert.
+ * @return uint8_t The converted binary value.
+ */
 static inline uint8_t bcd_to_bin(uint8_t val) {
     return (val & 0x0F) + ((val >> 4) * 10);
 }
 
+/**
+ * @brief Handle an IRQ.
+ *
+ * @param irq The IRQ number.
+ * @param ctx The processor context.
+ */
 void irq_handler(int irq, processor_context_t *ctx);
 void pic_remap(int offset1, int offset2);
 void handle_scancode(uint8_t scancode);
