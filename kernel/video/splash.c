@@ -25370,8 +25370,10 @@ static const struct {
   "\377\000\000\000\377\000\000\000\377",
 };
 
-
-
+/**
+ * @brief 3D vector structure.
+ * 
+ */
 typedef struct {
     float x, y, z;
 } Vec3;
@@ -25484,6 +25486,12 @@ void create_color_render(int height) {
   }
 }
 
+/**
+ * @brief Wrap an angle to the range [-PI, PI].
+ * 
+ * @param x The angle in radians.
+ * @return float The wrapped angle.
+ */
 static float wrap_angle(float x) {
     const float PI = 3.14159265f;
     const float TWO_PI = 6.28318531f;
@@ -25492,18 +25500,37 @@ static float wrap_angle(float x) {
     return x;
 }
 
+/**
+ * @brief Compute the sine of an angle.
+ * 
+ * @param x The angle in radians.
+ * @return float The sine of the angle.
+ */
 static float sinf(float x) {
     x = wrap_angle(x);
     float x2 = x * x;
     return x * (1 - x2 / 6.0f + x2 * x2 / 120.0f);
 }
 
+/**
+ * @brief Compute the cosine of an angle.
+ * 
+ * @param x The angle in radians.
+ * @return float The cosine of the angle.
+ */
 static float cosf(float x) {
     x = wrap_angle(x);
     float x2 = x * x;
     return 1 - x2 / 2.0f + x2 * x2 / 24.0f;
 }
 
+/**
+ * @brief Project a 3D vector onto 2D screen space.
+ * 
+ * @param v The 3D vector to project.
+ * @param x The x-coordinate of the projected point.
+ * @param y The y-coordinate of the projected point.
+ */
 void project(Vec3 v, int *x, int *y) {
     float distance = 2.0f;
     float factor = 200.0f / (v.z + distance);
@@ -25511,6 +25538,15 @@ void project(Vec3 v, int *x, int *y) {
     *y = (int)(v.y * factor) + SCREEN_HEIGHT / 2;
 }
 
+/**
+ * @brief Draw a line between two points.
+ * 
+ * @param x0 The x-coordinate of the start point.
+ * @param y0 The y-coordinate of the start point.
+ * @param x1 The x-coordinate of the end point.
+ * @param y1 The y-coordinate of the end point.
+ * @param color The color of the line.
+ */
 void draw_line(int x0, int y0, int x1, int y1, uint32_t color) {
     int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
     int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
@@ -25525,12 +25561,24 @@ void draw_line(int x0, int y0, int x1, int y1, uint32_t color) {
     }
 }
 
+/**
+ * @brief Clear the screen.
+ * Used every frame to make sure pixels dont stick
+ */
 void clear_screen() {
     for (int y = 0; y < SCREEN_HEIGHT; ++y)
         for (int x = 0; x < SCREEN_WIDTH; ++x)
             vbe_fast_putpixel(x, y, 0xFF001111);
 }
 
+/**
+ * @brief Function to draw a cube on the screen
+ * 
+ * @param position The position of the cube in 3D space
+ * @param angle_x The rotation on the X axis
+ * @param angle_y The rotation on the Y axis
+ * @param angle_z The rotation on the Z axis
+ */
 void draw_cube(Vec3 position, float angle_x, float angle_y, int color) {
     Vec3 rotated[8];
 
@@ -25561,6 +25609,10 @@ void draw_cube(Vec3 position, float angle_x, float angle_y, int color) {
     }
 }
 
+/**
+ * @brief The main function that runs the program
+ * Renders two cubes rotating at different speeds. Draws an fps counter too.
+ */
 void cube_demo() {
     float angle = 0.0f;
 

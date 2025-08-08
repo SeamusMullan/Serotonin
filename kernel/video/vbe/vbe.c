@@ -221,6 +221,12 @@ void vbe_flip(void) {
     vbe_clear_dirty_bitmap();
 }
 
+/**
+ * @brief Flip the backbuffer to the framebuffer.
+ *
+ * This function copies the contents of the backbuffer to the framebuffer,
+ * only for the dirty lines.
+ */
 void vbe_flip_all(void) {
     uint32_t *src_buf = vbe_info.backbuffer;
     uint32_t *dst_buf = vbe_info.framebuffer;
@@ -468,6 +474,12 @@ void vbe_fast_mark_dirty(uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
     }
 }
 
+/**
+ * @brief Set the cursor position.
+ *
+ * @param col Column position.
+ * @param row Row position.
+ */
 void vbe_set_cursor(uint32_t col, uint32_t row) {
     if (col >= term_max_cols() || row >= term_max_rows()) {
         return;
@@ -476,6 +488,11 @@ void vbe_set_cursor(uint32_t col, uint32_t row) {
     term_cursor_row = row;
 }
 
+/**
+ * @brief Clear the screen.
+ *
+ * @param color The color to fill the screen with.
+ */
 void vbe_clear_screen(uint32_t color) {
     uint32_t *back_buf = vbe_info.backbuffer;
     memset(back_buf,color, fb_size_bytes);

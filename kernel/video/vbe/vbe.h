@@ -16,6 +16,12 @@ static uint32_t term_cursor_row = 0;
 
 extern uint32_t vbe_palette[256];
 
+/**
+ * @brief Enumeration of VBE colors.
+ *
+ * Used to define the colours supported by the VBE.
+ *
+ */
 typedef enum {
     VBE_COLOR_BLACK = 0,
     VBE_COLOR_BLUE = 1,
