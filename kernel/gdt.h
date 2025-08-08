@@ -2,6 +2,12 @@
 #ifndef _GDT_H
 #define _GDT_H
 
+/**
+ * @brief GDT entry structure.
+ * Defines the structure of a GDT (Global Descriptor Table) entry.
+ * 
+ * Blame Intel for this mess.
+ */
 typedef volatile struct {
     unsigned short   link;
     unsigned short   link_h;  
