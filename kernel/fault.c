@@ -139,6 +139,11 @@ void page_fault_handler(uint32_t error_code) {
     kernel_panic("unhandled exception - page fault (#PF)");
 }
 
+/**
+ * @brief Handle general protection faults.
+ *
+ * @param error_code The error code associated with the fault.
+ */
 void gp_fault_handler(uint32_t error_code) {
     printfs(PRINT_STATUS_ERROR,"A general protection fault has occured. Error code: 0x%08x\n",error_code);
     
@@ -151,6 +156,10 @@ void gp_fault_handler(uint32_t error_code) {
     kernel_panic("unhandled exception - general protection fault (#GP)");
 }
 
+/**
+ * @brief Handle divide by zero faults.
+ *
+ */
 void div_zero_fault_handler(void) {
     if (multitasking_ready == 1) {
         printfs(PRINT_STATUS_ERROR,"Process \"%s\" attempted to divide by zero and will be terminated.\n",current_task->name);
