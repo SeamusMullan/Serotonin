@@ -17,7 +17,7 @@ set -e  # Exit on any error
 
 # Project configuration
 PROJECT_NAME="Serotonin"
-PROJECT_VERSION="0.0.3"
+PROJECT_VERSION="0.1.3"
 PROJECT_BRIEF="An operating system written with C"
 
 if [ "$IS_WINDOWS" -eq 1 ]; then
