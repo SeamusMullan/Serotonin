@@ -58,6 +58,7 @@ typedef struct {
 } vbe_mode_info_t;
 
 extern vbe_mode_info_t vbe_info;
+extern uint32_t fb_size_bytes;
 
 void vbe_init(multiboot_info_t *mbi);
 void vbe_putpixel(uint32_t x, uint32_t y, uint32_t color);

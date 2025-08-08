@@ -8,6 +8,11 @@
 #define STDIN_BUFFER_SIZE 4096
 #define FIRST_FD 3
 
+/**
+ * @brief Enumeration of system calls.
+ *
+ * This enum defines the various system calls available in the kernel.
+ */
 enum {
     SYSTEM_CALL_EXIT     = 0,
     SYSTEM_CALL_WRITE    = 1,
@@ -23,18 +28,33 @@ enum {
     SYSTEM_CALL_SBRK     = 11
 };
 
+/**
+ * @brief Enumeration of exit system calls.
+ *
+ * This enum defines the various exit system calls available in the kernel.
+ */
 enum {
     EXIT_REGISTER_HANDLER = 0,
     EXIT_RAISE_SIGNAL     = 1,
     EXIT_HANDLER_RETURN   = 2
 };
 
+/**
+ * @brief Enumeration of write system calls.
+ *
+ * This enum defines the various write system calls available in the kernel.
+ */
 enum {
     WRITE_STDOUT = 0,
     WRITE_STDERR = 1,
     WRITE_FRMBUF = 2
 };
 
+/**
+ * @brief Enumeration of read system calls.
+ *
+ * This enum defines the various read system calls available in the kernel.
+ */
 enum {
     READ_STDIN = 0
 };

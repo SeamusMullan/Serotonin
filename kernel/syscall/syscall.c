@@ -11,21 +11,37 @@
 #include "../video/vbe/vbe.h"
 #include <stdint.h>
 
+
 static uint32_t next_fd = FIRST_FD;
 
+/**
+ * @brief Handle illegal system calls.
+ *
+ * This function is called when a task attempts to make an illegal system call.
+ */
 void handle_illegal_call(void) {
     printfs(PRINT_STATUS_WARNING,"Illegal system call from %s (pid=%d)!\n", current_task->name, current_task->pid);
     task_exit(EXIT_SIGKILL);
 }
 
+/**
+ * @brief Handle exit system calls.
+ *
+ * @param arg2 The exit status.
+ */
 static void handle_exit(uint32_t arg2) {
     task_exit(arg2);
 }
 
+/**
+ * @brief Write the framebuffer to a specific location.
+ *
+ * @param arg3 The framebuffer address.
+ * @param arg4 The destination address.
+ */
 static void frmbuf_write(uint32_t arg3, uint32_t arg4) {
     uint32_t zbuf = arg3;
     uint32_t* frmbufptr = (uint32_t*)arg4;
-
     uint32_t* krnl_frm_buf = (uint32_t *)kernel_malloc(fb_size_bytes);
     memcpy(krnl_frm_buf, frmbufptr, fb_size_bytes);
     memcpy(vbe_info.backbuffer, krnl_frm_buf, fb_size_bytes);
@@ -35,6 +51,14 @@ static void frmbuf_write(uint32_t arg3, uint32_t arg4) {
     return;
 }
 
+/**
+ * @brief Write the framebuffer to a specific location.
+ *
+ * @param arg2 The framebuffer address.
+ * @param arg3 The destination address.
+ * @param arg4 The size of the framebuffer.
+ * @param ctx The processor context.
+ */
 static void handle_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
     uint32_t fd = arg2;
     char* write_ptr = (char*)arg3;
@@ -67,6 +91,14 @@ static void handle_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_
     }
 }
 
+/**
+ * @brief Handle read system calls.
+ *
+ * @param arg2 The file descriptor.
+ * @param arg3 The buffer address.
+ * @param arg4 The size of the buffer.
+ * @param ctx The processor context.
+ */
 static void handle_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
     uint32_t fd = arg2;
     char* read_ptr = (char*)arg3;
@@ -102,6 +134,11 @@ static void handle_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_c
     kernel_free(read_buf);
 }
 
+/**
+ * @brief Handle fork system calls.
+ *
+ * @param ctx The processor context.
+ */
 static void handle_fork(processor_context_t *ctx) {
     memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
     process_control_block_t *pcb = task_fork(current_task);
@@ -110,10 +147,23 @@ static void handle_fork(processor_context_t *ctx) {
     pcb->processor_context->eax = 0;
 }
 
+/**
+ * @brief Handle getpid system calls.
+ *
+ * @param ctx The processor context.
+ */
 static void handle_get_pid(processor_context_t *ctx) {
     ctx->eax = current_task->pid;
 }
 
+/**
+ * @brief Handle open system calls.
+ *
+ * @param arg2 The file path.
+ * @param arg3 The flags.
+ * @param arg4 The mode.
+ * @param ctx The processor context.
+ */
 static void handle_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
     char *path = (char*)arg2;
     int flags = (int)arg3;
@@ -143,6 +193,11 @@ static void handle_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_c
     ctx->eax = (uint32_t)fd;
 }
 
+/**
+ * @brief Handle close system calls.
+ *
+ * @param arg2 The file descriptor.
+ */
 static void handle_close(uint32_t arg2) {
     int fd = arg2;
 
@@ -159,6 +214,11 @@ static void handle_close(uint32_t arg2) {
     kernel_free(handle);
 }
 
+/**
+ * @brief Handle system calls.
+ *
+ * @param ctx The processor context.
+ */
 void system_call(processor_context_t *ctx) {
     preempt_disable();
 
