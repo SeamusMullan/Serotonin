@@ -59,27 +59,55 @@ uint32_t align(uint32_t size) {
     return (size + BLOCK_ALIGN - 1) & ~(BLOCK_ALIGN - 1);
 }
 
+/**
+ * @brief Read the CR0 register.
+ *
+ * This function reads the value of the CR0 register.
+ * @return uint32_t The value of the CR0 register.
+ */
 __attribute__((target("no-sse"))) static inline uint32_t kernel_read_cr0(void) {
     uint32_t val;
     asm volatile("mov %%cr0, %0" : "=r"(val));
     return val;
 }
 
+/**
+ * @brief Write to the CR0 register.
+ *
+ * This function writes the specified value to the CR0 register.
+ */
 __attribute__((target("no-sse"))) static inline void kernel_write_cr0(uint32_t val) {
     asm volatile("mov %0, %%cr0" : : "r"(val));
 }
 
+/**
+ * @brief Read the CR4 register.
+ *
+ * This function reads the value of the CR4 register.
+ * @return uint32_t The value of the CR4 register.
+ */
 __attribute__((target("no-sse"))) static inline uint32_t kernel_read_cr4(void) {
     uint32_t val;
     asm volatile("mov %%cr4, %0" : "=r"(val));
     return val;
 }
 
+/**
+ * @brief Write to the CR4 register.
+ *
+ * This function writes the specified value to the CR4 register.
+ */
 __attribute__((target("no-sse"))) static inline void kernel_write_cr4(uint32_t val) {
     asm volatile("mov %0, %%cr4" : : "r"(val));
 }
 
-
+/**
+ * @brief Check if the CPU supports SSE2.
+ *
+ * This function checks if the CPU supports SSE2 by examining the CPUID instruction.
+ *
+ * @return int 1 if SSE2 is supported, 0 otherwise.
+ */
 __attribute__((target("no-sse"))) static int kernel_cpu_has_sse2(void) {
     unsigned int eax, ebx, ecx, edx;
     unsigned int ret;
@@ -93,6 +121,13 @@ __attribute__((target("no-sse"))) static int kernel_cpu_has_sse2(void) {
     return (edx & (1 << 26)) != 0;
 }
 
+/**
+ * @brief Check if a hypervisor is present.
+ *
+ * This function checks if a hypervisor is present by examining the CPUID instruction.
+ *
+ * @return int 1 if a hypervisor is present, 0 otherwise.
+ */
 static int kernel_hypervisor_present(void) {
     unsigned int eax, ebx, ecx, edx;
     unsigned int ret;
@@ -106,6 +141,14 @@ static int kernel_hypervisor_present(void) {
     return (ecx & (1 << 31)) != 0;
 }
 
+/**
+ * @brief Get the CPU manufacturer string.
+ *
+ * This function retrieves the CPU manufacturer string by reading the CPUID instruction.
+ * The string is built from EBX, EDX, and ECX registers and is guaranteed to be 12 characters long.
+ *
+ * @return char* Pointer to a static string containing the CPU manufacturer.
+ */
 static char* kernel_get_cpu_manufacturer(void) {
     unsigned int eax, ebx, ecx, edx;
     unsigned int ret;
@@ -125,6 +168,12 @@ static char* kernel_get_cpu_manufacturer(void) {
     return manufacturer;
 }
 
+/**
+ * @brief Setup the FPU (Floating Point Unit) for the kernel.
+ *
+ * This function enables the FPU in CR0, checks for SSE2 support, and initializes the FPU state.
+ * It is called during kernel initialization to ensure that the FPU is ready for use.
+ */
 __attribute__((target("no-sse"))) void kernel_setup_fpu(void) {
     // Enable FPU in CR0
     uint32_t cr0 = kernel_read_cr0();
@@ -149,6 +198,13 @@ __attribute__((target("no-sse"))) void kernel_setup_fpu(void) {
     asm volatile("fninit");
 }
 
+/**
+ * @brief Get the CPU features.
+ *
+ * This function retrieves the CPU features by reading the CPUID instruction.
+ *
+ * @param f Pointer to a cpu_features_t structure to store the features.
+ */
 static void kernel_get_cpu_features(cpu_features_t *f) {
     unsigned int eax = 0;
     unsigned int ebx = 0;
@@ -223,6 +279,13 @@ static void kernel_get_cpu_features(cpu_features_t *f) {
     }
 }
 
+/**
+ * @brief Print the CPU features.
+ *
+ * This function prints the CPU features stored in the cpu_features_t structure.
+ *
+ * @param f Pointer to a cpu_features_t structure containing the features.
+ */
 static void kernel_print_cpu_features(const cpu_features_t *f) {
     struct { const char *name; uint8_t val; } feat_map[] = {
         {"sse3",         f->sse3},
@@ -486,6 +549,12 @@ void kernel_free(void *ptr) {
     block->free = 1;
 }
 
+/**
+ * @brief Put the CPU into an idle state.
+ *
+ * This function puts the CPU into an idle state by executing the HLT instruction.
+ * It is called when there are no runnable tasks in the system.
+ */
 void kernel_idle_task(void) {
     while (1) {
         asm volatile ("hlt");
@@ -493,6 +562,15 @@ void kernel_idle_task(void) {
     }
 }
 
+/**
+ * @brief Load an ELF executable into memory.
+ *
+ * This function loads an ELF executable from the specified path and creates a process control block (PCB) for it.
+ *
+ * @param path The path to the ELF executable.
+ * @param pname The name of the process.
+ * @return process_control_block_t* A pointer to the created PCB, or NULL on failure.
+ */
 process_control_block_t *kernel_load_elf(const char *path, const char *pname) {
     vfs_node_t *node = vfs_open(path);
     if (!node) {

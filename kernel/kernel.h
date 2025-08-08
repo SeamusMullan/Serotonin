@@ -6,58 +6,58 @@
 #define BIT(n) (1u << (n))
 
 /* ELF identification indexes */
-#define EI_MAG0       0
-#define EI_MAG1       1
-#define EI_MAG2       2
-#define EI_MAG3       3
-#define EI_CLASS      4
-#define EI_DATA       5
-#define EI_VERSION    6
-#define EI_OSABI      7
-#define EI_ABIVERSION 8
-#define EI_PAD        9
-#define EI_NIDENT     16
+#define EI_MAG0       0 // Magic number
+#define EI_MAG1       1 // Magic number
+#define EI_MAG2       2 // Magic number
+#define EI_MAG3       3 // Magic number
+#define EI_CLASS      4 // Class
+#define EI_DATA       5 // Data encoding
+#define EI_VERSION    6 // Version
+#define EI_OSABI      7 // OS/ABI
+#define EI_ABIVERSION 8 // ABI Version
+#define EI_PAD        9 // Padding
+#define EI_NIDENT     16 // Number of bytes in e_ident
 
 /* Magic bytes at e_ident[0..3] */
 #define ELFMAG0 0x7F  /* e_ident[EI_MAG0] */
 #define ELFMAG1 'E'   /* e_ident[EI_MAG1] */
 #define ELFMAG2 'L'   /* e_ident[EI_MAG2] */
 #define ELFMAG3 'F'   /* e_ident[EI_MAG3] */
-#define ELFMAG  "\177ELF"
-#define SELFMAG 4
+#define ELFMAG  "\177ELF" /* e_ident[EI_MAG0..3] */
+#define SELFMAG 4 /* e_ident[EI_MAG0..3] */
 
 /* ELF class */
-#define ELFCLASS32 1
-#define ELFCLASS64 2
+#define ELFCLASS32 1 // 32-bit
+#define ELFCLASS64 2 // 64-bit
 
 /* Data encoding */
-#define ELFDATA2LSB 1
-#define ELFDATA2MSB 2
+#define ELFDATA2LSB 1 // Little-endian
+#define ELFDATA2MSB 2 // Big-endian
 
 /* ELF types */
-#define ET_NONE   0
-#define ET_REL    1
-#define ET_EXEC   2
-#define ET_DYN    3
-#define ET_CORE   4
+#define ET_NONE   0 // No file type
+#define ET_REL    1 // Relocatable file
+#define ET_EXEC   2 // Executable file
+#define ET_DYN    3 // Shared object file
+#define ET_CORE   4 // Core file
 
 /* Target machine */
-#define EM_NONE  0
-#define EM_386   3
-#define EM_X86_64 62
+#define EM_NONE  0 // No specific machine
+#define EM_386   3 // Intel 80386
+#define EM_X86_64 62 // AMD64
 
 /* ELF version */
-#define EV_NONE    0
-#define EV_CURRENT 1
+#define EV_NONE    0 // Invalid version
+#define EV_CURRENT 1 // Current version
 
 /* Program header types */
-#define PT_NULL    0
-#define PT_LOAD    1
-#define PT_DYNAMIC 2
-#define PT_INTERP  3
-#define PT_NOTE    4
-#define PT_SHLIB   5
-#define PT_PHDR    6
+#define PT_NULL    0 // Program header type
+#define PT_LOAD    1 // Loadable segment
+#define PT_DYNAMIC 2 // Dynamic linking information
+#define PT_INTERP  3 // Interpreter path name
+#define PT_NOTE    4 // Auxiliary information
+#define PT_SHLIB   5 // Reserved
+#define PT_PHDR    6 // Program header table itself
 
 /* Segment flags */
 #define PF_X 0x1    /* Execute */
