@@ -14,6 +14,12 @@ filesystem_t fat32_fs = {
     .next = (void *)0
 };
 
+/**
+ * @brief Builds a FAT32 directory entry name key from a filename.
+ *
+ * @param fname The input filename.
+ * @param key The output key (must be 11 bytes).
+ */
 static void fat32_build_name_key(const char *fname, uint8_t key[11]) {
     memset(key, ' ', 11);
     const char *dot = strchr(fname, '.');
@@ -29,6 +35,12 @@ static void fat32_build_name_key(const char *fname, uint8_t key[11]) {
     }
 }
 
+/**
+ * @brief Extracts a filename from a FAT32 directory entry.
+ *
+ * @param raw The raw directory entry data (must be 11 bytes).
+ * @param out The output buffer for the filename (must be 13 bytes).
+ */
 static void fat32_name_from_entry(const uint8_t raw[11], char out[13]) {
     int pos = 0;
     // copy the base name (first 8 bytes)
@@ -55,6 +67,14 @@ static void fat32_name_from_entry(const uint8_t raw[11], char out[13]) {
     out[pos] = '\0';
 }
 
+/**
+ * @brief Parses the BIOS Parameter Block (BPB) of a FAT32 filesystem.
+ *
+ * @param info The FAT32 filesystem information structure to populate.
+ * @param drive The drive number (0-based).
+ * @param partition_start_lba The starting LBA of the partition.
+ * @param boot_sector The raw boot sector data.
+ */
 static void fat32_parse_bpb(fat32_fs_info_t *info,
                             uint8_t drive,
                             uint32_t partition_start_lba,
@@ -77,11 +97,20 @@ static void fat32_parse_bpb(fat32_fs_info_t *info,
         info->fat_start_lba + info->table_count * info->fat_size;
 }
 
-
+/**
+ * @brief Initializes the FAT32 filesystem.
+ *
+ */
 void fat32_init(void) {
     vfs_register_fs(&fat32_fs);
 }
 
+/**
+ * @brief Mounts a FAT32 filesystem.
+ *
+ * @param device The device to mount (unused).
+ * @return vfs_node_t* The root directory of the mounted filesystem.
+ */
 vfs_node_t *fat32_mount(const char *device) {
     uint8_t drive = device ? (uint8_t)atoi(device) : 0;
 
@@ -133,6 +162,13 @@ vfs_node_t *fat32_mount(const char *device) {
     return root;
 }
 
+/**
+ * @brief Reads a cluster from the FAT32 filesystem.
+ *
+ * @param fs_info The FAT32 filesystem information.
+ * @param cluster The cluster number to read.
+ * @param buffer The buffer to read the cluster data into.
+ */
 static void fat32_read_cluster(fat32_fs_info_t *fs_info, uint32_t cluster, uint8_t *buffer) {
     uint32_t first_sector = fs_info->cluster_heap_start_lba + (cluster - 2) * fs_info->sectors_per_cluster;
 
@@ -141,6 +177,13 @@ static void fat32_read_cluster(fat32_fs_info_t *fs_info, uint32_t cluster, uint8
     }
 }
 
+/**
+ * @brief Reads a cluster from the FAT32 filesystem.
+ *
+ * @param fs_info The FAT32 filesystem information.
+ * @param cluster The cluster number to read.
+ * @return uint32_t The number of bytes read, or 0 on failure.
+ */
 static uint32_t fat32_read_fat_entry(fat32_fs_info_t *fs_info, uint32_t cluster) {
     uint32_t fat_offset = cluster * 4;
     uint32_t fat_sector = fs_info->fat_start_lba + (fat_offset / fs_info->bytes_per_sector);
@@ -156,6 +199,13 @@ static uint32_t fat32_read_fat_entry(fat32_fs_info_t *fs_info, uint32_t cluster)
 static uint32_t current_cluster = 0;
 static uint32_t entry_offset = 0;
 
+/**
+ * @brief Reads a directory entry from the FAT32 filesystem.
+ *
+ * @param node The VFS node representing the directory to read from.
+ * @param index The index of the entry to read.
+ * @return vfs_node_t* The VFS node representing the directory entry, or NULL on failure.
+ */
 vfs_node_t *fat32_readdir(vfs_node_t *node, uint32_t index) {
     fat32_node_info_t *node_info = (fat32_node_info_t *)node->fs_data;
     fat32_fs_info_t *fs_info = node_info->fs_info;
@@ -230,6 +280,15 @@ vfs_node_t *fat32_readdir(vfs_node_t *node, uint32_t index) {
     return NULL; // No more entries
 }
 
+/**
+ * @brief Reads data from a file in the FAT32 filesystem.
+ *
+ * @param node The VFS node representing the file to read from.
+ * @param offset The offset to read from.
+ * @param size The number of bytes to read.
+ * @param buffer The buffer to read data into.
+ * @return int The number of bytes read, or -1 on failure.
+ */
 static int fat32_read(vfs_node_t *node,
                       uint32_t offset,
                       uint32_t size,
@@ -282,6 +341,13 @@ static int fat32_read(vfs_node_t *node,
     return read;
 }
 
+/**
+ * @brief Reads a directory entry from the FAT32 filesystem.
+ *
+ * @param node The VFS node representing the directory to read from.
+ * @param index The index of the entry to read.
+ * @return vfs_node_t* The VFS node representing the directory entry, or NULL on failure.
+ */
 static int fat32_open(vfs_node_t *node) {
     printfs(PRINT_STATUS_DEBUG,"fat32_open: opening node %s\n", node->name);
 
@@ -289,11 +355,24 @@ static int fat32_open(vfs_node_t *node) {
     return 0;
 }
 
+/**
+ * @brief Closes a file or directory in the FAT32 filesystem.
+ *
+ * @param node The VFS node representing the file or directory to close.
+ * @return int 0 on success, or -1 on failure.
+ */
 static int fat32_close(vfs_node_t *node) {
     // no per‐node teardown needed
     return 0;
 }
 
+/**
+ * @brief Finds a directory entry in the FAT32 filesystem.
+ *
+ * @param dir The VFS node representing the directory to search in.
+ * @param name The name of the directory entry to find.
+ * @return vfs_node_t* The VFS node representing the directory entry, or NULL on failure.
+ */
 static vfs_node_t *fat32_finddir(vfs_node_t *dir, const char *name) {
     // build the 11-byte key
     uint8_t key[11];
@@ -354,6 +433,14 @@ static vfs_node_t *fat32_finddir(vfs_node_t *dir, const char *name) {
     return NULL;
 }
 
+/**
+ * @brief Writes a FAT entry in the FAT32 filesystem.
+ *
+ * @param fs The FAT32 filesystem information.
+ * @param cluster The cluster number to write to.
+ * @param value The value to write.
+ * @return int 0 on success, or -1 on failure.
+ */
 static int fat32_write_fat_entry(fat32_fs_info_t *fs, uint32_t cluster, uint32_t value)
 {
     // mask to 28 bits
@@ -378,6 +465,12 @@ static int fat32_write_fat_entry(fat32_fs_info_t *fs, uint32_t cluster, uint32_t
     return 0;
 }
 
+/**
+ * @brief Allocates a new cluster in the FAT32 filesystem.
+ *
+ * @param fs The FAT32 filesystem information.
+ * @return uint32_t The cluster number of the allocated cluster, or 0 on failure.
+ */
 static uint32_t fat32_allocate_cluster(fat32_fs_info_t *fs)
 {
     // scan the FAT looking for a zero entry
@@ -392,6 +485,13 @@ static uint32_t fat32_allocate_cluster(fat32_fs_info_t *fs)
     return 0;
 }
 
+/**
+ * @brief Writes a cluster to the FAT32 filesystem.
+ *
+ * @param fs The FAT32 filesystem information.
+ * @param cluster The cluster number to write to.
+ * @param buffer The buffer containing the data to write.
+ */
 static void fat32_write_cluster(fat32_fs_info_t *fs, uint32_t cluster, const uint8_t *buffer)
 {
     uint32_t first_sector = fs->cluster_heap_start_lba
@@ -404,6 +504,13 @@ static void fat32_write_cluster(fat32_fs_info_t *fs, uint32_t cluster, const uin
     }
 }
 
+/**
+ * @brief Updates a directory entry in the FAT32 filesystem.
+ *
+ * @param ni The FAT32 node information.
+ * @param name The name of the file or directory to update.
+ * @param new_size The new size of the file or directory.
+ */
 static void fat32_update_dir_entry(fat32_node_info_t *ni, const char *name, uint32_t new_size) {
     fat32_fs_info_t *fs = ni->fs_info;
     uint8_t  key[11];
@@ -431,6 +538,15 @@ static void fat32_update_dir_entry(fat32_node_info_t *ni, const char *name, uint
     kernel_free(buf);
 }
 
+/**
+ * @brief Writes data to a file in the FAT32 filesystem.
+ *
+ * @param node The VFS node representing the file to write to.
+ * @param offset The offset within the file to write to.
+ * @param size The number of bytes to write.
+ * @param buffer The buffer containing the data to write.
+ * @return int 0 on success, or -1 on failure.
+ */
 static int fat32_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer)
 {
     if (!(node->flags & VFS_FLAG_FILE)) return -1;
@@ -504,6 +620,13 @@ static int fat32_write(vfs_node_t *node, uint32_t offset, uint32_t size, const c
     return written;
 }
 
+/**
+ * @brief Locates a free directory entry in the FAT32 filesystem.
+ *
+ * @param fs The FAT32 filesystem information.
+ * @param parent_cluster The cluster number of the parent directory.
+ * @return fat_dir_entry_t* A pointer to the free directory entry, or NULL on failure.
+ */
 static fat_dir_entry_t *locate_free_entry(fat32_fs_info_t *fs, uint32_t parent_cluster) {
     uint32_t cluster = parent_cluster;
     uint32_t cluster_size = fs->bytes_per_sector * fs->sectors_per_cluster;
@@ -541,6 +664,13 @@ static fat_dir_entry_t *locate_free_entry(fat32_fs_info_t *fs, uint32_t parent_c
     }
 }
 
+/**
+ * @brief Creates a new file in the FAT32 filesystem.
+ *
+ * @param parent The parent directory in which to create the file.
+ * @param name The name of the file to create.
+ * @return vfs_node_t* The VFS node representing the new file, or NULL on failure.
+ */
 static vfs_node_t *fat32_create(vfs_node_t *parent, const char *name) {
     fat32_node_info_t *pni = parent->fs_data;
     fat32_fs_info_t   *fs  = pni->fs_info;
@@ -604,6 +734,13 @@ got_slot:
     return child;
 }
 
+/**
+ * @brief Creates a new directory in the FAT32 filesystem.
+ *
+ * @param parent The parent directory in which to create the new directory.
+ * @param name The name of the new directory.
+ * @return vfs_node_t* The VFS node representing the new directory, or NULL on failure.
+ */
 static vfs_node_t *fat32_mkdir(vfs_node_t *parent, const char *name) {
     fat32_node_info_t *pni = parent->fs_data;
     fat32_fs_info_t   *fs  = pni->fs_info;

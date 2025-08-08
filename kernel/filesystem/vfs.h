@@ -15,7 +15,11 @@ typedef struct vfs_node vfs_node_t;
 typedef struct vfs_ops vfs_ops_t;
 typedef struct filesystem filesystem_t;
 
-
+/**
+ * @brief Virtual filesystem node.
+ *
+ * This structure represents a node in the virtual filesystem.
+ */
 typedef struct vfs_node {
     char name[256];              // Name of this node
     uint32_t inode;              // Inode number (if applicable)
@@ -32,6 +36,11 @@ typedef struct vfs_node {
     struct vfs_node *next;       // Next sibling (for directories)
 } vfs_node_t;
 
+/**
+ * @brief Virtual filesystem operations.
+ *
+ * This structure contains the operations that can be performed on a virtual filesystem node.
+ */
 typedef struct vfs_ops {
     int (*read)(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer);
     int (*write)(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer);
@@ -43,6 +52,11 @@ typedef struct vfs_ops {
     vfs_node_t *(*mkdir)(vfs_node_t *parent, const char *name);
 } vfs_ops_t;
 
+/**
+ * @brief Virtual filesystem structure.
+ *
+ * This structure represents a virtual filesystem.
+ */
 typedef struct filesystem {
     char name[16];                           // Filesystem name
     struct vfs_node *(*mount)(const char *device);

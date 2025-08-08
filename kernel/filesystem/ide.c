@@ -2,7 +2,14 @@
 #include "../io/io.h"
 #include "../stdio/stdio.h"
 
-// Wait until (status & mask) == value, or timeout
+/**
+ * @brief Waits for a specific condition on the IDE status register.
+ *
+ * @param mask The status bits to check.
+ * @param value The expected value of the status bits.
+ * @param timeout The timeout period in milliseconds.
+ * @return int 0 on success, -1 on timeout.
+ */
 int ide_wait(uint8_t mask, uint8_t value, int timeout) {
     while (timeout-- > 0) {
         uint8_t status = inb(ATA_PRIMARY_IO + 7);
@@ -11,6 +18,11 @@ int ide_wait(uint8_t mask, uint8_t value, int timeout) {
     return -1; // timeout
 }
 
+/**
+ * @brief Initializes the IDE controller.
+ *
+ * This function initializes the IDE controller and detects connected drives.
+ */
 void ide_init(void) {
     for (uint8_t drive = 0; drive <= 1; drive++) {
         // Select drive
@@ -74,6 +86,14 @@ void ide_init(void) {
     }
 }
 
+/**
+ * @brief Reads a sector from the specified IDE drive.
+ *
+ * @param drive The drive number (0 or 1).
+ * @param lba The logical block address of the sector to read.
+ * @param buffer The buffer to store the read data.
+ * @return int 0 on success, -1 on failure.
+ */
 int ide_read_sector(uint8_t drive, uint32_t lba, uint8_t *buffer) {
     if (drive > 1) return -1;
 
@@ -117,6 +137,15 @@ int ide_read_sector(uint8_t drive, uint32_t lba, uint8_t *buffer) {
     return 0; // success
 }
 
+/**
+ * @brief Reads multiple sectors from the specified IDE drive.
+ *
+ * @param drive The drive number (0 or 1).
+ * @param lba The logical block address of the first sector to read.
+ * @param count The number of sectors to read.
+ * @param buffer The buffer to store the read data.
+ * @return int 0 on success, -1 on failure.
+ */
 int ide_read_sectors(uint8_t drive, uint32_t lba, uint8_t count, uint8_t *buffer) {
     for (uint8_t i = 0; i < count; i++) {
         int res = ide_read_sector(drive, lba + i, buffer + (i * 512));
@@ -125,6 +154,14 @@ int ide_read_sectors(uint8_t drive, uint32_t lba, uint8_t count, uint8_t *buffer
     return 0;
 }
 
+/**
+ * @brief Writes a sector to the specified IDE drive.
+ *
+ * @param drive The drive number (0 or 1).
+ * @param lba The logical block address of the sector to write.
+ * @param buffer The buffer containing the data to write.
+ * @return int 0 on success, -1 on failure.
+ */
 int ide_write_sector(uint8_t drive, uint32_t lba, const uint8_t *buffer) {
     if (drive > 1) return -1;
     uint16_t io = ATA_PRIMARY_IO;
@@ -176,6 +213,15 @@ int ide_write_sector(uint8_t drive, uint32_t lba, const uint8_t *buffer) {
     return 0;
 }
 
+/**
+ * @brief Writes multiple sectors to the specified IDE drive.
+ *
+ * @param drive The drive number (0 or 1).
+ * @param lba The logical block address of the first sector to write.
+ * @param count The number of sectors to write.
+ * @param buffer The buffer containing the data to write.
+ * @return int 0 on success, -1 on failure.
+ */
 int ide_write_sectors(uint8_t drive, uint32_t lba, uint8_t count, const uint8_t *buffer) {
     for (uint8_t i = 0; i < count; i++) {
         if (ide_write_sector(drive, lba + i, buffer + (i * 512)) != 0)

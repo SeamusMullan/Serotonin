@@ -35,11 +35,20 @@ static filesystem_t tmpfs_fs = {
     .next = NULL
 };
 
+/**
+ * @brief Initializes the tmpfs filesystem.
+ *
+ */
 void tmpfs_init(void) {
     vfs_register_fs(&tmpfs_fs);
 }
 
-// tmpfs_mount
+/**
+ * @brief Mounts a tmpfs filesystem.
+ *
+ * @param device The device to mount (unused).
+ * @return vfs_node_t* The root directory of the mounted filesystem.
+ */
 static vfs_node_t *tmpfs_mount(const char *device) {
     (void) device;  // unused
 
@@ -60,19 +69,37 @@ static vfs_node_t *tmpfs_mount(const char *device) {
     return root;
 }
 
-// tmpfs_open
+/**
+ * @brief Opens a file in the tmpfs filesystem.
+ *
+ * @param node The VFS node representing the file to open.
+ * @return int 0 on success, -1 on failure.
+ */
 static int tmpfs_open(vfs_node_t *node) {
     // No-op for tmpfs
     return 0;
 }
 
-// tmpfs_close
+/**
+ * @brief Closes a file in the tmpfs filesystem.
+ *
+ * @param node The VFS node representing the file to close.
+ * @return int 0 on success, -1 on failure.
+ */
 static int tmpfs_close(vfs_node_t *node) {
     // No-op for tmpfs
     return 0;
 }
 
-// tmpfs_read
+/**
+ * @brief Reads data from a file in the tmpfs filesystem.
+ *
+ * @param node The VFS node representing the file to read from.
+ * @param offset The offset to read from.
+ * @param size The number of bytes to read.
+ * @param buffer The buffer to read data into.
+ * @return int The number of bytes read, or -1 on failure.
+ */
 static int tmpfs_read(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer) {
     if (!(node->flags & VFS_FLAG_FILE)) return -1;
 
@@ -85,7 +112,15 @@ static int tmpfs_read(vfs_node_t *node, uint32_t offset, uint32_t size, char *bu
     return bytes_to_read;
 }
 
-// tmpfs_write
+/**
+ * @brief Writes data to a file in the tmpfs filesystem.
+ *
+ * @param node The VFS node representing the file to write to.
+ * @param offset The offset to write to.
+ * @param size The number of bytes to write.
+ * @param buffer The buffer containing the data to write.
+ * @return int The number of bytes written, or -1 on failure.
+ */
 static int tmpfs_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer) {
     if (!(node->flags & VFS_FLAG_FILE)) return -1;
 
@@ -110,7 +145,13 @@ static int tmpfs_write(vfs_node_t *node, uint32_t offset, uint32_t size, const c
     return size;
 }
 
-// tmpfs_readdir
+/**
+ * @brief Reads the contents of a directory in the tmpfs filesystem.
+ *
+ * @param node The VFS node representing the directory to read.
+ * @param index The index of the entry to read.
+ * @return vfs_node_t* The VFS node representing the directory entry, or NULL on failure.
+ */
 static vfs_node_t *tmpfs_readdir(vfs_node_t *node, uint32_t index) {
     if (!(node->flags & VFS_FLAG_DIRECTORY)) return NULL;
 
@@ -129,7 +170,13 @@ static vfs_node_t *tmpfs_readdir(vfs_node_t *node, uint32_t index) {
     return NULL;
 }
 
-// tmpfs_finddir
+/**
+ * @brief Finds a directory entry by name in a tmpfs directory.
+ *
+ * @param node The VFS node representing the directory to search.
+ * @param name The name of the directory entry to find.
+ * @return vfs_node_t* The VFS node representing the found directory entry, or NULL on failure.
+ */
 static vfs_node_t *tmpfs_finddir(vfs_node_t *node, const char *name) {
     if (!(node->flags & VFS_FLAG_DIRECTORY)) return NULL;
 
@@ -146,7 +193,13 @@ static vfs_node_t *tmpfs_finddir(vfs_node_t *node, const char *name) {
     return NULL;
 }
 
-// Helper: create a file in a tmpfs directory
+/**
+ * @brief Creates a file in a tmpfs directory.
+ *
+ * @param parent The VFS node representing the parent directory.
+ * @param name The name of the file to create.
+ * @return vfs_node_t* The VFS node representing the created file, or NULL on failure.
+ */
 vfs_node_t *tmpfs_create_file(vfs_node_t *parent, const char *name) {
     if (!(parent->flags & VFS_FLAG_DIRECTORY)) return NULL;
 
@@ -176,7 +229,13 @@ vfs_node_t *tmpfs_create_file(vfs_node_t *parent, const char *name) {
     return file;
 }
 
-// Helper: create a subdirectory in a tmpfs directory
+/**
+ * @brief Creates a directory in a tmpfs filesystem.
+ *
+ * @param parent The VFS node representing the parent directory.
+ * @param name The name of the directory to create.
+ * @return vfs_node_t* The VFS node representing the created directory, or NULL on failure.
+ */
 vfs_node_t *tmpfs_create_dir(vfs_node_t *parent, const char *name) {
     if (!(parent->flags & VFS_FLAG_DIRECTORY)) return NULL;
 
