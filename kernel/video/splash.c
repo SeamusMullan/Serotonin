@@ -25648,6 +25648,6 @@ void cube_demo() {
         //kernel_sleep(30);
         angle += 0.001f;
         vbe_flip_all();
-        //kernel_yield();
+        kernel_yield();
     }
 }

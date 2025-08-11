@@ -168,7 +168,6 @@ void task_yield(int irq) {
     process_control_block_t* next = NULL;
     while ((next = dequeue()) != NULL) {
         if (next->state == PROCESS_STATE_READY) {
-            printf("offsetof(fpu_fx) = %d, addr:%p\n", offsetof(process_control_block_t, fpu_fx),&next->fpu_fx);
             // printf("found next: %p, name: %s, ring:%d, entry:%p, esp:%p, eflags:%p\n",next, next->name,next->priv,next->entry,next->esp, next->eflags);
             // found someone we can switch into
             next->state = PROCESS_STATE_RUNNING;
