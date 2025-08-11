@@ -8,16 +8,18 @@
 .extern sys_tss
 
 # PCB offsets
-.equ    OFF_ESP,    4
-.equ    OFF_ESP0,   8 
-.equ    OFF_CR3,   12
-.equ    OFF_ENTRY, 56
-.equ    OFF_PRIV,  61
-.equ    OFF_CTX,   64
-.equ    OFF_K_EBX,  68
-.equ    OFF_K_EBP,  72
-.equ    OFF_K_ESI,  76
-.equ    OFF_K_EDI,  80
+.equ    OFF_ESP,      4
+.equ    OFF_ESP0,     8 
+.equ    OFF_CR3,      12
+.equ    OFF_ENTRY,    56
+.equ    OFF_PRIV,     61
+.equ    OFF_CTX,      64
+.equ    OFF_K_EBX,    68
+.equ    OFF_K_EBP,    72
+.equ    OFF_K_ESI,    76
+.equ    OFF_K_EDI,    80
+.equ    OFF_K_EFLAGS, 84
+.equ    OFF_K_FPU,    112
 
 # context offsets
 .equ OFF_GS,            0
@@ -40,37 +42,7 @@
 .equ OFF_SS,           68
 
 switch_task:
-    # edx = next PCB
-    movl    4(%esp), %edx
-    testl   %edx, %edx
-    jz      .fail
-
-    # store ESP0 into the PCB and TSS
-    movl    current_task, %ecx
-    movl    OFF_ESP0(%ecx), %ebx
-    movl    %ebx, sys_tss+4 # sys_tss.esp0
-
-    # user mode switch
-    cmpb $3, OFF_PRIV(%edx)
-    jz .switch_user_mode
-
-    # switch to the new PCB
-    movl    %edx, current_task
-    movl    OFF_ESP(%edx), %esp
-    movl    OFF_CR3(%edx), %eax
-    movl    %eax,       %cr3
-
-    # restore caller-saved registers
-    movl    OFF_K_EBP(%edx), %ebp
-    movl    OFF_K_EBX(%edx), %ebx
-    movl    OFF_K_EDI(%edx), %edi
-    movl    OFF_K_ESI(%edx), %esi
-
-    # finally jump back to its saved EIP
-    pushl   OFF_ENTRY(%edx)
-    ret
-
-switch_task_iret:
+    # PIC EOI
     movb $0x20, %al
     outb %al, $0x20
 
@@ -94,9 +66,12 @@ switch_task_iret:
     movl    OFF_CR3(%edx), %eax
     movl    %eax,       %cr3
 
+    # restore FPU state
+    fxrstor OFF_K_FPU(%edx)
+
     # finally jump back to its saved EIP
-    pushf
-    push    $0x08
+    pushl   OFF_K_EFLAGS(%edx)
+    pushl   $0x08
     pushl   OFF_ENTRY(%edx)
 
     # restore caller-saved registers

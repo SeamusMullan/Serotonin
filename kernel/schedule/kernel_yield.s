@@ -4,17 +4,18 @@
 .extern current_task
 
 # PCB offsets
-.equ    OFF_ESP,    4
-.equ    OFF_ESP0,   8 
-.equ    OFF_CR3,    12
-.equ    OFF_ENTRY,  56
-.equ    OFF_PRIV,   61
-.equ    OFF_CTX,    64
-.equ    OFF_K_EBX,  68
-.equ    OFF_K_EBP,  72
-.equ    OFF_K_ESI,  76
-.equ    OFF_K_EDI,  80
-
+.equ    OFF_ESP,      4
+.equ    OFF_ESP0,     8 
+.equ    OFF_CR3,      12
+.equ    OFF_ENTRY,    56
+.equ    OFF_PRIV,     61
+.equ    OFF_CTX,      64
+.equ    OFF_K_EBX,    68
+.equ    OFF_K_EBP,    72
+.equ    OFF_K_ESI,    76
+.equ    OFF_K_EDI,    80
+.equ    OFF_K_EFLAGS, 84
+.equ    OFF_K_FPU,    112
 
 kernel_yield:
     # save return address
@@ -38,5 +39,13 @@ kernel_yield:
     movl %ebx, OFF_K_EBP(%edi)
     movl %ebp, OFF_K_ESI(%edi)
     movl %esi, OFF_K_EDI(%edi)
+
+    # save eflags
+    pushfl
+    popl %eax
+    movl %eax, OFF_K_EFLAGS(%edi)
+
+    # save FPU state
+    fxsave OFF_K_FPU(%edi)
 
     call task_yield

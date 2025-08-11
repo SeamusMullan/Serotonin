@@ -7,8 +7,13 @@
 
 #define USER_MODE_SEGMENT      0x23
 #define USER_MODE_CODE_SEGMENT 0x1B
-#define USER_MODE_EFLAGS       0x00000202 // RSVD, IF
+#define INIT_EFLAGS            0x00000202 // RSVD, IF
 #define MAX_TASKS              256
+#define PCB_ALIGNMENT          16
+
+typedef struct fpu_fxsave_area {
+    uint8_t bytes[512];
+} fpu_fxsave_area_t __attribute__((aligned(16)));
 
 typedef struct process_control_block {
     uint32_t pid;
@@ -32,6 +37,7 @@ typedef struct process_control_block {
     void* ebp;
     void* esi;
     void* edi;
+    void* eflags;
 
     uint8_t signal;
 
@@ -39,6 +45,8 @@ typedef struct process_control_block {
     void* esp_min;
     void* ipc_ptr;
     void* lck_ptr;
+
+    __attribute__((aligned(16))) fpu_fxsave_area_t fpu_fx;
 
     file_handle_t* fd_table[FD_MAX];
 } process_control_block_t;

@@ -161,6 +161,8 @@ typedef struct {
 void kernel_panic(char* str);
 void *kernel_malloc(uint32_t size);
 void kernel_free(void *ptr);
+void *kernel_malloc_align(uint32_t align, uint32_t size);
+void kernel_free_align(void *ptr);
 void kernel_sleep(unsigned int milliseconds);
 
 #endif

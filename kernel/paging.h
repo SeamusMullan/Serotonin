@@ -50,6 +50,7 @@ extern page_directory_t page_directory;
 
 #define BLOCK_ALIGN 8
 #define PAGE_ALIGN(addr) (((addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))
+#define ALIGN_UP(x,a)  (((x) + ((a)-1)) & ~((a)-1))
 
 
 extern uintptr_t page_dir_ptr;

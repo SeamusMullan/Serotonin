@@ -389,6 +389,8 @@ void kernel_sleep(unsigned int milliseconds) {
  * @param str The panic message to display.
  */
 void kernel_panic(char* str) {
+    //abort();
+
     unsigned int eip;
 
     asm volatile (
@@ -547,6 +549,19 @@ void kernel_free(void *ptr) {
 
     block_header_t *block = ((block_header_t *)ptr) - 1;
     block->free = 1;
+}
+
+void *kernel_malloc_align(uint32_t align, uint32_t size) {
+    uintptr_t raw = (uintptr_t)kernel_malloc(size + align - 1 + sizeof(uintptr_t));
+    if (!raw) return NULL;
+
+    uintptr_t aligned = ALIGN_UP(raw + sizeof(uintptr_t), align);
+    ((uintptr_t*)aligned)[-1] = raw;
+    return (void*)aligned;
+}
+
+void kernel_free_align(void *p) {
+    if (p) kernel_free((void*)((uintptr_t*)p)[-1]);
 }
 
 /**
@@ -764,6 +779,9 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     process_control_block_t *idle_task = task_create(kernel_idle_task, "System Idle Task", CPU_KERNEL_MODE);
     enqueue(idle_task);
+
+    process_control_block_t *cube_task = task_create(cube_demo, "Cube Demo", CPU_KERNEL_MODE);
+    enqueue(cube_task);
 
     printfs(PRINT_STATUS_INFO,"Attempting to load /bin/init\n");
 

@@ -24,6 +24,7 @@ static uint32_t next_user_stack = USER_STACK_TOP;
 static uint32_t next_kernel_stack = KERNEL_STACK_TOP;
 volatile uint32_t preempt_count = 0;
 volatile uint8_t pending_schedule = 0;
+static __attribute__((aligned(16))) fpu_fxsave_area_t fx_clean;
 
 // TODO: I should probably not scatter a repeat function but fuck it later issue
 // TODO: What I meant by this is this is probably better off defined later elsewhere, sorry for bed england.
@@ -116,11 +117,15 @@ void unlock_scheduler(void) {
     enable_interrupts();
 }
 
+void fpu_get_init_state(void) {
+    asm volatile("fxsave %0" : "=m"(fx_clean));
+}
+
 /**
  * @brief Initializes multitasking by creating the initial kernel task.
  */
 void multitasking_init(void) {
-    process_control_block_t *init_task = (process_control_block_t*)kernel_malloc(sizeof(process_control_block_t));
+    process_control_block_t *init_task = (process_control_block_t*)kernel_malloc_align(PCB_ALIGNMENT, sizeof(process_control_block_t));
     memset(init_task, 0, sizeof(*init_task));
 
     init_task->pid     = next_pid++;
@@ -133,6 +138,8 @@ void multitasking_init(void) {
 
     task_list             = init_task;
     current_task          = init_task;
+
+    fpu_get_init_state();
 
     task_lock_init(stdin_lock, 1);
 }
@@ -161,16 +168,14 @@ void task_yield(int irq) {
     process_control_block_t* next = NULL;
     while ((next = dequeue()) != NULL) {
         if (next->state == PROCESS_STATE_READY) {
-            // printf("found next: %p, name: %s, ring:%d, entry:%p, esp:%p\n",next, next->name,next->priv,next->entry,next->esp);
+            printf("offsetof(fpu_fx) = %d, addr:%p\n", offsetof(process_control_block_t, fpu_fx),&next->fpu_fx);
+            // printf("found next: %p, name: %s, ring:%d, entry:%p, esp:%p, eflags:%p\n",next, next->name,next->priv,next->entry,next->esp, next->eflags);
             // found someone we can switch into
             next->state = PROCESS_STATE_RUNNING;
             unlock_scheduler();
             preempt_enable();
 
             // if nothing is pending, switch
-            if (irq == 1) {
-                switch_task_iret(next);
-            }
             switch_task(next);
         }
     }
@@ -185,8 +190,8 @@ void task_exit(uint8_t exit) {
     printfs(PRINT_STATUS_DEBUG, "task_exit: Task %s (pid=%u) exited:%s\n", current_task->name, current_task->pid,to_signal_name(exit));
     current_task->state = PROCESS_STATE_TERMINATED;
     current_task->signal = exit;
-    kernel_free(current_task->processor_context);
-    kernel_free(current_task);
+    kernel_free_align(current_task->processor_context);
+    kernel_free_align(current_task);
 
     task_yield(0);  // pick the next runnable task
     kernel_panic("task_exit: nothing to switch to");
@@ -200,16 +205,19 @@ void task_exit(uint8_t exit) {
  */
 process_control_block_t* task_create(void (*entry)(void), const char *name, uint8_t priv) {
     // alloc and init pcb
-    process_control_block_t *pcb = (process_control_block_t*)kernel_malloc(sizeof(*pcb));
+    process_control_block_t *pcb = (process_control_block_t*)kernel_malloc_align(PCB_ALIGNMENT, sizeof(*pcb));
     memset(pcb, 0, sizeof(*pcb));
-    pcb->pid   = next_pid++;
-    pcb->cr3   = read_cr3_register();
-    pcb->state = PROCESS_STATE_READY;
+    pcb->pid     = next_pid++;
+    pcb->cr3     = read_cr3_register();
+    pcb->state   = PROCESS_STATE_READY;
     pcb->started = 0;
-    pcb->priv  = priv;
+    pcb->priv    = priv;
+    pcb->eflags  = (void*)INIT_EFLAGS;
     strncpy(pcb->name, name, sizeof(pcb->name)-1);
 
-    processor_context_t *ctx = (processor_context_t *)kernel_malloc(sizeof(*ctx));
+    memcpy(&pcb->fpu_fx, &fx_clean, sizeof(fx_clean));
+
+    processor_context_t *ctx = (processor_context_t *)kernel_malloc_align(PCB_ALIGNMENT, sizeof(*ctx));
     memset(ctx, 0, sizeof(*ctx));
     pcb->processor_context = ctx;
 
@@ -225,8 +233,8 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
         pcb->processor_context->gs          = USER_MODE_SEGMENT;
         pcb->processor_context->ss          = USER_MODE_SEGMENT; 
         pcb->processor_context->esp_at_trap = (uint32_t)stk_top;
-        pcb->processor_context->stub_eflags = USER_MODE_EFLAGS;
-        pcb->processor_context->eflags      = USER_MODE_EFLAGS;
+        pcb->processor_context->stub_eflags = INIT_EFLAGS;
+        pcb->processor_context->eflags      = INIT_EFLAGS;
         pcb->processor_context->cs          = USER_MODE_CODE_SEGMENT; 
         pcb->processor_context->eip         = (uint32_t)entry;
         memset(stack, 0, USER_STACK_SIZE);
@@ -384,7 +392,7 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
         task_exit(EXIT_SIGILL);
     }
 
-    process_control_block_t *pcb = (process_control_block_t*)kernel_malloc(sizeof(process_control_block_t));
+    process_control_block_t *pcb = (process_control_block_t*)kernel_malloc_align(PCB_ALIGNMENT, sizeof(process_control_block_t));
     memcpy(pcb, parent, sizeof(process_control_block_t));
     memcpy(pcb->processor_context, parent->processor_context, sizeof(processor_context_t));
     pcb->state = PROCESS_STATE_READY;
