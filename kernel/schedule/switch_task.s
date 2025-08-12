@@ -96,6 +96,9 @@ switch_task:
     movl    OFF_CR3(%edx), %edx
     movl    %edx, %cr3
 
+    # restore FPU state
+    fxrstor OFF_K_FPU(%edx)
+
     # restore data segment regs
     movw    OFF_DS(%ecx), %dx
     movw    %dx,   %ds

@@ -1,4 +1,6 @@
 .section .text
+.extern current_task
+.equ    OFF_K_FPU, 112
 
 .global isr0
 isr0:
@@ -279,11 +281,25 @@ irq0:
     pushl   %es
     pushl   %ds
 
+    movl    current_task, %edx
+    test    %edx, %edx
+    jz      1f
+    fxsave  OFF_K_FPU(%edx)
+
+1:
+
     movl    %esp, %eax
     pushl   %eax
     pushl   $0
     call    irq_handler
-    addl    $8, %esp
+    addl    $8,   %esp
+
+    movl    current_task, %edx
+    test    %edx, %edx
+    jz      2f
+    fxrstor OFF_K_FPU(%edx)
+
+2:
 
     popl    %ds
     popl    %es
