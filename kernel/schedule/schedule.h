@@ -13,7 +13,7 @@
 
 typedef struct fpu_fxsave_area {
     uint8_t bytes[512];
-} fpu_fxsave_area_t;
+} fpu_fxsave_area_t __attribute__((aligned(16)));
 
 typedef struct process_control_block {
     uint32_t pid;

@@ -780,8 +780,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     process_control_block_t *idle_task = task_create(kernel_idle_task, "System Idle Task", CPU_KERNEL_MODE);
     enqueue(idle_task);
 
-    process_control_block_t *cube_task = task_create(cube_demo, "Cube Demo", CPU_KERNEL_MODE);
-    enqueue(cube_task);
+    //process_control_block_t *cube_task = task_create(cube_demo, "Cube Demo", CPU_KERNEL_MODE);
+    //enqueue(cube_task);
 
     printfs(PRINT_STATUS_INFO,"Attempting to load /bin/init\n");
 

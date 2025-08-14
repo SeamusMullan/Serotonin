@@ -92,12 +92,12 @@ switch_task:
     movl    %edx, current_task
     movl    OFF_CTX(%edx), %ecx
     
+    # restore FPU state
+    fxrstor OFF_K_FPU(%edx)
+
     # switch page dir
     movl    OFF_CR3(%edx), %edx
     movl    %edx, %cr3
-
-    # restore FPU state
-    fxrstor OFF_K_FPU(%edx)
 
     # restore data segment regs
     movw    OFF_DS(%ecx), %dx
