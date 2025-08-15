@@ -144,9 +144,9 @@ void page_fault_handler(uint32_t error_code) {
  *
  * @param error_code The error code associated with the fault.
  */
-void gp_fault_handler(uint32_t error_code) {
-    printfs(PRINT_STATUS_ERROR,"A general protection fault has occured. Error code: 0x%08x\n",error_code);
-    
+void gp_fault_handler(uint32_t fault_eip, uint32_t error_code) {
+    printfs(PRINT_STATUS_ERROR,"A general protection fault has occured. Error code: 0x%08x\nFaulting EIP: 0x%08x\n",error_code, fault_eip);
+
     if (multitasking_ready == 1) {
         printfs(PRINT_STATUS_ERROR,"Process \"%s\" (pid=%d) has attempted to execute an illegal instruction and will be terminated.\n", current_task->name,current_task->pid);
         task_exit(EXIT_SIGILL);

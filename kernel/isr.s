@@ -113,6 +113,8 @@ isr13:
 
     mov 44(%esp), %eax
     push %eax
+    movl 56(%esp), %eax
+    pushl %eax
     call gp_fault_handler
 
     add $4, %esp
