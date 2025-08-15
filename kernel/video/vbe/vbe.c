@@ -28,6 +28,12 @@ uint32_t fb_size_bytes;
 
 uint32_t vbe_palette[256];
 
+// ---------------- Z-Layer Buffers ----------------
+// Layer 0 is reserved (excluded from user rendering per requirement). Layers 1..VBE_NUM_Z_LAYERS-1 available.
+// Each layer stores 32-bit ARGB pixels; a pixel value of 0 means fully transparent (alpha==0).
+static uint32_t *vbe_z_layers[VBE_NUM_Z_LAYERS];
+static inline int vbe_z_valid(uint32_t z){ return (z>0 && z < VBE_NUM_Z_LAYERS); }
+
 #define DIRTY_BITMAP_SIZE ((SCREEN_WIDTH * SCREEN_HEIGHT + 7) / 8)
 uint8_t dirty_bitmap[DIRTY_BITMAP_SIZE];
 
@@ -109,6 +115,15 @@ void vbe_init(multiboot_info_t *mbi) {
     }
 
     memset(vbe_info.backbuffer, 0, fb_size_bytes);
+
+    // Allocate z-layer buffers
+    for (uint32_t i=1;i<VBE_NUM_Z_LAYERS;i++) {
+        vbe_z_layers[i] = (uint32_t*)kernel_malloc(fb_size_bytes);
+        if (!vbe_z_layers[i]) {
+            kernel_panic("vbe_init: could not allocate z-layer buffer");
+        }
+        memset(vbe_z_layers[i], 0, fb_size_bytes);
+    }
 
     {
         uintptr_t back_start = (uintptr_t)vbe_info.backbuffer;
@@ -208,16 +223,40 @@ inline void fast_putpixel(uint32_t *buf, uint32_t pitch, uint32_t width, uint32_
  * @brief Copy the backbuffer contents to the framebuffer.
  */
 void vbe_flip(void) {
+    // Composite only dirty scanlines from base backbuffer + z-layers into framebuffer.
     uint32_t stride = vbe_info.pitch / sizeof(uint32_t);
-    uint32_t *src_buf = vbe_info.backbuffer;
+    uint32_t *base_buf = vbe_info.backbuffer; // base layer
     uint32_t *dst_buf = vbe_info.framebuffer;
 
-    for (uint32_t y = 0; y < SCREEN_HEIGHT; y++) {
+    for (uint32_t y=0;y<SCREEN_HEIGHT;y++) {
         if (!dirty_lines[y]) continue;
-        memcpy(&dst_buf[y * stride], &src_buf[y * stride], SCREEN_WIDTH * sizeof(uint32_t));
+        uint32_t *dst_row = &dst_buf[y*stride];
+        uint32_t *base_row = &base_buf[y*stride];
+        // Start with base
+        memcpy(dst_row, base_row, SCREEN_WIDTH * sizeof(uint32_t));
+        // Blend each z layer on top
+        for (uint32_t z=1; z<VBE_NUM_Z_LAYERS; z++) {
+            uint32_t *layer_row = vbe_z_layers[z] ? &vbe_z_layers[z][y*stride] : 0;
+            if (!layer_row) continue;
+            for (uint32_t x=0;x<SCREEN_WIDTH;x++) {
+                uint32_t src = layer_row[x];
+                if (src == 0) continue; // fully transparent (alpha==0)
+                uint8_t a = (src >> 24) & 0xFF;
+                if (a == 0) continue;
+                if (a == 255) { dst_row[x] = src; continue; }
+                uint32_t dst = dst_row[x];
+                uint8_t sr = (src >> 16) & 0xFF; uint8_t sg = (src >> 8) & 0xFF; uint8_t sb = src & 0xFF;
+                uint8_t dr = (dst >> 16) & 0xFF; uint8_t dg = (dst >> 8) & 0xFF; uint8_t db = dst & 0xFF;
+                // Alpha blend: out = src*a + dst*(1-a)
+                uint32_t invA = 255 - a;
+                uint8_t rr = (uint8_t)((sr * a + dr * invA) / 255);
+                uint8_t rg = (uint8_t)((sg * a + dg * invA) / 255);
+                uint8_t rb = (uint8_t)((sb * a + db * invA) / 255);
+                dst_row[x] = (0xFFu<<24) | (rr<<16) | (rg<<8) | rb; // output alpha forced opaque
+            }
+        }
         dirty_lines[y] = 0;
     }
-
     vbe_clear_dirty_bitmap();
 }
 
@@ -228,9 +267,34 @@ void vbe_flip(void) {
  * only for the dirty lines.
  */
 void vbe_flip_all(void) {
-    uint32_t *src_buf = vbe_info.backbuffer;
+    // Composite entire frame ignoring dirty regions (full redraw)
+    uint32_t stride = vbe_info.pitch / sizeof(uint32_t);
+    uint32_t *base_buf = vbe_info.backbuffer;
     uint32_t *dst_buf = vbe_info.framebuffer;
-    memcpy(dst_buf,src_buf, fb_size_bytes);
+    for (uint32_t y=0;y<SCREEN_HEIGHT;y++) {
+        uint32_t *dst_row = &dst_buf[y*stride];
+        uint32_t *base_row = &base_buf[y*stride];
+        memcpy(dst_row, base_row, SCREEN_WIDTH * sizeof(uint32_t));
+        for (uint32_t z=1; z<VBE_NUM_Z_LAYERS; z++) {
+            uint32_t *layer_row = vbe_z_layers[z] ? &vbe_z_layers[z][y*stride] : 0;
+            if (!layer_row) continue;
+            for (uint32_t x=0;x<SCREEN_WIDTH;x++) {
+                uint32_t src = layer_row[x];
+                if (src == 0) continue;
+                uint8_t a = (src >> 24) & 0xFF;
+                if (a == 0) continue;
+                if (a == 255) { dst_row[x] = src; continue; }
+                uint32_t dst = dst_row[x];
+                uint8_t sr = (src >> 16) & 0xFF; uint8_t sg = (src >> 8) & 0xFF; uint8_t sb = src & 0xFF;
+                uint8_t dr = (dst >> 16) & 0xFF; uint8_t dg = (dst >> 8) & 0xFF; uint8_t db = dst & 0xFF;
+                uint32_t invA = 255 - a;
+                uint8_t rr = (uint8_t)((sr * a + dr * invA) / 255);
+                uint8_t rg = (uint8_t)((sg * a + dg * invA) / 255);
+                uint8_t rb = (uint8_t)((sb * a + db * invA) / 255);
+                dst_row[x] = (0xFFu<<24) | (rr<<16) | (rg<<8) | rb;
+            }
+        }
+    }
     vbe_clear_dirty_bitmap();
 }
 
@@ -497,4 +561,76 @@ void vbe_clear_screen(uint32_t color) {
     uint32_t *back_buf = vbe_info.backbuffer;
     memset(back_buf,color, fb_size_bytes);
     vbe_clear_dirty_bitmap();
+}
+
+void vbe_z_putpixel(uint32_t z, uint32_t x, uint32_t y, uint32_t color) {
+    if (!vbe_z_valid(z)) return;
+    if (x >= vbe_info.width || y >= vbe_info.height) return;
+    uint8_t *row_start = (uint8_t*)vbe_z_layers[z] + (y * vbe_info.pitch);
+    uint32_t *dest = (uint32_t *)(row_start + (x * 4));
+    *dest = color; 
+    vbe_mark_pixel_dirty(x,y);
+}
+
+void vbe_z_fillrect(uint32_t z, uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
+    if (!vbe_z_valid(z)) return;
+    if (x + w  > vbe_info.width)  w = vbe_info.width  - x;
+    if (y + h  > vbe_info.height) h = vbe_info.height - y;
+    for (uint32_t row=0; row<h; row++) {
+        uint8_t *row_ptr = (uint8_t*)vbe_z_layers[z] + ( (y+row) * vbe_info.pitch );
+        uint32_t *dst = (uint32_t*)(row_ptr) + x;
+        for (uint32_t col=0; col<w; col++) {
+            dst[col] = color;
+        }
+        for (uint32_t col=0; col<w; col++) vbe_mark_pixel_dirty(x+col, y+row);
+    }
+}
+
+void vbe_clear_z_layer(uint32_t z, uint32_t color) {
+    if (!vbe_z_valid(z)) return;
+    memset(vbe_z_layers[z], color, fb_size_bytes);
+}
+
+void vbe_clear_all_z_layers(void) {
+    for (uint32_t z=1; z<VBE_NUM_Z_LAYERS; z++) {
+        if (vbe_z_layers[z]) memset(vbe_z_layers[z],0,fb_size_bytes);
+    }
+}
+
+// Copy source z-layer to destination fading alpha by fade_amount.
+// fade_amount: amount to subtract from alpha (0-255).
+// If src_z == dst_z an in-place fade is applied.
+void vbe_z_copy_and_fade(uint32_t src_z, uint32_t dst_z, uint8_t fade_amount) {
+    if (!(src_z>0 && src_z < VBE_NUM_Z_LAYERS)) return;
+    if (!(dst_z>0 && dst_z < VBE_NUM_Z_LAYERS)) return;
+    uint32_t *src = vbe_z_layers[src_z];
+    uint32_t *dst = vbe_z_layers[dst_z];
+    if (!src || !dst) return;
+
+    if (fade_amount == 0) {
+        if (src_z == dst_z) return; // nothing to do
+        memcpy(dst, src, fb_size_bytes);
+        return;
+    }
+
+    uint32_t pixels = fb_size_bytes / sizeof(uint32_t);
+    if (src_z == dst_z) {
+        for (uint32_t i=0;i<pixels;i++) {
+            uint32_t c = src[i];
+            if (c == 0) continue;
+            uint8_t a = (uint8_t)(c >> 24);
+            if (a <= fade_amount) { src[i] = 0; continue; }
+            a -= fade_amount;
+            src[i] = ((uint32_t)a << 24) | (c & 0x00FFFFFFu);
+        }
+    } else {
+        for (uint32_t i=0;i<pixels;i++) {
+            uint32_t c = src[i];
+            if (c == 0) { dst[i] = 0; continue; }
+            uint8_t a = (uint8_t)(c >> 24);
+            if (a <= fade_amount) { dst[i] = 0; continue; }
+            a -= fade_amount;
+            dst[i] = ((uint32_t)a << 24) | (c & 0x00FFFFFFu);
+        }
+    }
 }

@@ -68,7 +68,7 @@ void irq_handler(int irq, processor_context_t *ctx) {
             else if (!pm && t.hour == 12) t.hour = 0;
         }
 
-        printf("time: %d:%d:%d %d/%d/%d%d \n", t.hour,t.minute,t.second,t.day,t.month,t.century,t.year);
+        // printf("time: %d:%d:%d %d/%d/%d%d \n", t.hour,t.minute,t.second,t.day,t.month,t.century,t.year);
     }
 
 end_irq:

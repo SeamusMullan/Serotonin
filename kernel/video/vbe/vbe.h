@@ -83,4 +83,15 @@ void vbe_fast_mark_dirty(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 void vbe_set_cursor(uint32_t col, uint32_t row);
 void vbe_clear_screen(uint32_t color);
 
+#define VBE_NUM_Z_LAYERS 8
+
+void vbe_z_putpixel(uint32_t z, uint32_t x, uint32_t y, uint32_t color);
+void vbe_z_fillrect(uint32_t z, uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color);
+void vbe_clear_z_layer(uint32_t z, uint32_t color);
+void vbe_clear_all_z_layers(void);
+// Copy source z-layer (src_z) to destination (dst_z) fading alpha by fade_amount (0-255).
+// If resulting alpha <= 0 it becomes fully transparent (pixel value 0).
+void vbe_z_copy_and_fade(uint32_t src_z, uint32_t dst_z, uint8_t fade_amount);
+
+
 #endif
