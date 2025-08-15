@@ -163,14 +163,12 @@ static void advance_pipe(Pipe *p, int seg_len, int use_z_layer)
     if (out)
     {
         pick_new_direction(p, seg_len);
-        p->color = rand_color();
         nx = p->x + p->dx * seg_len;
         ny = p->y + p->dy * seg_len;
     }
     else if ((rand() & 0x1F) == 0)
     {
         pick_new_direction(p, seg_len);
-        p->color = rand_color();
         nx = p->x + p->dx * seg_len;
         ny = p->y + p->dy * seg_len;
     }
@@ -202,7 +200,7 @@ static void advance_pipe(Pipe *p, int seg_len, int use_z_layer)
 void pipes_demo(void)
 {
     // Params
-    int num_pipes = 16; // increased now that we allocate on the heap
+    int num_pipes = 64; // increased now that we allocate on the heap
     const int seg_len = 10; // pixels per step
     Pipe *pipes = (Pipe *)kernel_malloc(sizeof(Pipe) * (uint32_t)num_pipes);
     if (!pipes)
