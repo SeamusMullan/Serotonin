@@ -7,6 +7,7 @@
 
 #define VBE_FONT_WIDTH  8
 #define VBE_FONT_HEIGHT 20
+#define VBE_NUM_Z_LAYERS 16
 
 #define SCREEN_WIDTH 1280
 #define SCREEN_HEIGHT 800
@@ -83,7 +84,6 @@ void vbe_fast_mark_dirty(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 void vbe_set_cursor(uint32_t col, uint32_t row);
 void vbe_clear_screen(uint32_t color);
 
-#define VBE_NUM_Z_LAYERS 8
 
 void vbe_z_putpixel(uint32_t z, uint32_t x, uint32_t y, uint32_t color);
 void vbe_z_fillrect(uint32_t z, uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color);

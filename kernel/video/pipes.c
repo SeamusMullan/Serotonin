@@ -12,7 +12,7 @@
 #define PIPES_Z_LAYER 1
 
 // Alpha fade amount per frame (0..255). Higher = faster fade.
-#define PIPES_FADE_DECAY 8
+#define PIPES_FADE_DECAY 1
 
 // Simple Bresenham line (same as splash.c draw_line but local and static)
 // this function some straight gpt
