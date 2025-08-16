@@ -232,7 +232,7 @@ void pipes_demo(void)
             for (int i = 0; i < num_pipes; ++i)
                 advance_pipe(&pipes[i], seg_len, 1);
 
-            vbe_flip_all();
+            vbe_flip();
             frame_count++;
             kernel_yield();
         }
