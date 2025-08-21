@@ -424,3 +424,60 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
 
     return pcb;
 }
+
+void task_semaphore_init(lock_semaphore_t *semaphore, uint32_t max_count) {
+    semaphore = kernel_malloc(sizeof(lock_semaphore_t));
+    semaphore->max_count = max_count;
+    semaphore->current_count = 0;
+    semaphore->waiters_head = NULL;
+    semaphore->waiters_tail = NULL;
+}
+
+static void enqueue_waiter_semaphore(lock_semaphore_t *semaphore, process_control_block_t *pcb) {
+    wait_node_t *node = kernel_malloc(sizeof(*node));
+    node->task = pcb;
+    node->next = NULL;
+    if (semaphore->waiters_tail) {
+        semaphore->waiters_tail->next = node;
+        semaphore->waiters_tail = node;
+    } else {
+        semaphore->waiters_head = semaphore->waiters_tail = node;
+    }
+}
+
+process_control_block_t *dequeue_waiter_semaphore(lock_semaphore_t *semaphore) {
+    if (!semaphore->waiters_head) return NULL;
+    wait_node_t *node = semaphore->waiters_head;
+    process_control_block_t *pcb = node->task;
+    semaphore->waiters_head = node->next;
+    if (!semaphore->waiters_head)
+        semaphore->waiters_tail = NULL;
+    kernel_free(node);
+    return pcb;
+}
+
+void task_semaphore_acquire(lock_semaphore_t *semaphore) {
+    lock_scheduler();
+    
+    if (semaphore->current_count < semaphore->max_count) {
+        semaphore->current_count++;
+    } else {
+        enqueue_waiter_semaphore(semaphore, current_task);
+        task_block();
+    }
+
+    unlock_scheduler();
+}
+
+void task_semaphore_release(lock_semaphore_t *semaphore) {
+    lock_scheduler();
+
+    if (semaphore->waiters_head != NULL) {
+        process_control_block_t *pcb = dequeue_waiter_semaphore(semaphore);
+        task_unblock(pcb);
+    } else {
+        semaphore->current_count--;
+    }
+
+    unlock_scheduler();
+}

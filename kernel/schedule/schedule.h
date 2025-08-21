@@ -64,6 +64,13 @@ typedef struct lock {
     wait_node_t *waiters_tail;
 } lock_t;
 
+typedef struct lock_semaphore {
+    uint32_t max_count;
+    uint32_t current_count;
+    wait_node_t *waiters_head;
+    wait_node_t *waiters_tail;
+} lock_semaphore_t;
+
 enum {
     PROCESS_STATE_UNUSED = 0,
     PROCESS_STATE_RUNNING = 1,
