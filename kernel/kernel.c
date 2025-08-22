@@ -635,7 +635,7 @@ process_control_block_t *kernel_load_elf(const char *path, const char *pname) {
 
     kernel_free(elf_data);
 
-    process_control_block_t *pcb = task_create((void (*)(void))ehdr->e_entry, pname, CPU_USER_MODE);
+    process_control_block_t *pcb = task_create((void (*)(void))ehdr->e_entry, pname, CPU_USER_MODE, 255);
 
     enqueue(pcb);
 
@@ -778,13 +778,13 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     multitasking_init();
 
-    process_control_block_t *idle_task = task_create(kernel_idle_task, "System Idle Task", CPU_KERNEL_MODE);
+    process_control_block_t *idle_task = task_create(kernel_idle_task, "System Idle Task", CPU_KERNEL_MODE, 0);
     enqueue(idle_task);
 
     // process_control_block_t *cube_task = task_create(cube_demo, "Cube Demo", CPU_KERNEL_MODE);
     // enqueue(cube_task);
 
-    process_control_block_t *pipes_task = task_create(pipes_demo, "Pipes Demo", CPU_KERNEL_MODE);
+    process_control_block_t *pipes_task = task_create(pipes_demo, "Pipes Demo", CPU_KERNEL_MODE, 255);
     enqueue(pipes_task);
 
     printfs(PRINT_STATUS_INFO,"Attempting to load /bin/init\n");

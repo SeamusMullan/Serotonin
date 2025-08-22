@@ -22,9 +22,31 @@ static int rq_tail = 0;
 static uint32_t next_pid = 0;
 static uint32_t next_user_stack = USER_STACK_TOP;
 static uint32_t next_kernel_stack = KERNEL_STACK_TOP;
+static prio_queue_t prio_q[MAX_PRIORITY];
+static uint32_t prio_bitmap[8];
 volatile uint32_t preempt_count = 0;
 volatile uint8_t pending_schedule = 0;
 static __attribute__((aligned(16))) fpu_fxsave_area_t fx_clean;
+
+static inline void bm_set(uint8_t p)   { prio_bitmap[p >> 5] |=  (1u << (p & 31)); }
+static inline void bm_clear(uint8_t p) { prio_bitmap[p >> 5] &= ~(1u << (p & 31)); }
+static inline int  bm_any(void) {
+    for (int i = 7; i >= 0; --i) if (prio_bitmap[i]) return 1;
+    return 0;
+}
+
+static inline int highest_ready_prio(void) {
+    for (int word = 7; word >= 0; --word) {
+        uint32_t w = prio_bitmap[word];
+        if (w) {
+            // highest bit index in this 32-bit word
+            int bit = 31 - __builtin_clz(w);
+            return (word << 5) | bit; // word*32 + bit
+        }
+    }
+    return -1;
+}
+
 
 // TODO: I should probably not scatter a repeat function but fuck it later issue
 // TODO: What I meant by this is this is probably better off defined later elsewhere, sorry for bed england.
@@ -47,12 +69,6 @@ static inline int rq_next(int i) {
 
 static inline int runqueue_is_empty(void) {
     return rq_head == rq_tail;
-}
-
-void rotate_runqueue(void) {
-    if (runqueue_is_empty()) return;
-    process_control_block_t *pcb = dequeue();
-    enqueue(pcb);
 }
 
 void enqueue_task_list(process_control_block_t* pcb) {
@@ -202,16 +218,18 @@ void task_exit(uint8_t exit) {
  * @param name  Name of the task.
  * @return Pointer to the newly created process control block.
  */
-process_control_block_t* task_create(void (*entry)(void), const char *name, uint8_t priv) {
+process_control_block_t* task_create(void (*entry)(void), const char *name, uint8_t priv, uint8_t prio) {
     // alloc and init pcb
     process_control_block_t *pcb = (process_control_block_t*)kernel_malloc_align(PCB_ALIGNMENT, sizeof(*pcb));
     memset(pcb, 0, sizeof(*pcb));
-    pcb->pid     = next_pid++;
-    pcb->cr3     = read_cr3_register();
-    pcb->state   = PROCESS_STATE_READY;
-    pcb->started = 0;
-    pcb->priv    = priv;
-    pcb->eflags  = (void*)INIT_EFLAGS;
+    pcb->pid      = next_pid++;
+    pcb->cr3      = read_cr3_register();
+    pcb->state    = PROCESS_STATE_READY;
+    pcb->started  = 0;
+    pcb->priv     = priv;
+    pcb->eflags   = (void*)INIT_EFLAGS;
+    pcb->rq_next  = NULL;
+    pcb->priority = prio;
     strncpy(pcb->name, name, sizeof(pcb->name)-1);
 
     memcpy(&pcb->fpu_fx, &fx_clean, sizeof(fx_clean));
@@ -263,12 +281,18 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
 void enqueue(process_control_block_t* pcb) {
     lock_scheduler();
 
-    int next = rq_next(rq_tail);
-    if (next == rq_head) {
-        kernel_panic("runqueue full!");
+    uint8_t p = pcb->priority;
+    prio_queue_t *q = &prio_q[p];
+
+    pcb->rq_next = NULL;
+
+    if (!q->head) {
+        q->head = q->tail = pcb;
+        bm_set(p);
+    } else {
+        q->tail->rq_next = pcb;
+        q->tail = pcb;
     }
-    runqueue[rq_tail] = pcb;
-    rq_tail = next;
 
     unlock_scheduler();
 }
@@ -277,13 +301,28 @@ void enqueue(process_control_block_t* pcb) {
  * @brief Removes and returns the next task from the scheduler's queue.
  * @return Pointer to the dequeued process control block.
  */
-process_control_block_t* dequeue() {
-    if (runqueue_is_empty()) return NULL;
-    process_control_block_t *pcb = runqueue[rq_head];
-    rq_head = rq_next(rq_head);
+process_control_block_t* dequeue(void) {
+    int p = highest_ready_prio();
+    if (p < 0) return NULL;
+
+    prio_queue_t *q = &prio_q[p];
+    process_control_block_t *pcb = q->head;
+    if (!pcb) {
+        // shouldnt happen
+        bm_clear(p);
+        return NULL;
+    }
+
+    q->head = pcb->rq_next;
+    pcb->rq_next = NULL;
+
+    if (!q->head) {
+        q->tail = NULL;
+        bm_clear((uint8_t)p);
+    }
+
     return pcb;
 }
-
 /**
  * @brief Sets the state of the specified task.
  * @param pcb Pointer to the task's process control block.

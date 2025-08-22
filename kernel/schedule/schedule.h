@@ -10,6 +10,7 @@
 #define INIT_EFLAGS            0x00000202 // RSVD, IF
 #define MAX_TASKS              256
 #define PCB_ALIGNMENT          16
+#define MAX_PRIORITY           256
 
 typedef struct fpu_fxsave_area {
     uint8_t bytes[512];
@@ -49,6 +50,8 @@ typedef struct process_control_block {
     __attribute__((aligned(16))) fpu_fxsave_area_t fpu_fx;
 
     file_handle_t* fd_table[FD_MAX];
+    struct process_control_block *rq_next;
+    uint8_t priority;
 } process_control_block_t;
 
 typedef struct wait_node {
@@ -70,6 +73,11 @@ typedef struct lock_semaphore {
     wait_node_t *waiters_head;
     wait_node_t *waiters_tail;
 } lock_semaphore_t;
+
+typedef struct {
+    process_control_block_t *head;
+    process_control_block_t *tail;
+} prio_queue_t;
 
 enum {
     PROCESS_STATE_UNUSED = 0,
@@ -113,7 +121,7 @@ void multitasking_init(void);
 void multitasking_make_ready(void);
 __attribute__((naked,noreturn)) extern void switch_task(process_control_block_t* next_thread);
 __attribute__((naked,noreturn)) extern void switch_task_iret(process_control_block_t* next_thread);
-process_control_block_t* task_create(void (*entry)(void), const char *name, uint8_t priv);
+process_control_block_t* task_create(void (*entry)(void), const char *name, uint8_t priv, uint8_t prio);
 void task_yield(int irq);
 void task_exit(uint8_t exit);
 void enqueue(process_control_block_t* pcb);
