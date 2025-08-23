@@ -7,7 +7,7 @@
 #include "../kernel.h"
 #include "../stdlib/stdlib.h"
 #include "../string.h"
-#include "../paging.h"
+#include "../vmm/paging.h"
 #include "../stdio/stdio.h"
 #include "../io/io.h"
 #include "../video/vbe/vbe.h"
@@ -460,6 +460,10 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     memcpy(pcb->esp_max, parent->esp_max, USER_STACK_SIZE);
 
     enqueue_task_list(pcb);
+
+    // if init (only task with prio 255), set priority to something lower
+    // TODO: implement syscall for setting priority
+    pcb->priority = (parent->priority == 255) ? 128 : parent->priority;
 
     return pcb;
 }

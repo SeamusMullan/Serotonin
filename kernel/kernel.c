@@ -10,7 +10,8 @@
 #include "multiboot.h"
 #include "idt.h"
 #include "io/io.h"
-#include "paging.h"
+#include "vmm/paging.h"
+#include "vmm/vmm.h"
 #include "video/vbe/vbe.h"
 #include "video/font.h"
 #include "video/splash.h"
@@ -25,11 +26,16 @@
 #include "video/pipes.h"
 
 #define KERNEL_VERSION_HIGH 0
-#define KERNEL_VERSION_MID 1
-#define KERNEL_VERSION_LOW 3
+#define KERNEL_VERSION_MID 2
+#define KERNEL_VERSION_LOW 0
 
 #define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
 #define HEAP_SIZE   (KERNEL_HEAP_SIZE)
+
+extern char __kernel_start[];
+extern char __kernel_end[];
+extern char __kernel_load_base[];
+extern char __kernel_virtual_base[];
 
 /**
  * @brief Block header for memory allocation.
@@ -666,6 +672,23 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     splash_render(0,0);
     //create_color_render(275);
 
+    printf("Buddy: total=%llu pages, free=%llu pages\n", buddy_total_pages(), buddy_free_pages());
+
+    void *a = alloc_frame();
+    void *b = alloc_frame();
+    void *c = alloc_pages(2);
+    printf("Frames: %p %p block4=%p\n", a, b, c);
+    printf("Buddy: total=%llu pages, free=%llu pages\n", buddy_total_pages(), buddy_free_pages());
+
+    free_frame(a);
+    free_frame(b);
+    free_pages(c,2);
+
+    printf("Buddy: total=%llu pages, free=%llu pages\n", buddy_total_pages(), buddy_free_pages());
+
+    kernel_sleep(10000);
+
+
     printfs_set_mask(
         (1 << PRINT_STATUS_WARNING) |
         (1 << PRINT_STATUS_ERROR) |
@@ -784,8 +807,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     // process_control_block_t *cube_task = task_create(cube_demo, "Cube Demo", CPU_KERNEL_MODE);
     // enqueue(cube_task);
 
-    process_control_block_t *pipes_task = task_create(pipes_demo, "Pipes Demo", CPU_KERNEL_MODE, 255);
-    enqueue(pipes_task);
+    //process_control_block_t *pipes_task = task_create(pipes_demo, "Pipes Demo", CPU_KERNEL_MODE, 255);
+    //enqueue(pipes_task);
 
     printfs(PRINT_STATUS_INFO,"Attempting to load /bin/init\n");
 
@@ -797,8 +820,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     process_control_block_t *t = task_list;
     printf("Task list:\n");
     do {
-        printf("  Task %s (pid=%u), esp=%p, cr3=%p, state=%d, ring=%d\n",
-               t->name, t->pid, t->esp, t->cr3, t->state, t->priv);
+        printf("  Task %s (pid=%u), esp=%p, cr3=%p, state=%d, ring=%d, priority=%d\n",
+               t->name, t->pid, t->esp, t->cr3, t->state, t->priv, t->priority);
         t = t->next;
         if (t == NULL) {
             break;
@@ -827,6 +850,11 @@ __attribute__((target("no-sse"))) __attribute__((section(".identity"))) void ker
     paging_init((uintptr_t)mbi->framebuffer_addr);
 
     kernel_setup_fpu();
+
+    uint32_t kernel_phys_start = (uint32_t)__kernel_load_base;
+    uint32_t kernel_phys_end   = (uint32_t)__kernel_end - (uint32_t)__kernel_virtual_base + (uint32_t)__kernel_load_base;
+    buddy_init(mbi, kernel_phys_start, kernel_phys_end, (uint32_t)mbi->framebuffer_addr, (uint32_t)(mbi->framebuffer_height) * (uint32_t)(mbi->framebuffer_pitch));
+
     kernel_main_high(arg1,arg2);
 
     kernel_panic("returned from higher half kernel!");

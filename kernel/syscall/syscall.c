@@ -4,7 +4,7 @@
 #include "../io/io.h"
 #include "../kernel.h"
 #include "../stdlib/stdlib.h"
-#include "../paging.h"
+#include "../vmm/paging.h"
 #include "../string.h"
 #include "../filesystem/vfs.h"
 #include "../filesystem/user_fs/user_fs.h"

@@ -15,9 +15,6 @@ __attribute__((aligned(PAGE_SIZE), section(".identity_data")))
 page_table_t heap_page_tables[64];
 
 __attribute__((aligned(PAGE_SIZE), section(".identity_data")))
-page_table_t user_page_tables[64];
-
-__attribute__((aligned(PAGE_SIZE), section(".identity_data")))
 page_table_t fb_page_table;
 
 __attribute__((aligned(PAGE_SIZE), section(".identity_data")))
@@ -79,15 +76,6 @@ void paging_init(uintptr_t fb_phys_base) {
         }
         page_directory[832 + pd_idx] =
             ((uintptr_t)&heap_page_tables[pd_idx]) | PAGE_FLAGS;
-    }
-
-    // Map user space: 256 MiB via 64 page tables → PDE[1..64]
-    for (uint32_t pd_idx = 0; pd_idx < 64; ++pd_idx) {
-        for (uint32_t i = 0; i < PAGE_ENTRIES; ++i) {
-            user_page_tables[pd_idx][i] =
-                (USER_SPACE_PHYS + pd_idx * 0x400000 + i * PAGE_SIZE) | USER_PAGE_FLAGS;
-        }
-        page_directory[1 + pd_idx] = ((uintptr_t)&user_page_tables[pd_idx]) | USER_PAGE_FLAGS;
     }
 
     // Map 4 MiB at 0xF0000000 for kernel stack
