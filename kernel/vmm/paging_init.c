@@ -1,4 +1,4 @@
-#include "paging.h"
+#include "paging_init.h"
 #include <stdint.h>
 
 // Page structures in identity-mapped memory
@@ -95,28 +95,4 @@ void paging_init(uintptr_t fb_phys_base) {
         : "r"(page_dir_ptr)
         : "eax", "memory"
     );
-}
-
-/**
- * @brief Convert a physical address to a virtual address.
- */
-void *phys_to_virt(uintptr_t pa) {
-    // Identity-mapped region
-    if (pa < 0x00400000U)
-        return (void *)pa;
-
-    // Framebuffer mapping
-    if (pa >= fb_addr_ptr && pa < (fb_addr_ptr + 4 * 1024 * 1024U))
-        return (void *)(FB_VMA_BASE + (pa - fb_addr_ptr));
-
-    // Kernel code/data
-    if (pa >= KERNEL_PHYS_BASE && pa < (KERNEL_PHYS_BASE + KERNEL_HEAP_SIZE))
-        return (void *)(KERNEL_VMA_BASE + (pa - KERNEL_PHYS_BASE));
-
-    // Kernel heap
-    if (pa >= KERNEL_HEAP_PHYS && pa < (KERNEL_HEAP_PHYS + KERNEL_HEAP_SIZE))
-        return (void *)(KERNEL_HEAP_VMA + (pa - KERNEL_HEAP_PHYS));
-
-    // Unknown physical address
-    return 0;
 }

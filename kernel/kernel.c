@@ -10,7 +10,7 @@
 #include "multiboot.h"
 #include "idt.h"
 #include "io/io.h"
-#include "vmm/paging.h"
+#include "vmm/paging_init.h"
 #include "vmm/vmm.h"
 #include "video/vbe/vbe.h"
 #include "video/font.h"
@@ -396,7 +396,7 @@ void kernel_sleep(unsigned int milliseconds) {
  * @param str The panic message to display.
  */
 void kernel_panic(char* str) {
-    //abort();
+    abort();
 
     unsigned int eip;
 
@@ -672,23 +672,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     splash_render(0,0);
     //create_color_render(275);
 
-    printf("Buddy: total=%llu pages, free=%llu pages\n", buddy_total_pages(), buddy_free_pages());
-
-    void *a = alloc_frame();
-    void *b = alloc_frame();
-    void *c = alloc_pages(2);
-    printf("Frames: %p %p block4=%p\n", a, b, c);
-    printf("Buddy: total=%llu pages, free=%llu pages\n", buddy_total_pages(), buddy_free_pages());
-
-    free_frame(a);
-    free_frame(b);
-    free_pages(c,2);
-
-    printf("Buddy: total=%llu pages, free=%llu pages\n", buddy_total_pages(), buddy_free_pages());
-
-    kernel_sleep(10000);
-
-
     printfs_set_mask(
         (1 << PRINT_STATUS_WARNING) |
         (1 << PRINT_STATUS_ERROR) |
@@ -736,6 +719,33 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     asm volatile ("sidt %0" : "=m"(idtp_read));
     enable_interrupts();
     printfs(PRINT_STATUS_INFO,"Interrupts enabled! IDT: base:0x%08x,limit:0x%08x\n", idtp_read.base,idtp_read.limit);
+
+    printf("CR3 = %08x\n", read_cr3());
+    uint32_t *pd = cur_pd_va();
+    printf("PD[SELF] = %08x (should equal CR3 | flags)\n", pd[SELF_PDE_BASE]);
+
+    uint32_t phystroll = (uint32_t)alloc_frame();
+    memset(kmap(phystroll), 0xAB, PAGE_SIZE);
+    kunmap();
+
+    void *check = kmap(phystroll);
+    for (int i=0; i<16; i++) printf("%02x ", ((uint8_t*)check)[i]);
+    kunmap();
+    free_frame((void*)phystroll);
+
+    address_space_t *as = create_address_space();
+
+    uint32_t va = 0x00400000; // user base
+    uint32_t phys = alloc_map_page(as, va, USER_PAGE_FLAGS);
+    printf("map_page: va=%08x -> phys=%08x\n", va, phys);
+
+    uint32_t lookup = get_mapping(as, va);
+    printf("get_mapping: %08x\n", lookup);
+
+    unmap_page(as, va, 1);
+    printf("after unmap: %08x\n", get_mapping(as, va));
+
+    kernel_sleep(10000);
 
     uint32_t mem_lower;
     uint32_t mem_upper;
@@ -854,6 +864,7 @@ __attribute__((target("no-sse"))) __attribute__((section(".identity"))) void ker
     uint32_t kernel_phys_start = (uint32_t)__kernel_load_base;
     uint32_t kernel_phys_end   = (uint32_t)__kernel_end - (uint32_t)__kernel_virtual_base + (uint32_t)__kernel_load_base;
     buddy_init(mbi, kernel_phys_start, kernel_phys_end, (uint32_t)mbi->framebuffer_addr, (uint32_t)(mbi->framebuffer_height) * (uint32_t)(mbi->framebuffer_pitch));
+    vmm_init();
 
     kernel_main_high(arg1,arg2);
 

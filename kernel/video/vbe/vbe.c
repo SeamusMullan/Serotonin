@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "../../multiboot.h"
-#include "../../vmm/paging.h"
+#include "../../vmm/paging_init.h"
 #include "../font.h"
 
 uint32_t term_fg_color = 0xFFFFFFFF;

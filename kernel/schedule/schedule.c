@@ -7,7 +7,7 @@
 #include "../kernel.h"
 #include "../stdlib/stdlib.h"
 #include "../string.h"
-#include "../vmm/paging.h"
+#include "../vmm/paging_init.h"
 #include "../stdio/stdio.h"
 #include "../io/io.h"
 #include "../video/vbe/vbe.h"

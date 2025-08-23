@@ -6,15 +6,34 @@
 // go consume and further capitalism or something...
 #define PAGE_SIZE      4096
 #define PAGE_ENTRIES   1024
+#define PAGE_SHIFT     12
+#define PAGE_MASK      0xFFFFF000
 #define PAGE_PRESENT   0x1
 #define PAGE_RW        0x2
 #define PAGE_USER      0x4
+#define PAGE_PWT       0x8
+#define PAGE_PCD       0x10
+#define PAGE_ACCESSED  0x20
+#define PAGE_DIRTY     0x40
+
+#define KERNEL_PDE_BASE  768
+#define SELF_PDE_BASE   1023
+#define KMAP_PDE_BASE   1022
+
+#define SELF_PD_VA         0xFFFFF000
+#define SELF_PT_BASE_VA    0xFFC00000
+
+#define KMAP_BASE (KMAP_PDE_BASE << 22)
+#define KMAP_PTE_BASE 0
 
 typedef uint32_t page_table_entry_t;
 typedef page_table_entry_t page_table_t[PAGE_ENTRIES];
-
 typedef uint32_t page_directory_entry_t;
 typedef page_directory_entry_t page_directory_t[PAGE_ENTRIES];
+
+typedef uint32_t vmm_page_table_t;
+typedef uint32_t vmm_page_directory_t;
+
 extern page_directory_t page_directory;
 
 #define KERNEL_PHYS_BASE 0x00200000U   // linked at physical 1 MiB
