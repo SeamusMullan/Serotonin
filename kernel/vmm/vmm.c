@@ -591,6 +591,8 @@ address_space_t *create_address_space(void) {
     newp[SELF_PDE_BASE] = (pd_phys & PAGE_MASK) | PAGE_FLAGS;
     newp[KMAP_PDE_BASE] = (kmap_pt_phys & PAGE_MASK) | PAGE_FLAGS;
 
+    newp[0] = cur[0] | PAGE_FLAGS; // identity
+
     kunmap();
 
     as->phys_pdir = pd_phys;

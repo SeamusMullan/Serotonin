@@ -8,6 +8,7 @@
 #include "../stdlib/stdlib.h"
 #include "../string.h"
 #include "../vmm/paging_init.h"
+#include "../vmm/vmm.h"
 #include "../stdio/stdio.h"
 #include "../io/io.h"
 #include "../video/vbe/vbe.h"
@@ -242,19 +243,19 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
     uint8_t *stack;
     uint32_t *stk_top;
     if (priv == CPU_USER_MODE) {
-        stack = (uint8_t*)alloc_user_stack();
-        stk_top = (uint32_t*)(stack + USER_STACK_SIZE);
+        //stack = (uint8_t*)alloc_user_stack();
+        //stk_top = (uint32_t*)(stack + USER_STACK_SIZE);
         pcb->processor_context->ds          = USER_MODE_SEGMENT;
         pcb->processor_context->es          = USER_MODE_SEGMENT;
         pcb->processor_context->fs          = USER_MODE_SEGMENT;
         pcb->processor_context->gs          = USER_MODE_SEGMENT;
         pcb->processor_context->ss          = USER_MODE_SEGMENT; 
-        pcb->processor_context->esp_at_trap = (uint32_t)stk_top;
+        //pcb->processor_context->esp_at_trap = (uint32_t)stk_top;
         pcb->processor_context->stub_eflags = INIT_EFLAGS;
         pcb->processor_context->eflags      = INIT_EFLAGS;
         pcb->processor_context->cs          = USER_MODE_CODE_SEGMENT; 
         pcb->processor_context->eip         = (uint32_t)entry;
-        memset(stack, 0, USER_STACK_SIZE);
+        //memset(stack, 0, USER_STACK_SIZE);
     } else {
         stack = (uint8_t*)alloc_kernel_stack();
         stk_top = (uint32_t*)(stack + KERNEL_STACK_SIZE);
@@ -436,9 +437,75 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     pcb->state = PROCESS_STATE_READY;
     pcb->pid   = next_pid++;
 
+    pcb->address_space = create_address_space();
+    pcb->cr3 = (void*)pcb->address_space->phys_pdir;
+
+    uint8_t *buf = (uint8_t*)kernel_malloc(PAGE_SIZE);
+
+    uint32_t p_stack_base = (uint32_t)parent->esp_max;
+    uint32_t p_stack_top = (uint32_t)parent->esp_min;
+
+    for (uint32_t va = USER_SPACE_START; va < USER_SPACE_END; va += PAGE_SIZE) {
+        if (va >= p_stack_base && va < p_stack_top) continue;
+
+        uint32_t src_phys = get_mapping(parent->address_space, va);
+        uint32_t dst_phys = (uint32_t)alloc_frame();
+
+        unmap_page(pcb->address_space, va, 0);
+        map_page(pcb->address_space, va, dst_phys, USER_PAGE_FLAGS, 0);
+
+        void *src = kmap(src_phys);
+        memcpy(buf, src, PAGE_SIZE);
+        kunmap();
+
+        void *dst = kmap(dst_phys);
+        memcpy(dst, buf, PAGE_SIZE);
+        kunmap();
+    }
+
+    uint32_t c_stack_base = (uint32_t)alloc_user_stack();
+    uint32_t c_stack_top = (uint32_t)c_stack_base + USER_STACK_SIZE;
+
+    for (uint32_t va = c_stack_base; va < c_stack_top; va += PAGE_SIZE) {
+        uint32_t dst_phys = (uint32_t)alloc_frame();
+        unmap_page(pcb->address_space, va, 0);
+        map_page(pcb->address_space, va, dst_phys, USER_PAGE_FLAGS, 0);
+        void *dst = kmap(dst_phys);
+        memset(dst, 0, PAGE_SIZE);
+        kunmap();
+    }
+    
+    for (uint32_t offset = 0; offset < USER_STACK_SIZE; offset += PAGE_SIZE) {
+        uint32_t p_va = p_stack_base + offset;
+        uint32_t c_va = c_stack_base + offset;
+
+        uint32_t p_phys = get_mapping(parent->address_space, p_va);
+        if (!p_phys) continue;
+
+        uint32_t c_phys = get_mapping(pcb->address_space, c_va);
+        if (!c_phys) kernel_panic("task_fork: child stack page not mapped");
+
+        void *src = kmap(p_phys);
+        memcpy(buf, src, PAGE_SIZE);
+        kunmap();
+
+        void *dst = kmap(c_phys);
+        memcpy(dst, buf, PAGE_SIZE);
+        kunmap();
+    }
+
     uint32_t stk_offset = ((uint32_t)parent->esp_min - (uint32_t)parent->processor_context->esp_at_trap);
     uint32_t bp_offset = ((uint32_t)parent->esp_min - (uint32_t)parent->processor_context->ebp);
 
+    uint32_t c_esp = c_stack_top - stk_offset;
+    uint32_t c_ebp = c_stack_top - bp_offset;
+
+    pcb->esp = (uint32_t*)c_stack_top;
+    pcb->esp_max = (void*)c_stack_base;
+    pcb->processor_context->esp_at_trap = c_esp;
+    pcb->processor_context->ebp = c_ebp;
+
+    /*
     // create stack
     uint8_t *stack;
     uint32_t *stk_top;
@@ -450,20 +517,11 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     ebp = (uint32_t)stk_top - bp_offset;
     stk_top = (uint32_t*)((uint32_t)stk_top - stk_offset);
 
-    pcb->esp = (uint32_t*)stk_top;
-    pcb->esp_max = stack;
-    pcb->processor_context->esp_at_trap = (uint32_t)stk_top;
-    pcb->processor_context->ebp = ebp;
+    */
 
     printfs(PRINT_STATUS_DEBUG,"Forking task '%s', esp=%p, esp0=%p\n", pcb->name, pcb->esp,pcb->esp0);
 
-    memcpy(pcb->esp_max, parent->esp_max, USER_STACK_SIZE);
-
     enqueue_task_list(pcb);
-
-    // if init (only task with prio 255), set priority to something lower
-    // TODO: implement syscall for setting priority
-    pcb->priority = (parent->priority == 255) ? 128 : parent->priority;
 
     return pcb;
 }

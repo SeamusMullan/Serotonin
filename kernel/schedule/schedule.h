@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "../io/io.h"
 #include "../filesystem/user_fs/user_fs.h"
+#include "../vmm/vmm.h"
 
 #define USER_MODE_SEGMENT      0x23
 #define USER_MODE_CODE_SEGMENT 0x1B
@@ -52,6 +53,7 @@ typedef struct process_control_block {
     file_handle_t* fd_table[FD_MAX];
     struct process_control_block *rq_next;
     uint8_t priority;
+    address_space_t *address_space;
 } process_control_block_t;
 
 typedef struct wait_node {

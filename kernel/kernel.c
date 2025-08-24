@@ -396,8 +396,6 @@ void kernel_sleep(unsigned int milliseconds) {
  * @param str The panic message to display.
  */
 void kernel_panic(char* str) {
-    abort();
-
     unsigned int eip;
 
     asm volatile (
@@ -622,6 +620,11 @@ process_control_block_t *kernel_load_elf(const char *path, const char *pname) {
         return NULL;
     }
 
+    address_space_t *as = create_address_space();
+
+    uint32_t old_cr3 = read_cr3();
+    write_cr3(as->phys_pdir);
+
     Elf32_Phdr *phdr = (Elf32_Phdr *)(elf_data + ehdr->e_phoff);
     for (int i = 0; i < ehdr->e_phnum; ++i) {
         if (phdr[i].p_type != PT_LOAD) continue;
@@ -632,6 +635,14 @@ process_control_block_t *kernel_load_elf(const char *path, const char *pname) {
         uint32_t offset  = phdr[i].p_offset;
         uint32_t flags   = phdr[i].p_flags;
 
+        uint32_t seg_base = vaddr & PAGE_MASK;
+        uint32_t seg_end  = (vaddr + memsz + PAGE_SIZE-1) & PAGE_MASK;
+
+        for (uint32_t va = seg_base; va < seg_end; va += PAGE_SIZE) {
+            uint32_t frame = (uint32_t)alloc_frame();
+            map_page(as, va, frame, USER_PAGE_FLAGS, 0);
+        }
+
         // Copy data and zero BSS
         memcpy((void *)vaddr, elf_data + offset, filesz);
         if (memsz > filesz) {
@@ -641,7 +652,25 @@ process_control_block_t *kernel_load_elf(const char *path, const char *pname) {
 
     kernel_free(elf_data);
 
+    void *stack_base = alloc_user_stack();
+    uint32_t stack_top = (uint32_t)stack_base + USER_STACK_SIZE - 4; // GHETTO SOLUTION. DO NOT QUESTION IT. DO NOT ASK WHY ITS 4.
+    for (uint32_t va_stk = (uint32_t)stack_base; va_stk < stack_top; va_stk += PAGE_SIZE) {
+        uint32_t frame_stk = (uint32_t)alloc_frame();
+        if (!frame_stk) kernel_panic("kernel_load_elf: out of memory mapping user stack");
+        map_page(as, va_stk, frame_stk, USER_PAGE_FLAGS, 0);
+    }
+
+    memset(stack_base, 0, USER_STACK_SIZE);
+
     process_control_block_t *pcb = task_create((void (*)(void))ehdr->e_entry, pname, CPU_USER_MODE, 255);
+
+    write_cr3(old_cr3);
+
+    pcb->cr3 = (void*)as->phys_pdir;
+    pcb->processor_context->esp_at_trap = stack_top;
+    pcb->address_space = as;
+    pcb->esp_min = stack_base;
+    pcb->esp_max = (void*)stack_top;
 
     enqueue(pcb);
 
@@ -719,33 +748,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     asm volatile ("sidt %0" : "=m"(idtp_read));
     enable_interrupts();
     printfs(PRINT_STATUS_INFO,"Interrupts enabled! IDT: base:0x%08x,limit:0x%08x\n", idtp_read.base,idtp_read.limit);
-
-    printf("CR3 = %08x\n", read_cr3());
-    uint32_t *pd = cur_pd_va();
-    printf("PD[SELF] = %08x (should equal CR3 | flags)\n", pd[SELF_PDE_BASE]);
-
-    uint32_t phystroll = (uint32_t)alloc_frame();
-    memset(kmap(phystroll), 0xAB, PAGE_SIZE);
-    kunmap();
-
-    void *check = kmap(phystroll);
-    for (int i=0; i<16; i++) printf("%02x ", ((uint8_t*)check)[i]);
-    kunmap();
-    free_frame((void*)phystroll);
-
-    address_space_t *as = create_address_space();
-
-    uint32_t va = 0x00400000; // user base
-    uint32_t phys = alloc_map_page(as, va, USER_PAGE_FLAGS);
-    printf("map_page: va=%08x -> phys=%08x\n", va, phys);
-
-    uint32_t lookup = get_mapping(as, va);
-    printf("get_mapping: %08x\n", lookup);
-
-    unmap_page(as, va, 1);
-    printf("after unmap: %08x\n", get_mapping(as, va));
-
-    kernel_sleep(10000);
 
     uint32_t mem_lower;
     uint32_t mem_upper;
