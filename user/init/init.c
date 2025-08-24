@@ -32,6 +32,7 @@ void _start() {
     char lol2[] = "Parent!\n";
     char lol3[] = "Forking now!\n";
     uint32_t pid = system_call(4,0,0,0);
+    system_call(1,0,(uint32_t)lol3,0);
     if (pid == 0) {
         system_call(1,0,(uint32_t)lol1,0);
     } else {
