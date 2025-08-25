@@ -31,26 +31,8 @@ void handle_illegal_call(uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t a
  *
  * @param arg2 The exit status.
  */
-static void handle_exit(uint32_t arg2) {
+static void sys_exit(uint32_t arg2) {
     task_exit(arg2);
-}
-
-/**
- * @brief Write the framebuffer to a specific location.
- *
- * @param arg3 The framebuffer address.
- * @param arg4 The destination address.
- */
-static void frmbuf_write(uint32_t arg3, uint32_t arg4) {
-    uint32_t zbuf = arg3;
-    uint32_t* frmbufptr = (uint32_t*)arg4;
-    uint32_t* krnl_frm_buf = (uint32_t *)kernel_malloc(fb_size_bytes);
-    memcpy(krnl_frm_buf, frmbufptr, fb_size_bytes);
-    memcpy(vbe_info.backbuffer, krnl_frm_buf, fb_size_bytes);
-    vbe_flip_all();
-    kernel_free(krnl_frm_buf);
-
-    return;
 }
 
 /**
@@ -61,7 +43,7 @@ static void frmbuf_write(uint32_t arg3, uint32_t arg4) {
  * @param arg4 The size of the framebuffer.
  * @param ctx The processor context.
  */
-static void handle_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
+static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
     uint32_t fd = arg2;
     char* write_ptr = (char*)arg3;
     uint32_t buf_size = arg4;
@@ -74,10 +56,6 @@ static void handle_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_
         case WRITE_STDERR:
             printfs(PRINT_STATUS_ERROR, "%s", write_ptr);
             ctx->eax = buf_size;
-            break;
-        case WRITE_FRMBUF:
-            //frmbuf_write(write_ptr, buf_size);
-            //ctx->eax = buf_size;
             break;
         default:
             if (fd >= FD_MAX || current_task->fd_table[fd] == NULL) {
@@ -101,7 +79,7 @@ static void handle_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_
  * @param arg4 The size of the buffer.
  * @param ctx The processor context.
  */
-static void handle_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
+static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
     uint32_t fd = arg2;
     char* read_ptr = (char*)arg3;
     uint32_t buf_size = arg4;
@@ -141,7 +119,7 @@ static void handle_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_c
  *
  * @param ctx The processor context.
  */
-static void handle_fork(processor_context_t *ctx) {
+static void sys_fork(processor_context_t *ctx) {
     memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
     process_control_block_t *pcb = task_fork(current_task);
     enqueue(pcb);
@@ -154,7 +132,7 @@ static void handle_fork(processor_context_t *ctx) {
  *
  * @param ctx The processor context.
  */
-static void handle_get_pid(processor_context_t *ctx) {
+static void sys_get_pid(processor_context_t *ctx) {
     ctx->eax = current_task->pid;
 }
 
@@ -166,7 +144,7 @@ static void handle_get_pid(processor_context_t *ctx) {
  * @param arg4 The mode.
  * @param ctx The processor context.
  */
-static void handle_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
+static void sys_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
     char *path = (char*)arg2;
     int flags = (int)arg3;
     int mode = (int)arg4;
@@ -200,7 +178,7 @@ static void handle_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_c
  *
  * @param arg2 The file descriptor.
  */
-static void handle_close(uint32_t arg2) {
+static void sys_close(uint32_t arg2) {
     int fd = arg2;
 
     if (fd >= FD_MAX) {
@@ -234,25 +212,25 @@ void system_call(processor_context_t *ctx) {
 
     switch (operation) {
         case SYSTEM_CALL_EXIT:
-            handle_exit(arg2);
+            sys_exit(arg2);
             break;
         case SYSTEM_CALL_WRITE:
-            handle_write(arg2, arg3, arg4, ctx);
+            sys_write(arg2, arg3, arg4, ctx);
             return;
         case SYSTEM_CALL_READ:
-            handle_read(arg2, arg3, arg4, ctx);
+            sys_read(arg2, arg3, arg4, ctx);
             return;
         case SYSTEM_CALL_FORK:
-            handle_fork(ctx);
+            sys_fork(ctx);
             break;
         case SYSTEM_CALL_GET_PID:
-            handle_get_pid(ctx);
+            sys_get_pid(ctx);
             break;
         case SYSTEM_CALL_OPEN:
-            handle_open(arg2, arg3, arg4, ctx);
+            sys_open(arg2, arg3, arg4, ctx);
             break;
         case SYSTEM_CALL_CLOSE: 
-            handle_close(arg2);
+            sys_close(arg2);
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);
