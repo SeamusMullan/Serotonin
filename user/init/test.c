@@ -27,18 +27,7 @@ uint32_t system_call(uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t arg4)
  * @brief The entry point of the user program.
  */
 void _start() {
-    char buf[64];
-    char lol1[] = "Child!\n";
-    char lol2[] = "Parent!\n";
-    char lol3[] = "Forking now!\n";
-    char lol4[] = "/bin/test";
-    uint32_t pid = system_call(4,0,0,0);
-    if (pid == 0) {
-        system_call(1,0,(uint32_t)lol1,0);
-        system_call(3,(uint32_t)lol4,0,0);
-    } else {
-        system_call(1,0,(uint32_t)lol2,0);
-    }
-
+    char lol1[] = "execve!\n";
+    system_call(1,0,(uint32_t)lol1,0);
     system_call(0,15,0,0);
 }

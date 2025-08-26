@@ -2,6 +2,7 @@
 #define _KERNEL
 
 #include <stdint.h>
+#include "schedule/schedule.h"
 
 #define BIT(n) (1u << (n))
 
@@ -164,5 +165,6 @@ void kernel_free(void *ptr);
 void *kernel_malloc_align(uint32_t align, uint32_t size);
 void kernel_free_align(void *ptr);
 void kernel_sleep(unsigned int milliseconds);
+int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *pname);
 
 #endif

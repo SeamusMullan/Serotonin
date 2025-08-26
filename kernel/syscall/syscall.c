@@ -194,6 +194,13 @@ static void sys_close(uint32_t arg2) {
     kernel_free(handle);
 }
 
+static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+    char *path = (char*)arg2;
+    // arg3, arg4 for argv, envp (later issue)
+    int execve_stat = kernel_load_elf(current_task, path, path);
+    task_yield(0);
+}
+
 /**
  * @brief Handle system calls.
  *
@@ -219,6 +226,9 @@ void system_call(processor_context_t *ctx) {
             return;
         case SYSTEM_CALL_READ:
             sys_read(arg2, arg3, arg4, ctx);
+            return;
+        case SYSTEM_CALL_EXECVE:
+            sys_execve(arg2, arg3, arg4);
             return;
         case SYSTEM_CALL_FORK:
             sys_fork(ctx);

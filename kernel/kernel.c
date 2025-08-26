@@ -585,28 +585,29 @@ void kernel_idle_task(void) {
 /**
  * @brief Load an ELF executable into memory.
  *
- * This function loads an ELF executable from the specified path and creates a process control block (PCB) for it.
+ * This function loads an ELF executable from the specified path.
  *
+ * @param pcb The pointer to the process control block.
  * @param path The path to the ELF executable.
  * @param pname The name of the process.
- * @return process_control_block_t* A pointer to the created PCB, or NULL on failure.
+ * @return int 0 on failure, 1 on success
  */
-process_control_block_t *kernel_load_elf(const char *path, const char *pname) {
+int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *pname) {
     vfs_node_t *node = vfs_open(path);
     if (!node) {
-        return NULL;
+        return 0;
     }
 
     uint32_t file_size = node->size;
     uint8_t *elf_data = kernel_malloc(file_size);
     if (!elf_data) {
         vfs_close(node);
-        return NULL;
+        return 0;
     }
     if (vfs_read(node, 0, file_size, (char *)elf_data) < 0) {
         kernel_free(elf_data);
         vfs_close(node);
-        return NULL;
+        return 0;
     }
     vfs_close(node);
 
@@ -617,7 +618,7 @@ process_control_block_t *kernel_load_elf(const char *path, const char *pname) {
         ehdr->e_type             != ET_EXEC ||
         ehdr->e_machine          != EM_386) {
         kernel_free(elf_data);
-        return NULL;
+        return 0;
     }
 
     address_space_t *as = create_address_space();
@@ -662,8 +663,6 @@ process_control_block_t *kernel_load_elf(const char *path, const char *pname) {
 
     memset(stack_base, 0, USER_STACK_SIZE);
 
-    process_control_block_t *pcb = task_create((void (*)(void))ehdr->e_entry, pname, CPU_USER_MODE, 255);
-
     write_cr3(old_cr3);
 
     pcb->cr3 = (void*)as->phys_pdir;
@@ -671,10 +670,11 @@ process_control_block_t *kernel_load_elf(const char *path, const char *pname) {
     pcb->address_space = as;
     pcb->esp_min = stack_base;
     pcb->esp_max = (void*)stack_top;
+    strncpy(pcb->name, pname, sizeof(pcb->name));
+    pcb->entry = (void (*)(void))ehdr->e_entry;
+    pcb->processor_context->eip = (uint32_t)ehdr->e_entry;
 
-    enqueue(pcb);
-
-    return pcb;
+    return 1;
 }
 
 /**
@@ -824,10 +824,13 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     printfs(PRINT_STATUS_INFO,"Attempting to load /bin/init\n");
 
-    process_control_block_t *init = kernel_load_elf("/bin/init","init");
-    if (!init) {
+    process_control_block_t *init = task_create(NULL, "init", CPU_USER_MODE, 255);
+    int init_status = kernel_load_elf(init,"/bin/init","init");
+    if (!init_status) {
         kernel_panic("unable to load init process!");
     }
+
+    enqueue(init);
 
     process_control_block_t *t = task_list;
     printf("Task list:\n");
