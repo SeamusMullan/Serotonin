@@ -22,6 +22,7 @@
 
 buddy_state_t g_buddy = {0};
 uint32_t kmap_pt_phys = 0;
+uint32_t kernel_phys_end_troll = 0;
 
 static inline vmm_page_table_t *kmap_pt_va(void) { return pt_va(KMAP_PDE_BASE); }
 
@@ -601,29 +602,31 @@ address_space_t *create_address_space(void) {
 
 void destroy_address_space(address_space_t *as) {
     if (!as) return;
+    // THIS IS FUCKING HORRENDOUS
+    // BUT IT WORKS
+    for (uint32_t pdi = 1; pdi < KERNEL_PDE_BASE; ++pdi) {
+        vmm_page_directory_t *pd = (vmm_page_directory_t*)kmap(as->phys_pdir);
+        uint32_t pde = pd[pdi];
+        kunmap();
+        if (!(pde & PAGE_PRESENT)) continue;
+        uint32_t pt_phys = pde & PAGE_MASK;
 
-    // free all user pts and their frames (pdes < KERNEL_PDE_BASE)
-    vmm_page_directory_t *pd = (vmm_page_directory_t*)kmap(as->phys_pdir);
-
-    for (uint32_t pdi = 0; pdi < KERNEL_PDE_BASE; ++pdi) {
-        if (!(pd[pdi] & PAGE_PRESENT)) continue;
-        uint32_t pt_phys = pd[pdi] & PAGE_MASK;
         vmm_page_table_t *pt = (vmm_page_table_t*)kmap(pt_phys);
-
         for (uint32_t i = 0; i < PAGE_ENTRIES; ++i) {
-            if (pt[i] & PAGE_PRESENT) {
-                uint32_t p = pt[i] & PAGE_MASK;
-                free_frame((void*)p);
-                pt[i] = 0;
-            }
+            uint32_t pti = pt[i];
+            if (!(pti & PAGE_PRESENT)) continue;
+            uint32_t p = pt[i] & PAGE_MASK;
+            free_frame((void*)p);
+            pt[i] = 0;
         }
 
         kunmap();
         free_frame((void*)pt_phys);
+        pd = (vmm_page_directory_t*)kmap(as->phys_pdir);
         pd[pdi] = 0;
+        kunmap();
     }
 
-    kunmap();
     free_frame((void*)as->phys_pdir);
     kernel_free_align(as);
 }

@@ -27,7 +27,7 @@
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 2
-#define KERNEL_VERSION_LOW 0
+#define KERNEL_VERSION_LOW 1
 
 #define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
 #define HEAP_SIZE   (KERNEL_HEAP_SIZE)
@@ -749,52 +749,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     enable_interrupts();
     printfs(PRINT_STATUS_INFO,"Interrupts enabled! IDT: base:0x%08x,limit:0x%08x\n", idtp_read.base,idtp_read.limit);
 
-    uint32_t mem_lower;
-    uint32_t mem_upper;
-    uint32_t mem_total;
-
-    if (CHECK_FLAG (mbi->flags, 6) && CHECK_FLAG (mbi->flags, 0))
-    {
-        mem_lower = (unsigned) mbi->mem_lower;
-        mem_upper = (unsigned) mbi->mem_upper;
-        mem_total = mem_lower+mem_upper;
-        printfs(PRINT_STATUS_INFO,"Detected lower memory: %uKB\n", mem_lower);
-        printfs(PRINT_STATUS_INFO,"Detected extended memory: %uKB\n", mem_upper);
-        printfs(PRINT_STATUS_INFO,"Total memory detected: %uKB\n", mem_total);
-
-        /*
-        printfs(PRINT_STATUS_INFO, "Memory map: \n");
-        for(int i = 0; i < mbi->mmap_length; i += sizeof(multiboot_memory_map_t)) 
-        {
-            multiboot_memory_map_t* mmmt = (multiboot_memory_map_t*) (mbi->mmap_addr + i);
-            printfs(PRINT_STATUS_INFO,"    addr:0x%08x, length:0x%08x, size:0x%08x, type:0x%08x", mmmt->addr, mmmt->len, mmmt->size, mmmt->type);
-            switch (mmmt->type) {
-                case MULTIBOOT_MEMORY_AVAILABLE:
-                    printf(" ... available\n");
-                    break;
-                case MULTIBOOT_MEMORY_RESERVED:
-                    printf(" ... reserved\n");
-                    break;
-                case MULTIBOOT_MEMORY_ACPI_RECLAIMABLE:
-                    printf(" ... acpi reclaimable\n");
-                    break;
-                case MULTIBOOT_MEMORY_NVS:
-                    printf(" ... non volatile\n");
-                    break;
-                case MULTIBOOT_MEMORY_BADRAM:
-                    printf(" ... BAD!\n");
-                    break;
-                default:
-                    printf(" ... wtf?\n");
-                    break;
-            }
-        
-        }
-        */
-    }
-    else {
-        kernel_panic("multiboot: invalid memory map provided by bootloader");
-    }
+    printfs(PRINT_STATUS_INFO,"Virtual Memory Manager: %d pages free, %d total pages\n", buddy_free_pages(), buddy_total_pages());
 
     if (kernel_hypervisor_present()) {
         printfs(PRINT_STATUS_INFO,"A hypervisor is present.\n");
@@ -824,8 +779,10 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     printfs(PRINT_STATUS_INFO,"Attempting to load /bin/init\n");
 
-    process_control_block_t *init = task_create(NULL, "init", CPU_USER_MODE, 255);
-    int init_status = kernel_load_elf(init,"/bin/init","init");
+    char* init_loc = "/bin/init";
+
+    process_control_block_t *init = task_create(NULL, init_loc, CPU_USER_MODE, 255);
+    int init_status = kernel_load_elf(init,init_loc,init_loc);
     if (!init_status) {
         kernel_panic("unable to load init process!");
     }
