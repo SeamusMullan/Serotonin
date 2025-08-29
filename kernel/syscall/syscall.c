@@ -197,8 +197,15 @@ static void sys_close(uint32_t arg2) {
 static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
     char *path = (char*)arg2;
     // arg3, arg4 for argv, envp (later issue)
+    address_space_t *oldas = current_task->address_space;
     int execve_stat = kernel_load_elf(current_task, path, path);
-    task_yield(0);
+    if (execve_stat) {
+        destroy_address_space(oldas);
+        printfs(PRINT_STATUS_DEBUG, "execve: executing %s, pid=%d\n", path, current_task->pid);
+        task_yield(0);
+    } else {
+        printfs(PRINT_STATUS_WARNING, "execve: failed to load elf %s, pid=%d\n", path, current_task->pid);
+    }
 }
 
 /**
