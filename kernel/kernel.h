@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "schedule/schedule.h"
+#include "string.h"
 
 #define BIT(n) (1u << (n))
 
@@ -159,12 +160,21 @@ typedef struct {
     uint8_t lm;             /* EDX[29] */
 } cpu_features_t;
 
+// probs better defined elsewhere but IDGAF
+static inline uint32_t count_total_string_bytes(const char* const* vec, int n) {
+    uint32_t total = 0;
+    for (int i = 0; i < n; ++i) total += (uint32_t)strlen(vec[i]) + 1;
+    return total;
+}
+
+static inline uint32_t align_down(uint32_t x, uint32_t a) { return x & ~(a-1); }
+
 void kernel_panic(char* str);
 void *kernel_malloc(uint32_t size);
 void kernel_free(void *ptr);
 void *kernel_malloc_align(uint32_t align, uint32_t size);
 void kernel_free_align(void *ptr);
 void kernel_sleep(unsigned int milliseconds);
-int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *pname);
+int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *pname, const char *const *argv, int argc, const char *const *envp, int envc);
 
 #endif

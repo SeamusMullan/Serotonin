@@ -198,7 +198,9 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
     char *path = (char*)arg2;
     // arg3, arg4 for argv, envp (later issue)
     address_space_t *oldas = current_task->address_space;
-    int execve_stat = kernel_load_elf(current_task, path, path);
+    const char *argv[2]; int argc = 2;
+    const char *envp[2]; int envc = 2;
+    int execve_stat = kernel_load_elf(current_task, path, path, argv, argc, envp, envc);
     if (execve_stat) {
         destroy_address_space(oldas);
         printfs(PRINT_STATUS_DEBUG, "execve: executing %s, pid=%d\n", path, current_task->pid);

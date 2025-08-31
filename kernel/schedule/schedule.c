@@ -174,7 +174,7 @@ void task_yield(int irq) {
     lock_scheduler();
 
     if (current_task->state == PROCESS_STATE_RUNNING) {
-        if ((unsigned int)current_task->esp < (unsigned int)current_task->esp_max) {
+        if ((unsigned int)current_task->esp < (unsigned int)current_task->esp_min && current_task->priv == CPU_USER_MODE) {
             printfs(PRINT_STATUS_ERROR, "Stack overflow detected in task '%s' (attempted esp=%p, esp_max=%p)\n", current_task->name, current_task->esp,current_task->esp_max);
             task_exit(EXIT_SIGSEGV);
         }

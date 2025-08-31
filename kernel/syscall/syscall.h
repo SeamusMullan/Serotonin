@@ -25,7 +25,12 @@ enum {
     SYSTEM_CALL_CLOSE    = 8,
     SYSTEM_CALL_WAIT     = 9,
     SYSTEM_CALL_TOD      = 10,
-    SYSTEM_CALL_SBRK     = 11
+    SYSTEM_CALL_SBRK     = 11,
+    SYSTEM_CALL_ENVIRON  = 12,
+    SYSTEM_CALL_LINK     = 13,
+    SYSTEM_CALL_LSEEK    = 14,
+    SYSTEM_CALL_STAT     = 15,
+    SYSTEM_CALL_FSTAT    = 16
 };
 
 /**

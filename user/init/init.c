@@ -26,7 +26,19 @@ uint32_t system_call(uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t arg4)
 /**
  * @brief The entry point of the user program.
  */
-void _start() {
+void main(int argc, char **argv, char **envp) {
+    char newline[] = "\n";
+    system_call(1,0,(uint32_t)argc,0);
+    for (int i = 0; i < argc; i++) {
+        system_call(1,0,(uint32_t)argv[i],0);
+        system_call(1,0,(uint32_t)newline,0);
+    }
+
+    for (char **e=envp; *e; e++) {
+        system_call(1,0,(uint32_t)*e,0);
+        system_call(1,0,(uint32_t)newline,0);
+    }
+
     char buf[64];
     char lol1[] = "Child!\n";
     char lol2[] = "Parent!\n";
@@ -40,5 +52,5 @@ void _start() {
         system_call(1,0,(uint32_t)lol2,0);
     }
 
-    system_call(0,15,0,0);
+    return;
 }

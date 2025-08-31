@@ -22,7 +22,6 @@
 
 buddy_state_t g_buddy = {0};
 uint32_t kmap_pt_phys = 0;
-uint32_t kernel_phys_end_troll = 0;
 
 static inline vmm_page_table_t *kmap_pt_va(void) { return pt_va(KMAP_PDE_BASE); }
 

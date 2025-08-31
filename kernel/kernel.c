@@ -592,7 +592,7 @@ void kernel_idle_task(void) {
  * @param pname The name of the process.
  * @return int 0 on failure, 1 on success
  */
-int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *pname) {
+int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *pname, const char *const *argv, int argc, const char *const *envp, int envc) {
     vfs_node_t *node = vfs_open(path);
     if (!node) {
         return 0;
@@ -625,6 +625,7 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
 
     uint32_t old_cr3 = read_cr3();
     write_cr3(as->phys_pdir);
+    lock_scheduler();
 
     Elf32_Phdr *phdr = (Elf32_Phdr *)(elf_data + ehdr->e_phoff);
     for (int i = 0; i < ehdr->e_phnum; ++i) {
@@ -663,10 +664,38 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
 
     memset(stack_base, 0, USER_STACK_SIZE);
 
-    write_cr3(old_cr3);
+    uint32_t strings_sz = count_total_string_bytes(envp, envc) + count_total_string_bytes(argv, argc);
+    uint32_t ptrs_sz =  sizeof(uint32_t) * (1 /*argc*/ + (size_t)argc + 1 /*NULL*/ + (size_t)envc + 1 /*NULL*/);
+    uint32_t sp = align_down(stack_top - strings_sz - ptrs_sz, 16);
+    uint32_t strings_start = sp + ptrs_sz;
+    uint32_t cur_str = strings_start;
 
+    ((uint32_t*)sp)[0] = (uint32_t)argc;
+
+    uint32_t *argv_user_array = (uint32_t*)sp + 1;
+    for (int i = 0; i < argc; i++) {
+        size_t len = strlen(argv[i]) + 1;
+        memcpy((void*)cur_str, argv[i], len);
+        argv_user_array[i] = cur_str;
+        cur_str += (uint32_t)len;
+    }
+    argv_user_array[argc] = 0;
+
+    uint32_t *envp_user_array = argv_user_array + argc + 1; 
+    for (int i = 0; i < envc; i++) {
+        size_t len = strlen(envp[i]) + 1;
+        memcpy((void*)cur_str, envp[i], len);
+        envp_user_array[i] = cur_str;
+        cur_str += (uint32_t)len;
+    }
+    envp_user_array[envc] = 0;
+
+    write_cr3(old_cr3);
+    unlock_scheduler();
+
+    pcb->esp = (void*)sp;
+    pcb->processor_context->esp_at_trap = sp;
     pcb->cr3 = (void*)as->phys_pdir;
-    pcb->processor_context->esp_at_trap = stack_top;
     pcb->address_space = as;
     pcb->esp_min = stack_base;
     pcb->esp_max = (void*)stack_top;
@@ -782,7 +811,9 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     char* init_loc = "/bin/init";
 
     process_control_block_t *init = task_create(NULL, init_loc, CPU_USER_MODE, 255);
-    int init_status = kernel_load_elf(init,init_loc,init_loc);
+    const char *argv[2] = {"argumentone","argumenttwo"}; int argc = 2;
+    const char *envp[2] = {"pathvarone","pathvartwo"}; int envc = 2;
+    int init_status = kernel_load_elf(init, init_loc, init_loc, argv, argc, envp, envc);
     if (!init_status) {
         kernel_panic("unable to load init process!");
     }
