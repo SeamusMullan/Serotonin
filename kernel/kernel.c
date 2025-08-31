@@ -811,8 +811,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     char* init_loc = "/bin/init";
 
     process_control_block_t *init = task_create(NULL, init_loc, CPU_USER_MODE, 255);
-    const char *argv[2] = {"argumentone","argumenttwo"}; int argc = 2;
-    const char *envp[2] = {"pathvarone","pathvartwo"}; int envc = 2;
+    const char *argv[1] = {"/bin/init"}; int argc = 1;
+    const char *envp[1] = {"PATH=/"}; int envc = 1;
     int init_status = kernel_load_elf(init, init_loc, init_loc, argv, argc, envp, envc);
     if (!init_status) {
         kernel_panic("unable to load init process!");

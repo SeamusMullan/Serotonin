@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stddef.h>
 
 /**
  * @brief Makes a system call.
@@ -28,7 +29,6 @@ uint32_t system_call(uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t arg4)
  */
 void main(int argc, char **argv, char **envp) {
     char newline[] = "\n";
-    system_call(1,0,(uint32_t)argc,0);
     for (int i = 0; i < argc; i++) {
         system_call(1,0,(uint32_t)argv[i],0);
         system_call(1,0,(uint32_t)newline,0);
@@ -47,7 +47,9 @@ void main(int argc, char **argv, char **envp) {
     uint32_t pid = system_call(4,0,0,0);
     if (pid == 0) {
         system_call(1,0,(uint32_t)lol1,0);
-        system_call(3,(uint32_t)lol4,0,0);
+        char *argv[] = {"/bin/test", "hello", "world", NULL};
+        char *envp[] = {"serotoninenv", NULL};
+        system_call(3,(uint32_t)lol4,(uint32_t)argv,(uint32_t)envp);
     } else {
         system_call(1,0,(uint32_t)lol2,0);
     }

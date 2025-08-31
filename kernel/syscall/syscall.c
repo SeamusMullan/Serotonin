@@ -194,16 +194,52 @@ static void sys_close(uint32_t arg2) {
     kernel_free(handle);
 }
 
-static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
     char *path = (char*)arg2;
-    // arg3, arg4 for argv, envp (later issue)
+    const char **argv_temp = (const char**)arg3;
+    const char **envp_temp = (const char**)arg4;
+
+    int argc = 0;
+    while (argv_temp && argv_temp[argc]) argc++;
+    int envc = 0;
+    while (envp_temp && envp_temp[envc]) envc++;
+
+    const char **argv = (const char**)kernel_malloc(sizeof(uint32_t)*argc);
+    const char **envp = (const char**)kernel_malloc(sizeof(uint32_t)*envc);
+
+    for (int i = 0; i < argc; i++) {
+        size_t len = strlen(argv_temp[i]) + 1;
+        char *kstr = (char*)kernel_malloc(len);
+        memcpy(kstr, argv_temp[i], len);
+        argv[i] = kstr;
+    }
+    argv[argc] = NULL;
+
+    for (int i = 0; i < envc; i++) {
+        size_t len = strlen(envp_temp[i]) + 1;
+        char *kstr = (char*)kernel_malloc(len);
+        memcpy(kstr, envp_temp[i], len);
+        envp[i] = kstr;
+    }
+    envp[envc] = NULL;
+
     address_space_t *oldas = current_task->address_space;
-    const char *argv[2]; int argc = 2;
-    const char *envp[2]; int envc = 2;
+    memset(ctx, 0, sizeof(*ctx));
+    ctx->ds          = USER_MODE_SEGMENT;
+    ctx->es          = USER_MODE_SEGMENT;
+    ctx->fs          = USER_MODE_SEGMENT;
+    ctx->gs          = USER_MODE_SEGMENT;
+    ctx->ss          = USER_MODE_SEGMENT; 
+    ctx->stub_eflags = INIT_EFLAGS;
+    ctx->eflags      = INIT_EFLAGS;
+    ctx->cs          = USER_MODE_CODE_SEGMENT; 
+
     int execve_stat = kernel_load_elf(current_task, path, path, argv, argc, envp, envc);
     if (execve_stat) {
         destroy_address_space(oldas);
         printfs(PRINT_STATUS_DEBUG, "execve: executing %s, pid=%d\n", path, current_task->pid);
+        kernel_free(argv);
+        kernel_free(envp);
         task_yield(0);
     } else {
         printfs(PRINT_STATUS_WARNING, "execve: failed to load elf %s, pid=%d\n", path, current_task->pid);
@@ -237,7 +273,7 @@ void system_call(processor_context_t *ctx) {
             sys_read(arg2, arg3, arg4, ctx);
             return;
         case SYSTEM_CALL_EXECVE:
-            sys_execve(arg2, arg3, arg4);
+            sys_execve(arg2, arg3, arg4, ctx);
             return;
         case SYSTEM_CALL_FORK:
             sys_fork(ctx);
