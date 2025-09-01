@@ -48,9 +48,18 @@ void handle_scancode(uint8_t scancode) {
     } 
     else if (scancode == 0x1C) 
     {
+     
+        uint32_t old_cr3 = read_cr3();
+        lock_scheduler();
+        write_cr3(stdin_lock->owner->address_space->phys_pdir);
+
         stdio_buffer[stdin_idx] = '\0';
         memcpy(stdin_ptr,stdio_buffer,stdin_idx+1);
         stdin_idx = 0;
+
+        write_cr3(old_cr3);
+        unlock_scheduler();
+
         task_lock_release(stdin_lock);
     }
     else if (scancode == 0x0E) 
