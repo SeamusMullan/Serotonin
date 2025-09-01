@@ -693,15 +693,20 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
     write_cr3(old_cr3);
     unlock_scheduler();
 
-    pcb->esp = (void*)sp;
-    pcb->processor_context->esp_at_trap = sp;
-    pcb->cr3 = (void*)as->phys_pdir;
-    pcb->address_space = as;
-    pcb->esp_min = stack_base;
-    pcb->esp_max = (void*)stack_top;
     strncpy(pcb->name, pname, sizeof(pcb->name));
-    pcb->entry = (void (*)(void))ehdr->e_entry;
-    pcb->processor_context->eip = (uint32_t)ehdr->e_entry;
+
+    pcb->esp                            = (void*)sp;
+    pcb->processor_context->esp_at_trap = sp;
+    pcb->cr3                            = (void*)as->phys_pdir;
+    pcb->address_space                  = as;
+    pcb->esp_min                        = stack_base;
+    pcb->esp_max                        = (void*)stack_top;
+    pcb->entry                          = (void (*)(void))ehdr->e_entry;
+    pcb->processor_context->eip         = (uint32_t)ehdr->e_entry;
+    pcb->argv                           = argv_user_array;
+    pcb->envp                           = envp_user_array;
+    pcb->brk_start                      = USER_HEAP_START;
+    pcb->brk_end                        = USER_HEAP_START;
 
     return 1;
 }
@@ -820,21 +825,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     enqueue(init);
 
-    process_control_block_t *t = task_list;
-    printf("Task list:\n");
-    do {
-        printf("  Task %s (pid=%u), esp=%p, cr3=%p, state=%d, ring=%d, priority=%d\n",
-               t->name, t->pid, t->esp, t->cr3, t->state, t->priv, t->priority);
-        t = t->next;
-        if (t == NULL) {
-            break;
-        }
-    } while (t != task_list);
-
     multitasking_make_ready();
-
     task_yield(0);
-
     abort();
 }
 

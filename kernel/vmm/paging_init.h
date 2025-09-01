@@ -51,8 +51,8 @@ extern page_directory_t page_directory;
 
 #define USER_SPACE_PHYS  0x20000000U
 
-#define USER_HEAP_START  0x01400000U
-#define USER_HEAP_MAX    0x0F000000U
+#define USER_HEAP_START  0x0F000000U
+#define USER_HEAP_MAX    0x01400000U
 
 #define USER_STACK_TOP   0x10400000U
 #define USER_STACK_SIZE  0x00100000U

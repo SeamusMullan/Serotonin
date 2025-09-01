@@ -54,6 +54,10 @@ typedef struct process_control_block {
     struct process_control_block *rq_next;
     uint8_t priority;
     address_space_t *address_space;
+    uint32_t *argv;
+    uint32_t *envp;
+    uint32_t brk_start;
+    uint32_t brk_end;
 } process_control_block_t;
 
 typedef struct wait_node {

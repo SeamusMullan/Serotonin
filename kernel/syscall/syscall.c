@@ -195,7 +195,7 @@ static void sys_close(uint32_t arg2) {
 }
 
 static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
-    char *path = (char*)arg2;
+    const char *path = (const char*)arg2;
     const char **argv_temp = (const char**)arg3;
     const char **envp_temp = (const char**)arg4;
 
@@ -246,6 +246,35 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
     }
 }
 
+static void sys_sbrk(uint32_t arg2, processor_context_t *ctx) {
+    uint32_t increment = arg2;
+    uint32_t brk_start = current_task->brk_start;
+    uint32_t old_brk = current_task->brk_end;
+    uint32_t new_brk = old_brk + arg2;
+
+    if (new_brk < brk_start || new_brk >= USER_HEAP_MAX) {
+        ctx->eax = -1;
+    }
+
+    if (increment > 0) {
+        for (uint32_t va = old_brk; va < new_brk; va += PAGE_SIZE) {
+            uint32_t frame = (uint32_t)alloc_frame();
+            map_page(current_task->address_space, va, frame, USER_PAGE_FLAGS, 0);
+        }
+    } else if (increment < 0) {
+        for (uint32_t va = new_brk; va < old_brk; va += PAGE_SIZE) {
+            uint32_t phys = get_mapping(current_task->address_space, va);
+            if (phys) {
+                unmap_page(current_task->address_space, va, 1);
+                free_frame((void*)phys);
+            }
+        }
+    }
+
+    current_task->brk_end = new_brk;
+    ctx->eax = old_brk;
+}
+
 /**
  * @brief Handle system calls.
  *
@@ -286,6 +315,9 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_CLOSE: 
             sys_close(arg2);
+            break;
+        case SYSTEM_CALL_SBRK:
+            sys_sbrk(arg2, ctx);
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);
