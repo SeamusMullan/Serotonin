@@ -255,6 +255,8 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
         pcb->processor_context->eflags      = INIT_EFLAGS;
         pcb->processor_context->cs          = USER_MODE_CODE_SEGMENT; 
         pcb->processor_context->eip         = (uint32_t)entry;
+        pcb->brk_start                      = USER_HEAP_START;
+        pcb->brk_end                        = USER_HEAP_START;
         //memset(stack, 0, USER_STACK_SIZE);
     } else {
         stack = (uint8_t*)alloc_kernel_stack();
@@ -504,6 +506,8 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     pcb->esp_max = (void*)c_stack_base;
     pcb->processor_context->esp_at_trap = c_esp;
     pcb->processor_context->ebp = c_ebp;
+    pcb->brk_start = USER_HEAP_START;
+    pcb->brk_end = USER_HEAP_START;
 
     /*
     // create stack

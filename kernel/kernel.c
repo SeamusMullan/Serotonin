@@ -27,7 +27,7 @@
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 2
-#define KERNEL_VERSION_LOW 1
+#define KERNEL_VERSION_LOW 2
 
 #define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
 #define HEAP_SIZE   (KERNEL_HEAP_SIZE)
@@ -705,8 +705,6 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
     pcb->processor_context->eip         = (uint32_t)ehdr->e_entry;
     pcb->argv                           = argv_user_array;
     pcb->envp                           = envp_user_array;
-    pcb->brk_start                      = USER_HEAP_START;
-    pcb->brk_end                        = USER_HEAP_START;
 
     return 1;
 }

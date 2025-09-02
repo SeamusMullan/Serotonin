@@ -233,6 +233,8 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
     ctx->stub_eflags = INIT_EFLAGS;
     ctx->eflags      = INIT_EFLAGS;
     ctx->cs          = USER_MODE_CODE_SEGMENT; 
+    ctx->brk_start   = USER_HEAP_START;
+    ctx->brk_end     = USER_HEAP_START;
 
     int execve_stat = kernel_load_elf(current_task, path, path, argv, argc, envp, envc);
     if (execve_stat) {
