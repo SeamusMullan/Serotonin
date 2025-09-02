@@ -233,8 +233,8 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
     ctx->stub_eflags = INIT_EFLAGS;
     ctx->eflags      = INIT_EFLAGS;
     ctx->cs          = USER_MODE_CODE_SEGMENT; 
-    ctx->brk_start   = USER_HEAP_START;
-    ctx->brk_end     = USER_HEAP_START;
+    current_task->brk_start   = USER_HEAP_START;
+    current_task->brk_end     = USER_HEAP_START;
 
     int execve_stat = kernel_load_elf(current_task, path, path, argv, argc, envp, envc);
     if (execve_stat) {
@@ -309,7 +309,7 @@ void system_call(processor_context_t *ctx) {
         case SYSTEM_CALL_FORK:
             sys_fork(ctx);
             break;
-        case SYSTEM_CALL_GET_PID:
+        case SYSTEM_CALL_GETPID:
             sys_get_pid(ctx);
             break;
         case SYSTEM_CALL_OPEN:

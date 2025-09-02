@@ -762,12 +762,12 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         }
     }
 
-    vbe_set_cursor(0,18);
+    vbe_set_cursor(0,14);
 
     cpu_features_t processor_features = {0};
     kernel_get_cpu_features(&processor_features);
 
-	printf("Serotonin Kernel - Version %d.%d.%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW);
+	printf("Serotonin Kernel - Version %d.%d.%d - Compile Time: %s %s\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__);
     kernel_print_cpu_features(&processor_features);
     printfs(PRINT_STATUS_INFO,"kernel now (eip): 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x, cpu:%s\n",kernel_current_eip(),HEAP_START,magic,addr,cpu_manufacturer);
     printfs(PRINT_STATUS_INFO,"Booted with command line arguments: %s\n",cmdline);
