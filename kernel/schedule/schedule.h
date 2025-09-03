@@ -58,6 +58,9 @@ typedef struct process_control_block {
     uint32_t *envp;
     uint32_t brk_start;
     uint32_t brk_end;
+    int waiting_on;
+    int* status_ptr;
+    uint8_t exit_status;
 } process_control_block_t;
 
 typedef struct wait_node {

@@ -9,6 +9,8 @@ _start:
     pushl %eax
     call main
 
-    pushl $0
-    pushl $15
+    movl %eax, %ebx
+    movl $0, %eax
+    movl $0, %ecx
+    movl $0, %edx
     int $0x80

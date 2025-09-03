@@ -277,6 +277,31 @@ static void sys_sbrk(uint32_t arg2, processor_context_t *ctx) {
     ctx->eax = old_brk;
 }
 
+static void sys_waitpid(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) {
+    lock_scheduler();
+    int pid = arg2;
+    int* status_ptr = (int*)arg3;
+    process_control_block_t *target = task_list;
+    while (target && target->pid != pid)
+        target = target->next;
+
+    if (!target) {
+        ctx->eax = -1;
+        return;
+    }
+
+    if (target->state != PROCESS_STATE_TERMINATED) {
+        current_task->waiting_on = pid;
+        current_task->status_ptr = status_ptr;
+        memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
+        task_block();
+        __builtin_unreachable();
+    }
+
+    unlock_scheduler();
+    return;
+}
+
 /**
  * @brief Handle system calls.
  *
@@ -320,6 +345,9 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_SBRK:
             sys_sbrk(arg2, ctx);
+            break;
+        case SYSTEM_CALL_WAITPID:
+            sys_waitpid(arg2, arg3, ctx);
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);

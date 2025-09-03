@@ -185,7 +185,6 @@ void task_yield(int irq) {
     process_control_block_t* next = NULL;
     while ((next = dequeue()) != NULL) {
         if (next->state == PROCESS_STATE_READY) {
-            // printf("found next: %p, name: %s, ring:%d, entry:%p, esp:%p, eflags:%p\n",next, next->name,next->priv,next->entry,next->esp, next->eflags);
             // found someone we can switch into
             next->state = PROCESS_STATE_RUNNING;
             unlock_scheduler();
@@ -206,6 +205,21 @@ void task_exit(uint8_t exit) {
     printfs(PRINT_STATUS_DEBUG, "task_exit: Task %s (pid=%u) exited:%s\n", current_task->name, current_task->pid,to_signal_name(exit));
     current_task->state = PROCESS_STATE_TERMINATED;
     current_task->signal = exit;
+
+    process_control_block_t *waiter = task_list;
+    while (waiter) {
+        if (waiter->waiting_on == current_task->pid) {
+            waiter->waiting_on = -1;
+            switch_address_space(waiter->address_space);
+            memset(waiter->status_ptr, exit, sizeof(uint8_t));
+            waiter->state = PROCESS_STATE_READY;
+            waiter->processor_context->eax = exit;
+            enqueue(waiter);
+            break;
+        }
+        waiter = waiter->next;
+    }
+
     kernel_free_align(current_task->processor_context);
     kernel_free_align(current_task);
 
@@ -435,6 +449,9 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
 
     process_control_block_t *pcb = (process_control_block_t*)kernel_malloc_align(PCB_ALIGNMENT, sizeof(process_control_block_t));
     memcpy(pcb, parent, sizeof(process_control_block_t));
+    processor_context_t *ctx = (processor_context_t *)kernel_malloc_align(PCB_ALIGNMENT, sizeof(*ctx));
+    memset(ctx, 0, sizeof(*ctx));
+    pcb->processor_context = ctx;
     memcpy(pcb->processor_context, parent->processor_context, sizeof(processor_context_t));
     pcb->state = PROCESS_STATE_READY;
     pcb->pid   = next_pid++;
