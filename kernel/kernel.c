@@ -345,7 +345,7 @@ static void kernel_print_cpu_features(const cpu_features_t *f) {
         {"lm",           f->lm},
     };
 
-    printf("CPU features:\n");
+    printfs(PRINT_STATUS_INFO,"CPU features:\n");
     for (size_t i = 0; i < sizeof(feat_map)/sizeof(feat_map[0]); i++) {
         if (feat_map[i].val)
             printf("  %s", feat_map[i].name);
@@ -749,16 +749,25 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     cmdline_buf[sizeof(cmdline_buf) - 1] = '\0'; 
 
     for (char* token = strtok(cmdline_buf, " "); token != NULL; token = strtok(NULL, " ")) {
-        // yanderedev, should use a struct table in the future, but for now, we only have one arg.
+        // yanderedev, should use a struct table in the future, but for now, we only have two args.
         if (strcmp(token, "debug") == 0) {
             printfs_set_mask(
                 (1 << PRINT_STATUS_DEBUG) |
                 (1 << PRINT_STATUS_INFO) |
                 (1 << PRINT_STATUS_WARNING) |
                 (1 << PRINT_STATUS_ERROR) |
-                (1 << PRINT_STATUS_FATAL)
+                (1 << PRINT_STATUS_FATAL) |
+                (1 << PRINT_STATUS_SUCCESS)
             );
             debug_mode = 1;
+        } else if (strcmp(token, "info") == 0) {
+            printfs_set_mask(
+                (1 << PRINT_STATUS_INFO) |
+                (1 << PRINT_STATUS_WARNING) |
+                (1 << PRINT_STATUS_ERROR) |
+                (1 << PRINT_STATUS_FATAL) |
+                (1 << PRINT_STATUS_SUCCESS)
+            );
         }
     }
 
@@ -767,9 +776,9 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     cpu_features_t processor_features = {0};
     kernel_get_cpu_features(&processor_features);
 
-	printf("Serotonin Kernel - Version %d.%d.%d - Compile Time: %s %s\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__);
+	printfs(PRINT_STATUS_INFO,"Serotonin Kernel - Version %d.%d.%d - Compile Time: %s %s\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__);
     kernel_print_cpu_features(&processor_features);
-    printfs(PRINT_STATUS_INFO,"kernel now (eip): 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x, cpu:%s\n",kernel_current_eip(),HEAP_START,magic,addr,cpu_manufacturer);
+    printfs(PRINT_STATUS_INFO,"Kernel now: 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x, cpu:%s\n",kernel_current_eip(),HEAP_START,magic,addr,cpu_manufacturer);
     printfs(PRINT_STATUS_INFO,"Booted with command line arguments: %s\n",cmdline);
     printfs(PRINT_STATUS_INFO,"Running in VESA VBE Graphics Mode: %dx%dx%d, pitch: %d\n",vbe_info.width,vbe_info.height,vbe_info.bpp,vbe_info.pitch);
 
@@ -779,15 +788,15 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     struct idt_ptr idtp_read;
     asm volatile ("sidt %0" : "=m"(idtp_read));
     enable_interrupts();
-    printfs(PRINT_STATUS_INFO,"Interrupts enabled! IDT: base:0x%08x,limit:0x%08x\n", idtp_read.base,idtp_read.limit);
+    printfs(PRINT_STATUS_SUCCESS,"Interrupts enabled! IDT: base:0x%08x,limit:0x%08x\n", idtp_read.base,idtp_read.limit);
 
-    printfs(PRINT_STATUS_INFO,"Virtual Memory Manager: %d pages free, %d total pages\n", buddy_free_pages(), buddy_total_pages());
+    printfs(PRINT_STATUS_INFO,"Virtual Memory Manager: %d total pages detected\n", buddy_total_pages());
 
     if (kernel_hypervisor_present()) {
         printfs(PRINT_STATUS_INFO,"A hypervisor is present.\n");
     }
 
-    printfs(PRINT_STATUS_INFO,"Attempting to mount rootfs drive 1\n");
+    printfs(PRINT_STATUS_INFO,"Trying to mount rootfs drive 1\n");
 
     vfs_init();
     ide_init();
@@ -797,6 +806,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     if (mount_result != 0) {
         kernel_panic("unable to mount rootfs on drive 1");
     }
+    printfs(PRINT_STATUS_SUCCESS,"Mounted rootfs!\n");
 
     multitasking_init();
 
@@ -809,7 +819,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     //process_control_block_t *pipes_task = task_create(pipes_demo, "Pipes Demo", CPU_KERNEL_MODE, 255);
     //enqueue(pipes_task);
 
-    printfs(PRINT_STATUS_INFO,"Attempting to load /bin/init\n");
+    printfs(PRINT_STATUS_INFO,"Loading init\n");
 
     char* init_loc = "/bin/init";
 
@@ -822,7 +832,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     }
 
     enqueue(init);
-
+    printfs(PRINT_STATUS_INFO,"Entering scheduler\n");
     multitasking_make_ready();
     task_yield(0);
     abort();

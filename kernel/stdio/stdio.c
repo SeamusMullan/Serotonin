@@ -210,10 +210,12 @@ void printfs_write_status(enum print_status_types status_type) {
             break;
         case PRINT_STATUS_SUCCESS:
             vbe_setcolor_bg_palette(VBE_COLOR_GREEN);
+            vbe_setcolor_fg_palette(VBE_COLOR_BLACK);
             vbe_terminal_puts("SSS");
             break;
     }
     vbe_setcolor_bg_palette(VBE_COLOR_BLACK);
+    vbe_setcolor_fg_palette(VBE_COLOR_WHITE);
     vbe_terminal_puts("] ");
 }
 
