@@ -195,7 +195,9 @@ static void sys_close(uint32_t arg2) {
 }
 
 static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
-    const char *path = (const char*)arg2;
+    size_t path_size = strlen((char*)arg2)+1;
+    char *path = (char*)kernel_malloc(path_size);
+    strncpy(path, (char*)arg2, path_size);
     const char **argv_temp = (const char**)arg3;
     const char **envp_temp = (const char**)arg4;
 
