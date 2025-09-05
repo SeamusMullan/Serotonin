@@ -18,10 +18,10 @@
 .equ    OFF_K_FPU,    112
 
 kernel_yield:
+    cli
+
     # save return address
-    call 1f
-1:
-    pop %eax 
+    movl 0(%esp), %eax
 
     # save callee saved registers and stack pointer
     movl %esp, %ecx          # ecx = esp
@@ -48,4 +48,5 @@ kernel_yield:
     # save FPU state
     fxsave OFF_K_FPU(%edi)
 
+    sti
     call task_yield

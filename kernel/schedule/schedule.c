@@ -26,6 +26,7 @@ static uint32_t next_kernel_stack = KERNEL_STACK_TOP;
 static prio_queue_t prio_q[MAX_PRIORITY];
 static uint32_t prio_bitmap[8];
 volatile uint32_t preempt_count = 0;
+volatile uint32_t lock_count = 0;
 volatile uint8_t pending_schedule = 0;
 static __attribute__((aligned(16))) fpu_fxsave_area_t fx_clean;
 
@@ -122,6 +123,7 @@ void *alloc_kernel_stack(void) {
 void lock_scheduler(void) {
     if (multitasking_ready == 0)
         return;
+    lock_count++;
     clear_interrupts();
 }
 
@@ -131,7 +133,9 @@ void lock_scheduler(void) {
 void unlock_scheduler(void) {
     if (multitasking_ready == 0)
         return;
-    enable_interrupts();
+    lock_count--;
+    if (!lock_count)
+        enable_interrupts();
 }
 
 void fpu_get_init_state(void) {
@@ -365,11 +369,8 @@ void task_block(void) {
  * @param pcb Pointer to the task's process control block.
  */
 void task_unblock(process_control_block_t *pcb) {
-    lock_scheduler();
     pcb->state = PROCESS_STATE_READY;
     enqueue(pcb);
-    unlock_scheduler();
-    task_yield(1);
 }
 
 static void enqueue_waiter(lock_t *lock, process_control_block_t *pcb) {
@@ -423,7 +424,7 @@ int task_lock_acquire(lock_t *lock) {
 void task_lock_release(lock_t *lock) {
     process_control_block_t *owner = lock->owner;
     if (lock->held) {
-        kernel_free(owner->lck_ptr);
+        //kernel_free(owner->lck_ptr);
         process_control_block_t *next = dequeue_waiter(lock);
         if (next) {
             lock->owner = next;

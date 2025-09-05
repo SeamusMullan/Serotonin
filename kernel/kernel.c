@@ -396,6 +396,7 @@ void kernel_sleep(unsigned int milliseconds) {
  * @param str The panic message to display.
  */
 void kernel_panic(char* str) {
+    //abort();
     unsigned int eip;
 
     asm volatile (
@@ -813,11 +814,11 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     process_control_block_t *idle_task = task_create(kernel_idle_task, "System Idle Task", CPU_KERNEL_MODE, 0);
     enqueue(idle_task);
 
-    // process_control_block_t *cube_task = task_create(cube_demo, "Cube Demo", CPU_KERNEL_MODE);
+    // process_control_block_t *cube_task = task_create(cube_demo, "Cube Demo", CPU_KERNEL_MODE, 1);
     // enqueue(cube_task);
 
-    //process_control_block_t *pipes_task = task_create(pipes_demo, "Pipes Demo", CPU_KERNEL_MODE, 255);
-    //enqueue(pipes_task);
+    // process_control_block_t *pipes_task = task_create(pipes_demo, "Pipes Demo", CPU_KERNEL_MODE, 1);
+    // enqueue(pipes_task);
 
     printfs(PRINT_STATUS_INFO,"Loading init\n");
 

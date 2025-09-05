@@ -1,5 +1,6 @@
 .section .text
 .extern current_task
+.equ    OFF_ESP,   4
 .equ    OFF_K_FPU, 112
 
 .global isr0
@@ -28,9 +29,9 @@ isr2:
 .global isr3
 isr3:
     cli
-    pushl $3
-    call fault_handler
-    add $4, %esp
+1:
+	jmp 1b
+    sti
     iret
 
 .global isr4
@@ -312,11 +313,41 @@ irq0:
 
 .global irq1
 irq1:
-    pusha
-    pushl $1
-    call irq_handler
-    add $4, %esp
-    popa
+    pushfl
+    pushal
+
+    pushl   %gs
+    pushl   %fs
+    pushl   %es
+    pushl   %ds
+
+    movl    current_task, %edx
+    test    %edx, %edx
+    jz      1f
+    fxsave  OFF_K_FPU(%edx)
+
+1:
+
+    movl    %esp, %eax
+    pushl   %eax
+    pushl   $1
+    call    irq_handler
+    addl    $8,   %esp
+
+    movl    current_task, %edx
+    test    %edx, %edx
+    jz      2f
+    fxrstor OFF_K_FPU(%edx)
+
+2:
+
+    popl    %ds
+    popl    %es
+    popl    %fs
+    popl    %gs
+    popal
+    popfl
+
     iret
 
 .global irq2

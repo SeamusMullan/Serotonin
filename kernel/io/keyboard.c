@@ -25,6 +25,8 @@ char stdio_buffer[STDIO_INPUT_BUFFER];
  * @param scancode The scancode received from the keyboard.
  */
 void handle_scancode(uint8_t scancode) {
+    lock_scheduler();
+    preempt_disable();
     static uint32_t stdin_idx = 0;
 
     if (stdin_idx < 0)
@@ -50,7 +52,6 @@ void handle_scancode(uint8_t scancode) {
     {
      
         uint32_t old_cr3 = read_cr3();
-        lock_scheduler();
         write_cr3(stdin_lock->owner->address_space->phys_pdir);
 
         stdio_buffer[stdin_idx] = '\0';
@@ -58,7 +59,6 @@ void handle_scancode(uint8_t scancode) {
         stdin_idx = 0;
 
         write_cr3(old_cr3);
-        unlock_scheduler();
 
         task_lock_release(stdin_lock);
     }
@@ -78,4 +78,6 @@ void handle_scancode(uint8_t scancode) {
         }
     }
     vbe_flip();
+    preempt_enable();
+    unlock_scheduler();
 }
