@@ -19,7 +19,9 @@
 
 kernel_yield:
     # save return address
-    movl 0(%esp), %eax
+    call 1f
+1:
+    pop %eax 
 
     # save callee saved registers and stack pointer
     movl %esp, %ecx          # ecx = esp
