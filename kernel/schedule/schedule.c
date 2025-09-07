@@ -469,6 +469,8 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
         if (va >= p_stack_base && va < p_stack_top) continue;
 
         uint32_t src_phys = get_mapping(parent->address_space, va);
+        if (!src_phys) continue;
+
         uint32_t dst_phys = (uint32_t)alloc_frame();
 
         unmap_page(pcb->address_space, va, 0);

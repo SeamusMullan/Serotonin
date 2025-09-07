@@ -396,7 +396,6 @@ void kernel_sleep(unsigned int milliseconds) {
  * @param str The panic message to display.
  */
 void kernel_panic(char* str) {
-    //abort();
     unsigned int eip;
 
     asm volatile (
@@ -662,7 +661,7 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
         if (!frame_stk) kernel_panic("kernel_load_elf: out of memory mapping user stack");
         map_page(as, va_stk, frame_stk, USER_PAGE_FLAGS, 0);
     }
-
+    
     memset(stack_base, 0, USER_STACK_SIZE);
 
     uint32_t strings_sz = count_total_string_bytes(envp, envc) + count_total_string_bytes(argv, argc);

@@ -4,13 +4,14 @@
 
     Virtual Memory Layout:
         0x00000000 – 0x003FFFFF - Identity map
-        0x00400000 – 0x013FFFFF - User text/data/bss
-        0x01400000 – 0x0EFFFFFF - User heap
-        0x0F000000 – 0x103FFFFF - User stack
-        0x10400000 – 0xBFFFFFFF - RESERVED
+        0x00400000 – 0x1FFFFFFF - User text/data/bss
+        0x20000000 – 0x5FFFFFFF - User heap
+        0x60000000 - 0x9FFFFFFF - User shared memory
+        0xA0000000 – 0xBEFFFFFF - User stack
+        0xBF000000 – 0xBFFFFFFF - USER RESERVED
         0xC0000000 – 0xCFFFFFFF - Kernel
         0xD0000000 – 0xDFFFFFFF - Kernel heap
-        0xE0000000 – 0xEFFFFFFF - Framebuffer (might reallocate this)
+        0xE0000000 – 0xE03FFFFF - Framebuffer
         0xF0000000 – 0xF03FFFFF - Kernel stack
 */
 

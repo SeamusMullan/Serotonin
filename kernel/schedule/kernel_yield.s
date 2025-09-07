@@ -18,8 +18,6 @@
 .equ    OFF_K_FPU,    112
 
 kernel_yield:
-    cli
-
     # save return address
     movl 0(%esp), %eax
 
