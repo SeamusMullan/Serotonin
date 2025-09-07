@@ -11,12 +11,26 @@
 #define MAX_ORDER        20
 #define MIN_MANAGED_PHYS 0x00200000
 
+/**
+ * @brief Page descriptor structure
+ * 
+ * This structure represents a single page descriptor in the buddy memory allocator.
+ * It contains information about the page's order, usage status, and the next free page
+ * in the list.
+ */
 typedef struct page_desc {
     uint8_t order;
     uint8_t used;
     struct page_desc *next;
 } page_desc_t;
 
+/**
+ * @brief Buddy memory zone structure
+ * 
+ * This structure represents a memory zone managed by the buddy allocator. It contains
+ * information about the zone's physical base address, the number of pages it covers,
+ * and the free list of available blocks.
+ */
 typedef struct buddy_zone {
     uint32_t base_phys;
     uint32_t num_pages;
@@ -25,15 +39,31 @@ typedef struct buddy_zone {
     uint8_t max_order;
 } buddy_zone_t;
 
+/**
+ * @brief Buddy memory allocator state
+ * 
+ * This structure represents the state of the buddy memory allocator, including
+ * the various memory zones it manages and the current zone count.
+ */
 typedef struct buddy_state {
     buddy_zone_t zones[MAX_ZONES];
     uint32_t zone_count;
 } buddy_state_t;
 
+/**
+ * @brief 64-bit range structure
+ * 
+ * This structure represents a range of 64-bit addresses, with a start and end point.
+ */
 typedef struct range64 {
     uint64_t start, end;
 } range64_t;
 
+/**
+ * @brief Address space structure
+ * 
+ * This structure represents an address space for a process, including its page directory.
+ */
 typedef struct address_space {
     uint32_t phys_pdir; // phys_pdiddy
 } address_space_t;

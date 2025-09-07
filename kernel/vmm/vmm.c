@@ -21,15 +21,43 @@
 #include "../multiboot.h"
 #include "../kernel.h"
 
+
+/**
+ * @brief Global buddy memory allocator state
+ * 
+ * This is a very simple buddy allocator implementation. It supports multiple zones,
+ * each with its own free list and page descriptors.
+ */
 buddy_state_t g_buddy = {0};
 uint32_t kmap_pt_phys = 0;
 
+/**
+ * @brief Get the virtual address of the kernel mapping page table
+ * 
+ * @return vmm_page_table_t* Pointer to the kernel mapping page table 
+ */
 static inline vmm_page_table_t *kmap_pt_va(void) { return pt_va(KMAP_PDE_BASE); }
 
 // compute largest order such that:
 // (idx % (1<<order)) == 0 (alignment)
 // (idx + (1<<order)) <= limit
 // order <= zone->max_order
+
+/**
+ * @brief Compute the largest order that fits within a given range
+ * 
+ * @param idx The starting index
+ * @param limit The ending limit
+ * @param max_order The maximum order
+ * @return int The largest order that fits, or -1 if none fits
+ * 
+ * This function computes the largest power-of-two block size (order) that can fit
+ * starting from the given index `idx` without exceeding the `limit`, while also
+ * ensuring that the block is aligned to its size. The order must not exceed `max_order`.
+ * 
+ * Used in buddy memory allocation to determine the largest block of pages that can be
+ * allocated from a given starting index within a memory zone.
+ */
 int largest_order_fit(uint32_t idx, uint32_t limit, uint8_t max_order) {
     uint32_t remain = limit - idx;
     int o = 0;
@@ -41,10 +69,32 @@ int largest_order_fit(uint32_t idx, uint32_t limit, uint8_t max_order) {
     return o;
 }
 
+/**
+ * @brief Initialize the free list for a memory zone
+ * 
+ * @param z Pointer to the memory zone
+ * 
+ * This function initializes the free list of a buddy memory zone by setting all
+ * entries to NULL, indicating that there are no free blocks of any order initially.
+ */
 void zone_freelist_init(buddy_zone_t *z) {
     for (int i = 0; i <= MAX_ORDER; ++i) z->free_list[i] = NULL;
 }
 
+/**
+ * @brief Push a free block onto the free list of a memory zone
+ * 
+ * @param z Pointer to the memory zone
+ * @param head_idx The index of the head page
+ * @param order The order of the block
+ * 
+ * This function adds a free block of a specified order to the free list of the given
+ * memory zone. The block is represented by its head page index, and the function
+ * updates the page descriptor to mark it as free and sets its order.
+ * 
+ * Used in buddy memory allocation to manage free blocks of pages, mainly during
+ * initialization and when freeing pages.
+ */
 void zone_push_free(buddy_zone_t *z, uint32_t head_idx, int order) {
     page_desc_t *head = &z->pages[head_idx];
     head->order = (uint8_t)order;
@@ -53,6 +103,20 @@ void zone_push_free(buddy_zone_t *z, uint32_t head_idx, int order) {
     z->free_list[order] = head;
 }
 
+/**
+ * @brief Pop a free block from the free list of a memory zone
+ * 
+ * @param z Pointer to the memory zone
+ * @param order The order of the block
+ * @return page_desc_t* Pointer to the popped block, or NULL if none available
+ * 
+ * This function removes and returns a free block of the specified order from the
+ * free list of the given memory zone. If no block of that order is available, it
+ * returns NULL.
+ * 
+ * Used in buddy memory allocation to allocate blocks of pages, mainly during
+ * allocation requests.
+ */
 page_desc_t *zone_pop_free(buddy_zone_t *z, int order) {
     page_desc_t *h = z->free_list[order];
     if (!h) return NULL;
@@ -61,10 +125,34 @@ page_desc_t *zone_pop_free(buddy_zone_t *z, int order) {
     return h;
 }
 
+/**
+ * @brief Compute the physical address of a page given its index and order
+ * 
+ * @param idx The index of the page
+ * @param order The order of the block
+ * @return uint32_t The physical address of the page
+ * 
+ * This function computes the physical address of a page in a buddy memory allocation
+ * system given its index and order. The address is calculated by aligning the index
+ * to the block size (1 << order) and then shifting it by the page size (PAGE_SHIFT).
+ * 
+ * Used in buddy memory allocation to determine the physical address of allocated
+ * pages when returning them to the caller.
+ */
 static inline uint32_t buddy_index(uint32_t idx, int order) {
     return idx ^ (1u << order);
 }
 
+/**
+ * @brief Build the initial free list for a memory zone
+ * 
+ * @param z Pointer to the memory zone
+ * 
+ * This function initializes the free list of a buddy memory zone by dividing the
+ * zone into the largest possible blocks of pages and adding them to the free list.
+ * It also determines the maximum order of blocks that can fit in the zone based on
+ * its size.
+ */
 void zone_build(buddy_zone_t *z) {
     zone_freelist_init(z);
 
@@ -84,6 +172,19 @@ void zone_build(buddy_zone_t *z) {
     }
 }
 
+/**
+ * @brief Split a block into smaller blocks of a different order
+ *
+ * @param z Pointer to the memory zone
+ * @param blk Pointer to the block to split
+ * @param have_order The current order of the block
+ * @param want_order The desired order of the block
+ * @return page_desc_t* Pointer to the new block, or NULL if failed
+ *
+ * This function splits a block of memory into two smaller blocks of a different order.
+ * It updates the free list and the block descriptors accordingly.
+ * 
+ */
 page_desc_t* zone_split_to(buddy_zone_t *z, page_desc_t *blk, int have_order, int want_order) {
     uint32_t idx = (uint32_t)(blk - z->pages);
     int o = have_order;
@@ -101,6 +202,17 @@ page_desc_t* zone_split_to(buddy_zone_t *z, page_desc_t *blk, int have_order, in
     return blk;
 }
 
+/**
+ * @brief Allocate a block of memory pages
+ *
+ * @param z Pointer to the memory zone
+ * @param order The order of the block to allocate
+ * @return void* Pointer to the allocated memory, or NULL if failed
+ * 
+ * This function allocates a block of memory pages of the specified order from the
+ * given memory zone. It searches the free list for a suitable block, splits it if
+ * necessary, marks it as used, and returns the physical address of the allocated block.
+ */
 void *zone_alloc_pages(buddy_zone_t *z, int order) {
     if (order > z->max_order) return NULL;
 
@@ -128,6 +240,17 @@ void *zone_alloc_pages(buddy_zone_t *z, int order) {
     return (void*)phys;
 }
 
+/**
+ * @brief Free a block of memory pages
+ *
+ * @param z Pointer to the memory zone
+ * @param phys_addr Physical address of the block to free
+ * @param order The order of the block to free
+ * 
+ * This function frees a block of memory pages of the specified order back to the
+ * buddy allocator. It marks the block as free and attempts to coalesce it with
+ * adjacent free blocks.
+ */
 void zone_free_pages(buddy_zone_t *z, void *phys_addr, int order) {
     uint32_t phys = (uint32_t)phys_addr;
     if (phys < z->base_phys) return; // not in this zone
@@ -173,6 +296,16 @@ void zone_free_pages(buddy_zone_t *z, void *phys_addr, int order) {
     zone_push_free(z, idx, o);
 }
 
+/**
+ * @brief Find the memory zone containing the given physical address
+ *
+ * @param phys Physical address to search for
+ * @return int Index of the memory zone, or -1 if not found
+ * 
+ * This function searches through the list of memory zones to find the one that
+ * contains the given physical address. It returns the index of the zone if found,
+ * or -1 if the address is not within any zone.
+ */
 int find_zone_by_phys(uint32_t phys) {
     for (uint32_t i = 0; i < g_buddy.zone_count; ++i) {
         buddy_zone_t *z = &g_buddy.zones[i];
@@ -184,6 +317,16 @@ int find_zone_by_phys(uint32_t phys) {
     return -1;
 }
 
+/**
+ * @brief Allocate a block of memory pages
+ *
+ * @param order The order of the block to allocate
+ * @return void* Pointer to the allocated memory block, or NULL on failure
+ * 
+ * This function allocates a block of memory pages of the specified order from the
+ * global buddy allocator. It searches through all memory zones to find a suitable
+ * block and returns its physical address. If no block is available, it triggers a kernel panic.
+ */
 void *alloc_pages(int order) {
     for (uint32_t i = 0; i < g_buddy.zone_count; ++i) {
         void *p = zone_alloc_pages(&g_buddy.zones[i], order);
@@ -192,6 +335,16 @@ void *alloc_pages(int order) {
     kernel_panic("out of memory (buddy alloc)");
 }
 
+/**
+ * @brief Free a block of memory pages
+ *
+ * @param phys_addr Physical address of the block to free
+ * @param order The order of the block to free
+ * 
+ * This function frees a block of memory pages of the specified order back to the
+ * buddy allocator. It marks the block as free and attempts to coalesce it with
+ * adjacent free blocks.
+ */
 void free_pages(void *phys_addr, int order) {
     uint32_t phys = (uint32_t)phys_addr;
     int zi = find_zone_by_phys(phys);
@@ -199,6 +352,14 @@ void free_pages(void *phys_addr, int order) {
     zone_free_pages(&g_buddy.zones[zi], phys_addr, order);
 }
 
+/**
+ * @brief Get the total number of pages in the buddy allocator
+ *
+ * @return uint32_t Total number of pages
+ * 
+ * This function computes the total number of pages managed by the buddy allocator
+ * by summing the number of pages in each memory zone.
+ */
 uint32_t buddy_total_pages(void) {
     uint32_t sum = 0;
     for (uint32_t i = 0; i < g_buddy.zone_count; ++i)
@@ -206,6 +367,15 @@ uint32_t buddy_total_pages(void) {
     return sum;
 }
 
+/**
+ * @brief Get the total number of free pages in the buddy allocator
+ *
+ * @return uint32_t Total number of free pages
+ * 
+ * This function computes the total number of free pages available in the buddy
+ * allocator by traversing the free lists of all memory zones and summing the sizes
+ * of all free blocks.
+ */
 uint32_t buddy_free_pages(void) {
     uint32_t sum = 0;
     for (uint32_t i = 0; i < g_buddy.zone_count; ++i) {
@@ -218,6 +388,16 @@ uint32_t buddy_free_pages(void) {
     return sum;
 }
 
+/**
+ * @brief Add a new memory zone to the buddy allocator
+ *
+ * @param base The starting physical address of the zone
+ * @param end The ending physical address of the zone
+ * 
+ * This function adds a new memory zone to the buddy allocator by aligning the
+ * provided base and end addresses to page boundaries, allocating metadata for
+ * the zone, and initializing its free list.
+ */
 void add_zone(uint64_t base, uint64_t end) {
     if (g_buddy.zone_count >= MAX_ZONES) return;
     // align to pages
@@ -240,6 +420,20 @@ void add_zone(uint64_t base, uint64_t end) {
 }
 
 // subtract [rsv_start, rsv_end) from [*in_start, *in_end); may emit up to 2 child ranges
+/**
+ * @brief Carve out a reserved range from an input range
+ *
+ * @param in_start Start of the input range
+ * @param in_end End of the input range
+ * @param rsv_start Start of the reserved range
+ * @param rsv_end End of the reserved range
+ * @param out Output array to hold the resulting ranges
+ * @return int Number of resulting ranges
+ * 
+ * This function takes an input range and a reserved range, and carves out the reserved
+ * range from the input range, emitting up to two child ranges. It returns the number of resulting
+ * ranges (0, 1, or 2).
+ */
 int carve_exclusion(uint64_t in_start, uint64_t in_end,
                            uint64_t rsv_start, uint64_t rsv_end,
                            range64_t out[2]) {
@@ -257,7 +451,20 @@ int carve_exclusion(uint64_t in_start, uint64_t in_end,
     return n;
 }
 
-void buddy_init(multiboot_info_t *mbi, uint32_t kernel_phys_start, uint32_t kernel_phys_end, uint32_t fb_phys_base, uint32_t  fb_length) {
+/**
+ * @brief Initialize the buddy allocator
+ *
+ * @param mbi Multiboot information structure
+ * @param kernel_phys_start Physical start address of the kernel
+ * @param kernel_phys_end Physical end address of the kernel
+ * @param fb_phys_base Physical base address of the framebuffer
+ * @param fb_length Length of the framebuffer
+ * 
+ * This function initializes the buddy memory allocator by parsing the memory map
+ * provided by the bootloader, excluding reserved regions such as the kernel image
+ * and framebuffer, and adding the available memory zones to the allocator.
+ */
+void buddy_init(multiboot_info_t *mbi, uint32_t kernel_phys_start, uint32_t kernel_phys_end, uint32_t fb_phys_base, uint32_t fb_length) {
     memset(&g_buddy, 0, sizeof(g_buddy));
 
     // Collect exclusions
@@ -311,6 +518,17 @@ void buddy_init(multiboot_info_t *mbi, uint32_t kernel_phys_start, uint32_t kern
     }
 }
 
+/**
+ * @brief Map a physical address to a virtual address
+ *
+ * @param phys Physical address to map
+ * @return void* Virtual address mapped to the physical address
+ * 
+ * This function maps a physical address to a predefined virtual address (KMAP_BASE)
+ * using a dedicated page table. It updates the page table entry, invalidates the
+ * TLB for the mapped address, and returns the virtual address. If the mapping system
+ * is not initialized, it triggers a kernel panic.
+ */
 void *kmap(uint32_t phys) {
     if (!kmap_pt_phys) {
         kernel_panic("kmap: not initialized");
@@ -321,12 +539,23 @@ void *kmap(uint32_t phys) {
     return (void*)KMAP_BASE;
 }
 
+/**
+ * @brief Unmap a virtual address
+ *
+ */
 void kunmap(void) {
     vmm_page_table_t *pt = kmap_pt_va();
     pt[KMAP_PTE_BASE] = 0;
     invlpg((void*)KMAP_BASE);
 }
 
+/**
+ * @brief Initialize the virtual memory manager
+ * 
+ * This function initializes the virtual memory manager by setting up the self-mapping
+ * and kernel mapping page tables. It ensures that the necessary page directory entries
+ * are in place and flushes the TLB to apply the changes.
+ */
 void vmm_init(void) {
     uint32_t pd_phys = read_cr3() & PAGE_MASK;
 
@@ -354,6 +583,19 @@ void vmm_init(void) {
     memset(kmap_pt_va(), 0, PAGE_SIZE);
 }
 
+/**
+ * @brief Get the page table for a specific address space and page directory entry
+ *
+ * @param as Address space to query
+ * @param pde_index Page directory entry index
+ * @return vmm_page_table_t* Pointer to the page table, or NULL if not present
+ * 
+ * This function retrieves the page table corresponding to a specific page directory
+ * entry within the given address space. If the address space is currently active,
+ * it returns a direct pointer to the page table. If the address space is not active,
+ * it temporarily maps the page directory to access the page table and returns a
+ * pointer to the mapped page table. If the page table is not present, it returns NULL.
+ */
 vmm_page_table_t *map_get_pt_for_as(address_space_t *as, uint32_t pde_index) {
     if ((read_cr3() & PAGE_MASK) == (as->phys_pdir & PAGE_MASK))
         return pt_va(pde_index);
@@ -367,6 +609,20 @@ vmm_page_table_t *map_get_pt_for_as(address_space_t *as, uint32_t pde_index) {
     return (vmm_page_table_t*)kmap(pt_phys);
 }
 
+/**
+ * @brief Get or create a page table for a specific address space and page directory entry
+ *
+ * @param as Address space to query
+ * @param pde_index Page directory entry index
+ * @param pde_flags Page directory entry flags
+ * @return vmm_page_table_t* Pointer to the page table, or NULL if not present
+ * 
+ * This function retrieves the page table corresponding to a specific page directory
+ * entry within the given address space. If the address space is currently active,
+ * it returns a direct pointer to the page table. If the address space is not active,
+ * it temporarily maps the page directory to access the page table and returns a
+ * pointer to the mapped page table. If the page table is not present, it returns NULL.
+ */
 vmm_page_table_t *ensure_pt(address_space_t *as, uint32_t pde_index, uint32_t pde_flags) {
     uint32_t cr3_phys = read_cr3() & PAGE_MASK;
 
@@ -408,6 +664,22 @@ vmm_page_table_t *ensure_pt(address_space_t *as, uint32_t pde_index, uint32_t pd
     return (vmm_page_table_t*)kmap(pt_phys_final);
 }
 
+/**
+ * @brief Map a virtual address to a physical address in a given address space
+ *
+ * @param as Address space to modify
+ * @param vaddr Virtual address to map
+ * @param paddr Physical address to map to
+ * @param flags Page table entry flags
+ * @param overwrite Flag indicating whether to overwrite an existing mapping
+ * 
+ * This function maps a virtual address to a physical address in the specified address
+ * space. It ensures that the necessary page table exists, creates it if needed,
+ * and updates the page table entry with the provided physical address and flags. If
+ * the mapping already exists and the overwrite flag is not set, it triggers a kernel
+ * panic. The function also handles the case where the address space is not currently
+ * active by temporarily mapping the page directory to access and modify the page table.
+ */
 void map_page(address_space_t *as, uint32_t vaddr, uint32_t paddr, uint32_t flags, int overwrite)
 {
     vaddr &= PAGE_MASK;
@@ -469,6 +741,20 @@ void map_page(address_space_t *as, uint32_t vaddr, uint32_t paddr, uint32_t flag
     kunmap();
 }
 
+/**
+ * @brief Unmap a virtual address in a given address space
+ *
+ * @param as Address space to modify
+ * @param vaddr Virtual address to unmap
+ * @param free_frame_flag Flag indicating whether to free the physical frame
+ * 
+ * This function unmaps a virtual address in the specified address space. It checks if
+ * the address space is currently active and modifies the page table entry accordingly.
+ * If the page table becomes empty after unmapping, it frees the page table frame. If
+ * the address space is not currently active, it temporarily maps the page directory to
+ * access and modify the page table. If the free_frame_flag is set, it also frees
+ * the physical frame associated with the unmapped virtual address.
+ */
 void unmap_page(address_space_t *as, uint32_t vaddr, int free_frame_flag)
 {
     vaddr &= PAGE_MASK;
@@ -532,6 +818,19 @@ void unmap_page(address_space_t *as, uint32_t vaddr, int free_frame_flag)
     }
 }
 
+/**
+ * @brief Get the mapping object
+ *
+ * @param as Address space to modify
+ * @param vaddr Virtual address to unmap
+ * @return uint32_t Physical address mapped to the virtual address, or 0 if not mapped
+ * 
+ * This function retrieves the physical address mapped to a given virtual address
+ * in the specified address space. It checks if the address space is currently active
+ * and accesses the page table entry directly. If the address space is not currently
+ * active, it temporarily maps the page directory to access the page table. If the
+ * virtual address is not mapped, it returns 0.
+ */
 uint32_t get_mapping(address_space_t *as, uint32_t vaddr) {
     vaddr &= PAGE_MASK;
     uint32_t pdi = vmm_pdi(vaddr);
@@ -563,7 +862,16 @@ uint32_t get_mapping(address_space_t *as, uint32_t vaddr) {
     return (pte & PAGE_PRESENT) ? (pte & PAGE_MASK) : 0;
 }
 
-
+/**
+ * @brief Allocate and map a new page
+ *
+ * @param as Address space to modify
+ * @param vaddr Virtual address to map
+ * @param flags Page table entry flags
+ * @return uint32_t Physical address of the allocated page, or 0 on failure
+ *
+ * This function allocates a new physical page and maps it to the specified virtual address.
+ */
 uint32_t alloc_map_page(address_space_t *as, uint32_t vaddr, uint32_t flags) {
     void *phys = alloc_frame();
     if (!phys) kernel_panic("alloc_map_page: OOM");
@@ -571,6 +879,16 @@ uint32_t alloc_map_page(address_space_t *as, uint32_t vaddr, uint32_t flags) {
     return (uint32_t)phys;
 }
 
+/**
+ * @brief Create a address space object
+ * 
+ * @return address_space_t*  Pointer to the created address space
+ * 
+ * This function creates a new address space by allocating a new page directory
+ * and cloning the kernel half of the current page directory. It sets up the self-mapping
+ * and kernel mapping entries in the new page directory. If memory allocation fails,
+ * it triggers a kernel panic.
+ */
 address_space_t *create_address_space(void) {
 
     address_space_t *as = (address_space_t*)kernel_malloc_align(16, sizeof(*as));
@@ -600,6 +918,16 @@ address_space_t *create_address_space(void) {
     return as;
 }
 
+/**
+ * @brief Destroy an address space object
+ *
+ * @param as Address space to destroy
+ *
+ * This function frees all resources associated with the given address space,
+ * including its page directory and any allocated page tables.
+ * 
+ * If the address space pointer is NULL, the function does nothing.
+ */
 void destroy_address_space(address_space_t *as) {
     if (!as) return;
     // THIS IS FUCKING HORRENDOUS
@@ -631,6 +959,15 @@ void destroy_address_space(address_space_t *as) {
     kernel_free_align(as);
 }
 
+/**
+ * @brief Switch to a different address space
+ *
+ * @param as Address space to switch to
+ * 
+ * This function switches the current address space to the specified one by updating
+ * the CR3 register with the physical address of the new page directory. If the new
+ * address space is already active, it does nothing.
+ */
 void switch_address_space(address_space_t *as) {
     if (!as) return;
     uint32_t new_cr3 = as->phys_pdir & PAGE_MASK;
