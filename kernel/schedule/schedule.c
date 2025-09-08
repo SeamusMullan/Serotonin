@@ -24,29 +24,44 @@ static uint32_t next_pid = 0;
 static uint32_t next_user_stack = USER_STACK_TOP;
 static uint32_t next_kernel_stack = KERNEL_STACK_TOP;
 static prio_queue_t prio_q[MAX_PRIORITY];
+static uint8_t top_bitmap;
 static uint32_t prio_bitmap[8];
 volatile uint32_t preempt_count = 0;
 volatile uint32_t lock_count = 0;
 volatile uint8_t pending_schedule = 0;
 static __attribute__((aligned(16))) fpu_fxsave_area_t fx_clean;
 
-static inline void bm_set(uint8_t p)   { prio_bitmap[p >> 5] |=  (1u << (p & 31)); }
-static inline void bm_clear(uint8_t p) { prio_bitmap[p >> 5] &= ~(1u << (p & 31)); }
-static inline int  bm_any(void) {
-    for (int i = 7; i >= 0; --i) if (prio_bitmap[i]) return 1;
-    return 0;
+static inline void bm_set(uint8_t p) {
+    uint8_t word = p >> 5; // div by 32, select which prio_bitmap word
+    uint8_t bit = p & 31; // mod 32, select bit inside word
+
+    prio_bitmap[word] |= (1u << bit); // mark this priority as ready
+    top_bitmap |= (uint8_t)(1u << word); // mark group as nonempty
+}
+
+static inline void bm_clear(uint8_t p) {
+    uint8_t word = p >> 5;
+    uint8_t bit = p & 31;
+
+    prio_bitmap[word] &= ~(1u << bit); // clear priority bit
+    if (prio_bitmap[word] == 0) {
+        top_bitmap &= (uint8_t)~(1u << word); // if the group is empty, clear its bit
+    }
 }
 
 static inline int highest_ready_prio(void) {
-    for (int word = 7; word >= 0; --word) {
-        uint32_t w = prio_bitmap[word];
-        if (w) {
-            // highest bit index in this 32-bit word
-            int bit = 31 - __builtin_clz(w);
-            return (word << 5) | bit; // word*32 + bit
-        }
-    }
-    return -1;
+    uint8_t tb = top_bitmap;
+    if (!tb) return -1;
+
+    // find highest nonempty 32 bit group
+    int word = 31 - __builtin_clz((unsigned)tb);
+
+    // find highest priorty inside group
+    uint32_t w = prio_bitmap[word];
+    int bit   = 31 - __builtin_clz(w);
+
+    // return the priority number from group index
+    return (word << 5) | bit;
 }
 
 
@@ -419,6 +434,7 @@ int task_lock_acquire(lock_t *lock) {
             return -1;
         }
     }
+    return 0;
 }
 
 void task_lock_release(lock_t *lock) {
