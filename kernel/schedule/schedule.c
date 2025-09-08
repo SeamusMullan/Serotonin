@@ -54,7 +54,7 @@ static inline int highest_ready_prio(void) {
     if (!tb) return -1;
 
     // find highest nonempty 32 bit group
-    int word = 31 - __builtin_clz((unsigned)tb);
+    int word = 31 - __builtin_clz((uint8_t)tb);
 
     // find highest priorty inside group
     uint32_t w = prio_bitmap[word];
@@ -177,6 +177,7 @@ void multitasking_init(void) {
 
     fpu_get_init_state();
 
+    stdin_lock = kernel_malloc(sizeof(lock_t));
     task_lock_init(stdin_lock, 1);
 }
 
@@ -567,7 +568,6 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
 }
 
 void task_semaphore_init(lock_semaphore_t *semaphore, uint32_t max_count) {
-    semaphore = kernel_malloc(sizeof(lock_semaphore_t));
     semaphore->max_count = max_count;
     semaphore->current_count = 0;
     semaphore->waiters_head = NULL;
