@@ -26,7 +26,10 @@ uint32_t system_call(uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t arg4)
 /**
  * @brief The entry point of the user program.
  */
-void main(int argc, char **argv, char **envp) {
+int main(int argc, char **argv, char **envp) {
+    char* strdbg = "user (/bin/test): testing argc, argv, envp\n";
+    system_call(1,0,(uint32_t)strdbg,0);
+
     char newline[] = "\n";
     for (int i = 0; i < argc; i++) {
         system_call(1,0,(uint32_t)argv[i],0);
@@ -41,6 +44,5 @@ void main(int argc, char **argv, char **envp) {
     char lol1[] = "execve!\n";
     system_call(1,0,(uint32_t)lol1,0);
 
-
-    system_call(0,15,0,0);
+    return 0;
 }
