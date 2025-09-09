@@ -792,6 +792,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     printfs(PRINT_STATUS_INFO,"Virtual Memory Manager: %d total pages detected\n", buddy_total_pages());
 
+    ps2_mouse_init();
+
     if (kernel_hypervisor_present()) {
         printfs(PRINT_STATUS_INFO,"A hypervisor is present.\n");
     }

@@ -2,6 +2,7 @@
 #include "../stdio/stdio.h"
 #include "../stdlib/stdlib.h"
 #include "../schedule/schedule.h"
+#include "../video/vbe/vbe.h"
 #include "../kernel.h"
 
 volatile uint64_t timer_ticks = 0;
@@ -9,6 +10,11 @@ volatile uint64_t last_quantum_tick = 0;
 volatile int multitasking_ready = 0;
 volatile int irq_disabled = 1;
 volatile rtc_time_t last_rtc_time;
+
+static uint8_t ps2_mouse_packet[3];
+static int ps2_mouse_packet_index = 0;
+static int mouse_x = 0;
+static int mouse_y = 0;
 
 /**
  * @brief Handle IRQ (Interrupt Request) signals.
@@ -32,8 +38,47 @@ void irq_handler(int irq, processor_context_t *ctx) {
         goto end_irq;
     } else if (irq == IRQ_KEYBOARD) {
         // fires every keypress
-        uint8_t scancode = inb(0x60);
+        uint8_t scancode = inb(PS2_DATA_PORT);
         handle_scancode(scancode);
+    } else if (irq == IRQ_MOUSE) {
+        uint8_t mouse_data = inb(PS2_DATA_PORT);
+
+        if (ps2_mouse_packet_index == 0) {
+            if (!(mouse_data & 0x08)) {
+                goto end_irq;
+            }
+        }
+
+        ps2_mouse_packet[ps2_mouse_packet_index++] = mouse_data;
+
+        if (ps2_mouse_packet_index == 3) {
+            int left = ps2_mouse_packet[0] & 0x01;
+            int right = ps2_mouse_packet[0] & 0x02;
+            int middle = ps2_mouse_packet[0] & 0x04;
+
+            int dx = (int8_t)ps2_mouse_packet[1];
+            int dy = (int8_t)ps2_mouse_packet[2];
+
+            mouse_x += dx;
+            mouse_y -= dy;
+
+            if (mouse_x < 0) mouse_x = 0;
+            if (mouse_y < 0) mouse_y = 0;
+            if (mouse_x >= SCREEN_WIDTH)  mouse_x = SCREEN_WIDTH - 1;
+            if (mouse_y >= SCREEN_HEIGHT) mouse_y = SCREEN_HEIGHT - 1;
+
+            ps2_mouse_packet_index = 0;
+
+            vbe_set_cursor(0,0);
+            printf("Mouse abs: x=%d y=%d (dx=%d dy=%d) L=%d R=%d M=%d       \n", mouse_x, mouse_y, dx, dy, left, right, middle);
+
+            vbe_clear_z_layer(1, 0x00000000);
+            for (int x = 0; x < 50; x++)
+                for (int y = 0; y < 50; y++)
+                    vbe_z_putpixel(1, (uint32_t)mouse_x+x, (uint32_t)mouse_y+y, 0x443300FF);
+            vbe_flip_all();
+        }
+        goto end_irq;
     } else if (irq == IRQ_RTC) {
         outb(CMOS_STATUS_REGISTER_A, CMOS_RTC_STATUS_C);
         inb(CMOS_STATUS_REGISTER_B);

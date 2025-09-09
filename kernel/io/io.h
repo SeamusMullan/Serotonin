@@ -9,6 +9,7 @@
 #define IRQ_PIT 0
 #define IRQ_KEYBOARD  1
 #define IRQ_RTC 8
+#define IRQ_MOUSE 12
 #define CMOS_STATUS_REGISTER_A 0x70
 #define CMOS_STATUS_REGISTER_B 0x71
 #define CMOS_RTC_SECONDS 0x00
@@ -20,6 +21,25 @@
 #define CMOS_RTC_STATUS_A 0x0A
 #define CMOS_RTC_STATUS_B 0x0B
 #define CMOS_RTC_STATUS_C 0x0C
+#define PS2_DATA_PORT 0x60
+#define PS2_STATUS_PORT 0x64
+#define PS2_GET_COMPAQ_STATUS 0x20
+#define PS2_SET_COMPAQ_STATUS 0x60
+#define PS2_ENABLE_AUX_DEVICE 0xA8
+#define PS2_MOUSE_BYTE 0xD4
+#define PS2_MOUSE_RESET 0xFF
+#define PS2_MOUSE_RESEND 0xFE
+#define PS2_MOUSE_SET_DEFAULTS 0xF6
+#define PS2_MOUSE_DISABLE_PACKET_STREAMING 0xF5
+#define PS2_MOUSE_ENABLE_PACKET_STREAMING 0xF4
+#define PS2_MOUSE_SET_SAMPLE_RATE 0xF3
+#define PS2_MOUSE_GET_MOUSEID 0xF2
+#define PS2_MOUSE_RQ_SINGLE_PACKET 0xEB
+#define PS2_MOUSE_STATUS_RQ 0xE9
+#define PS2_MOUSE_SET_RESOLUTION 0xE8
+#define PS2_MOUSE_ACK 0xFA
+#define PS2_MOUSE_SELFTEST_GOOD 0xAA
+#define PS2_SEND_BYTE 0xD4
 
 /**
  * @brief Processor context structure.
@@ -160,6 +180,14 @@ static inline uint8_t bcd_to_bin(uint8_t val) {
     return (val & 0x0F) + ((val >> 4) * 10);
 }
 
+static inline void io_wait_input_clear() {
+    while (inb(PS2_STATUS_PORT) & 0x02);
+}
+
+static inline void io_wait_output_full() {
+    while (!(inb(PS2_STATUS_PORT) & 0x01));
+}
+
 /**
  * @brief Handle an IRQ.
  *
@@ -169,6 +197,7 @@ static inline uint8_t bcd_to_bin(uint8_t val) {
 void irq_handler(int irq, processor_context_t *ctx);
 void pic_remap(int offset1, int offset2);
 void handle_scancode(uint8_t scancode);
-void rtc_init();
+void rtc_init(void);
+void ps2_mouse_init(void);
 
 #endif

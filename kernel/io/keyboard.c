@@ -81,3 +81,52 @@ void handle_scancode(uint8_t scancode) {
     preempt_enable();
     unlock_scheduler();
 }
+
+inline void ps2_send_mouse_command(uint8_t cmd) {
+    io_wait();
+    outb(PS2_STATUS_PORT, PS2_SEND_BYTE);
+    io_wait();
+    outb(PS2_DATA_PORT, cmd);
+}
+
+inline uint8_t ps2_read_mouse_response() {
+    io_wait();
+    return inb(PS2_DATA_PORT);
+}
+
+void ps2_mouse_init(void) {
+    clear_interrupts();
+    while (inb(PS2_STATUS_PORT) & 1) inb(PS2_DATA_PORT);
+
+    outb(PS2_STATUS_PORT, PS2_GET_COMPAQ_STATUS);
+    io_wait();
+
+    uint8_t status_byte = inb(PS2_DATA_PORT);
+    
+    status_byte |= (1 << 1); // enable irq12
+    status_byte &= ~(1 << 5); // enable mouse clock
+
+    io_wait();
+    outb(PS2_STATUS_PORT, PS2_SET_COMPAQ_STATUS);
+    io_wait();
+    outb(PS2_DATA_PORT, status_byte);
+
+    io_wait();
+    outb(PS2_STATUS_PORT, PS2_ENABLE_AUX_DEVICE);
+
+    ps2_send_mouse_command(PS2_MOUSE_RESET);
+    uint8_t response = ps2_read_mouse_response();
+    if (response == PS2_MOUSE_ACK) {
+        uint8_t selftest = ps2_read_mouse_response();
+        if (selftest != PS2_MOUSE_SELFTEST_GOOD) return;
+        uint8_t mouseid = ps2_read_mouse_response();
+        ps2_send_mouse_command(PS2_MOUSE_ENABLE_PACKET_STREAMING);
+        uint8_t ack = ps2_read_mouse_response();
+        if (ack != PS2_MOUSE_ACK) return;
+        enable_interrupts();
+    } else {
+        printfs(PRINT_STATUS_ERROR, "Something went wrong while trying to init ps/2 mouse: %p\n",response);
+        enable_interrupts();
+        return;
+    }
+}
