@@ -654,7 +654,7 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
 
     kernel_free(elf_data);
 
-    void *stack_base = alloc_user_stack();
+    void *stack_base = (void*)USER_STACK_TOP;
     uint32_t stack_top = (uint32_t)stack_base + USER_STACK_SIZE - 4; // GHETTO SOLUTION. DO NOT QUESTION IT. DO NOT ASK WHY ITS 4.
     for (uint32_t va_stk = (uint32_t)stack_base; va_stk < stack_top; va_stk += PAGE_SIZE) {
         uint32_t frame_stk = (uint32_t)alloc_frame();

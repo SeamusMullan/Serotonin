@@ -43,7 +43,7 @@ void ide_init(void) {
 
         uint8_t status = inb(ATA_PRIMARY_IO + 7);
         if (status == 0) {
-            printfs(PRINT_STATUS_WARNING,"IDE drive %u: No device.\n", drive);
+            printfs(PRINT_STATUS_WARNING,"IDE drive %u: No device detected\n", drive);
             continue;
         }
 
@@ -58,7 +58,7 @@ void ide_init(void) {
         uint8_t ch = inb(ATA_PRIMARY_IO + 5);
 
         if (cl == 0x14 && ch == 0xEB) {
-            printfs(PRINT_STATUS_DEBUG,"IDE drive %u: ATAPI device detected (CDROM).\n", drive);
+            printfs(PRINT_STATUS_INFO,"IDE drive %u: ATAPI device (CDROM)\n", drive);
             continue;
         }
 
@@ -82,7 +82,7 @@ void ide_init(void) {
         }
         model[40] = '\0';
 
-        printfs(PRINT_STATUS_DEBUG,"IDE drive %u detected. Model: %s\n", drive, model);
+        printfs(PRINT_STATUS_INFO,"IDE drive %u: %s\n", drive, model);
     }
 }
 

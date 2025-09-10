@@ -124,14 +124,14 @@ vfs_node_t *fat32_mount(const char *device) {
         return NULL;
     }
     uint32_t part1 = mbr[454] | (mbr[455]<<8) | (mbr[456]<<16) | (mbr[457]<<24);
-    printfs(PRINT_STATUS_DEBUG,"fat32_mount: partition1 @ LBA %u\n", part1);
+    printfs(PRINT_STATUS_INFO,"fat32_mount: partition1 @ LBA %u\n", part1);
     kernel_free(mbr);
 
     // 2: Read Boot Sector
     uint8_t *boot = kernel_malloc(512);
     ide_read_sector(drive, part1, boot);
     if (boot[510] != 0x55 || boot[511] != 0xAA) {
-        printfs(PRINT_STATUS_DEBUG,"fat32_mount: invalid BS sig %02x %02x\n",
+        printfs(PRINT_STATUS_ERROR,"fat32_mount: invalid BS sig %02x %02x\n",
                boot[510], boot[511]);
         kernel_free(boot);
         return NULL;
@@ -157,7 +157,7 @@ vfs_node_t *fat32_mount(const char *device) {
     ni->cluster_number= fs_info->root_cluster;
     root->fs_data     = ni;
 
-    printfs(PRINT_STATUS_DEBUG,"fat32: mounted drive %u, root cluster %u\n",
+    printfs(PRINT_STATUS_INFO,"fat32: mounted drive %u, root cluster %u\n",
            drive, fs_info->root_cluster);
     return root;
 }
