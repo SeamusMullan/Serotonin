@@ -58,6 +58,15 @@ typedef struct {
     uint32_t *backbuffer;    // virtual address of our malloc’d backbuffer
 } vbe_mode_info_t;
 
+// Bounding box for dirty rectangles
+// uses x0, y0 as top left corner
+typedef struct {
+    uint16_t x0;
+    uint16_t y0;
+    uint16_t x1;
+    uint16_t y1;
+} dirty_bb_t;
+
 extern vbe_mode_info_t vbe_info;
 extern uint32_t fb_size_bytes;
 
