@@ -1,40 +1,57 @@
-#!/bin/bash
 
-# --- Configuration ---
-IMG_FILE="serotonin.img"
-IMG_SIZE_MB=1024 # Size in MB
-VOLUME_NAME="SEROTONIN"
+#!/usr/bin/env bash
+set -euo pipefail
 
-# --- Create the .img file ---
-echo "Creating $IMG_FILE with size ${IMG_SIZE_MB}MB..."
-dd if=/dev/zero of="$IMG_FILE" bs=1m count="$IMG_SIZE_MB"
+# Resolve script directory to ensure relative paths work regardless of CWD
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# --- Attach the .img file ---
-echo "Attaching disk image..."
-DEVICE=$(hdiutil attach -nomount "$IMG_FILE" | awk '{print $1}')
-echo "Attached to $DEVICE"
+ISO="$SCRIPT_DIR/serotonin.iso"
 
-# --- Format it to FAT32 ---
-echo "Formatting $DEVICE to FAT32..."
-sudo diskutil eraseDisk FAT32 "$VOLUME_NAME" MBRFormat "$DEVICE"
-
-# --- Copy the init ELF to the drive ---
-echo "Copying init ELF to the volume..."
-INIT_ELF="../user/init/init.elf"
-if [ -f "$INIT_ELF" ]; then
-    sudo mkdir -p "/Volumes/$VOLUME_NAME/bin"
-    sudo chmod 755 "/Volumes/$VOLUME_NAME/bin"
-    sudo cp "$INIT_ELF" "/Volumes/$VOLUME_NAME/bin/init"
-else
-    echo "Error: $INIT_ELF not found!"
-    exit 1
+# Allow override via SEROTONIN_DISK env var; otherwise use local serotonin.img,
+# or try common qcow2 paths used by cp-user-elfs-to-disk.sh
+DISK_IMAGE="${SEROTONIN_DISK:-}"
+if [[ -z "${DISK_IMAGE}" ]]; then
+	if [[ -f "$SCRIPT_DIR/serotonin.img" ]]; then
+		DISK_IMAGE="$SCRIPT_DIR/serotonin.img"
+	elif [[ -f "$SCRIPT_DIR/serotonin.qcow2" ]]; then
+		DISK_IMAGE="$SCRIPT_DIR/serotonin.qcow2"
+	else
+		DISK_IMAGE=""
+	fi
 fi
 
-# --- Detach the image ---
-echo "Detaching $DEVICE..."
-hdiutil detach "$DEVICE"
+# Basic sanity checks with friendly messages
+if [[ ! -f "$ISO" ]]; then
+	echo "[WARN] ISO not found at $ISO. Did the build complete?"
+fi
 
-echo "Done. $IMG_FILE is now formatted as FAT32."
+if [[ -z "$DISK_IMAGE" ]]; then
+	echo "[WARN] No disk image found. The guest HDD will be missing."
+	echo "       Set SEROTONIN_DISK to a path, or place serotonin.img/serotonin.qcow2 in $SCRIPT_DIR."
+fi
 
+# Compose QEMU command
+QEMU_CMD=(
+	qemu-system-x86_64
+	-m 2048
+	-boot d                     # boot from CD first
+	-cdrom "$ISO"
+	-vga std
+)
 
-qemu-system-x86_64 -m 2048 -boot d -cdrom serotonin.iso -vga std -drive file=serotonin.img,if=ide,index=1,media=disk
+# Attach user HDD if present. Use primary slave (index=1) to match IDE probing.
+if [[ -n "$DISK_IMAGE" ]]; then
+	fmt="raw"
+	case "$DISK_IMAGE" in
+		*.qcow2) fmt="qcow2" ;;
+		*.img) fmt="raw" ;;
+	esac
+	# macOS workaround: add cache=unsafe to avoid file locking errors
+	echo "[WARN] Adding cache=unsafe to QEMU drive options to work around macOS file locking issues."
+	QEMU_CMD+=( -drive file="$DISK_IMAGE",if=ide,index=1,media=disk,format="$fmt",cache=unsafe )
+fi
+
+# Forward any extra args to QEMU (e.g., -serial mon:stdio, -display none, etc.)
+QEMU_CMD+=( "$@" )
+
+exec "${QEMU_CMD[@]}"
