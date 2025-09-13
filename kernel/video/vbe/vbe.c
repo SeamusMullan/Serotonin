@@ -12,6 +12,9 @@
 #include "../../vmm/paging_init.h"
 #include "../font.h"
 
+#include <xmmintrin.h>
+#include <emmintrin.h>
+
 uint32_t term_fg_color = 0xFFFFFFFF;
 uint32_t term_bg_color = 0xFF000000;
 
@@ -85,14 +88,6 @@ static uint32_t term_max_rows(void)
 }
 
 /**
- * @brief Clear dirty bitmap
- */
-void vbe_clear_dirty_bitmap(void)
-{
-    memset(dirty_bitmap, 0, DIRTY_BITMAP_SIZE);
-}
-
-/**
  * @brief Initialize the VBE (VESA BIOS Extensions) for graphics mode.
  *
  * This function sets up the VBE for use with the framebuffer.
@@ -152,12 +147,10 @@ void vbe_init(multiboot_info_t *mbi)
 
     // create dirty bounding box
     dbb = kernel_malloc(sizeof(dirty_bb_t));
-    dbb->x0 = -1;
-    dbb->y0 = -1;
-    dbb->x1 = -1;
-    dbb->y1 = -1;
-
-    vbe_clear_dirty_bitmap();
+    dbb->x0 = (uint16_t)-1;
+    dbb->y0 = (uint16_t)-1;
+    dbb->x1 = (uint16_t)-1;
+    dbb->y1 = (uint16_t)-1;
 }
 
 /**
@@ -171,48 +164,31 @@ void vbe_init(multiboot_info_t *mbi)
 //     dirty_lines[y] = 1;
 // }
 
-static inline void vbe_mark_pixel_dirty(uint32_t x, uint32_t y)
+static inline void vbe_mark_pixel_dirty(uint16_t x, uint16_t y)
 {
     if (x >= SCREEN_WIDTH || y >= SCREEN_HEIGHT)
         return;
 
     // check if outside existing bb and update the points to respect the new bounds
 
-    if (
-        dbb->x0 == -1 ||
-        dbb->x1 == -1 ||
-        dbb->y0 == -1 ||
-        dbb->y1 == -1)
+    if (dbb->x0 == (uint32_t)-1 ||
+        dbb->x1 == (uint32_t)-1 ||
+        dbb->y0 == (uint32_t)-1 ||
+        dbb->y1 == (uint32_t)-1)
     {
-        // dbb hasnt been used yet, assign start to current pixel being marked dirty
-        dbb->x0 == x;
-        dbb->x1 == x;
-        dbb->y0 == y;
-        dbb->y1 == y;
+        // dbb hasnt been used yet, assign start to curresnt pixel being marked dirty
+        dbb->x0 = x;
+        dbb->x1 = x+1;
+        dbb->y0 = y;
+        dbb->y1 = y+1;
     }
     else
     {
-        // bounding box is initialized, work off its current location
-        // extend left
-        if (x < dbb->x0)
-        {
-            dbb->x0 = x;
-        }
-        // extend right
-        if (x > dbb->x1)
-        {
-            dbb->x1 = x;
-        }
-        // // extend up
-        if (y < dbb->y0)
-        {
-            dbb->y0 = y;
-        }
-        // extend down
-        if (y > dbb->y1)
-        {
-            dbb->y1 = y;
-        }
+        if (x < dbb->x0) dbb->x0 = x;
+        if (x >= dbb->x1) dbb->x1 = x + 1;
+
+        if (y < dbb->y0) dbb->y0 = y;
+        if (y >= dbb->y1) dbb->y1 = y + 1;
     }
 }
 
@@ -301,6 +277,10 @@ inline uint32_t div255(uint32_t p)
 {
     p = p + ((p + 257u) >> 8);
     return p >> 8;
+}
+
+static inline void vbe_blend_area(uint32_t *dst, uint32_t *src, uint32_t x1, uint32_t x2, uint32_t y1, uint32_t y2) {
+
 }
 
 static inline void vbe_blend_row(uint32_t *dst, const uint32_t *src, size_t width_px)
@@ -486,38 +466,23 @@ static inline void vbe_blend_row(uint32_t *dst, const uint32_t *src, size_t widt
 void vbe_flip(void)
 {
 
-    // copy all dirty pixels from rect bounding box + z-layers to the framebuffer
-    uint32_t stride_x = vbe_info.width / sizeof(uint32_t);
-    uint32_t stride_y = vbe_info.pitch / sizeof(uint32_t);
+    uint16_t x0 = dbb->x0;
+    uint16_t x1 = dbb->x1;
+    uint16_t y0 = dbb->y0;
+    uint16_t y1 = dbb->y1;
 
-    uint32_t *base_buf = vbe_info.backbuffer; // base layer
-    uint32_t *dst_buf = vbe_info.framebuffer;
+    uint16_t rect_height = y1-y0;
+    uint32_t rect_bytes = rect_height * vbe_info.pitch;
 
-    uint32_t start = dbb->x0;
-    uint32_t num_cols = (dbb->x1 - dbb->x0);
+    uint32_t* src_ptr = vbe_info.backbuffer + y0 * vbe_info.pitch; 
+    uint32_t* dst_ptr = vbe_info.framebuffer + y0 * vbe_info.pitch;
 
-    for (uint32_t y = dbb->y0; y < dbb->y1; y++)
-    {
-        // select every pixel on row y from x0->x1 and copy to framebuffer
+    memcpy(dst_ptr, src_ptr, rect_bytes);
 
-        uint32_t *dst_row = &dst_buf[y * stride_y];
-        uint32_t *base_row = &base_buf[y * stride_y];
-
-        memcpy(
-            dst_row+(dbb->x0 * sizeof(uint32_t)), // the start of the bounding box (left side) in backbuffer
-            base_row+(num_cols*sizeof(uint32_t)), // the start of the bounding box (left side) in framebuffer
-            num_cols*sizeof(uint32_t)             // the amount of rows to copy
-        );
-
-        for (uint32_t z = 1; z < VBE_NUM_Z_LAYERS; z++)
-        {
-            uint32_t *layer_row = vbe_z_layers[z] ? &vbe_z_layers[z][y * stride_y] : 0;
-            if (!layer_row)
-                continue;
-            vbe_blend_row(dst_row, layer_row, SCREEN_WIDTH);
-        }
-    }
-
+    dbb->x0 = 0;
+    dbb->x1 = 0;
+    dbb->y0 = 0;
+    dbb->y1 = 0;
     /*
     // OLD IMPLEMENTATION
     // Composite only dirty scanlines from base backbuffer + z-layers into framebuffer.
@@ -559,7 +524,10 @@ void vbe_flip_all(void)
     uint32_t *base_buf = vbe_info.backbuffer;
     uint32_t *dst_buf = vbe_info.framebuffer;
     memcpy(dst_buf, base_buf, fb_size_bytes);
-    vbe_clear_dirty_bitmap();
+    dbb->x0 = 0;
+    dbb->x1 = 0;
+    dbb->y0 = 0;
+    dbb->y1 = 0;
 }
 
 /**
@@ -606,34 +574,23 @@ void vbe_drawglyph(FontGlyph *glyph, uint32_t x, uint32_t y, uint32_t color)
  */
 void vbe_shift_dirty_bitmap_up(uint32_t num_rows)
 {
-    if (num_rows >= SCREEN_HEIGHT)
-    {
-        vbe_clear_dirty_bitmap();
+    uint16_t y0 = dbb->y0;
+    uint16_t y1 = dbb->y1;
+
+    uint16_t pixels_shift = num_rows * VBE_FONT_HEIGHT;
+
+    int16_t sy0 = y0 - pixels_shift;
+    int16_t sy1 = y1 - pixels_shift;
+
+    if (sy0 < 0 || sy1 < 0) {
+        y0 = 0;
+        y1 = 0;
         return;
     }
 
-    uint32_t total_pixels = SCREEN_WIDTH * SCREEN_HEIGHT;
-    uint32_t scroll_pixels = num_rows * SCREEN_WIDTH;
-
-    for (uint32_t i = 0; i < total_pixels - scroll_pixels; i++)
-    {
-        uint32_t src_index = i + scroll_pixels;
-        uint32_t dst_index = i;
-
-        uint8_t src_bit = (dirty_bitmap[src_index / 8] >> (src_index % 8)) & 1;
-        if (src_bit)
-            dirty_bitmap[dst_index / 8] |= (1 << (dst_index % 8));
-        else
-            dirty_bitmap[dst_index / 8] &= ~(1 << (dst_index % 8));
-    }
-
-    // Clear the bottom num_rows rows in the bitmap:
-    for (uint32_t i = total_pixels - scroll_pixels; i < total_pixels; i++)
-    {
-        dirty_bitmap[i / 8] &= ~(1 << (i % 8));
-    }
-
-    vbe_fast_mark_dirty(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT - num_rows);
+    y0 = (uint16_t)sy0;
+    y1 = (uint16_t)sy1;
+    return;
 }
 
 /**
@@ -681,7 +638,7 @@ void vbe_terminal_putchar(char c)
         vbe_shift_dirty_bitmap_up(5);
         vbe_fillrect(0, visible_rows, vbe_info.width, VBE_FONT_HEIGHT, term_bg_color);
         term_cursor_row = term_max_rows() - 1;
-        vbe_fast_mark_dirty(0, 0, vbe_info.width, vbe_info.height);
+        //vbe_fast_mark_dirty(0, 0, vbe_info.width, vbe_info.height);
     }
 }
 
@@ -721,7 +678,7 @@ void vbe_terminal_back(void)
     uint32_t px = term_cursor_col * VBE_FONT_WIDTH;
     uint32_t py = term_cursor_row * VBE_FONT_HEIGHT;
     vbe_fillrect(px, py, VBE_FONT_WIDTH, VBE_FONT_HEIGHT, 0x000000);
-    vbe_fast_mark_dirty(px, py, VBE_FONT_WIDTH, VBE_FONT_HEIGHT);
+    //vbe_fast_mark_dirty(px, py, VBE_FONT_WIDTH, VBE_FONT_HEIGHT);
 }
 
 /**
@@ -868,7 +825,6 @@ void vbe_clear_screen(uint32_t color)
 {
     uint32_t *back_buf = vbe_info.backbuffer;
     memset(back_buf, color, fb_size_bytes);
-    vbe_clear_dirty_bitmap();
 }
 
 void vbe_z_putpixel(uint32_t z, uint32_t x, uint32_t y, uint32_t color)
