@@ -17,30 +17,23 @@
 
 uint32_t term_fg_color = 0xFFFFFFFF;
 uint32_t term_bg_color = 0xFF000000;
-
 uint32_t dirty_min_x = 0;
 uint32_t dirty_min_y = 0;
 uint32_t dirty_max_x = 0;
 uint32_t dirty_max_y = 0;
 static int vbe_any_dirty = 0;
 uint8_t dirty_lines[SCREEN_HEIGHT];
-
 vbe_mode_info_t vbe_info;
-
 uint32_t fb_size_bytes;
-
 uint32_t vbe_palette[256];
+uint8_t init_z = 0;
 
 static const uint16_t k255w[8] __attribute__((aligned(16))) = {0x00FF, 0x00FF, 0x00FF, 0x00FF, 0x00FF, 0x00FF, 0x00FF, 0x00FF};
 static const uint16_t k257w[8] __attribute__((aligned(16))) = {0x0101, 0x0101, 0x0101, 0x0101, 0x0101, 0x0101, 0x0101, 0x0101};
 static const uint16_t k254w[8] __attribute__((aligned(16))) = {0x00FE, 0x00FE, 0x00FE, 0x00FE, 0x00FE, 0x00FE, 0x00FE, 0x00FE};
 static const uint32_t kAlphaFF[4] __attribute__((aligned(16))) = {0xFF000000u, 0xFF000000u, 0xFF000000u, 0xFF000000u};
-
-// ---------------- Z-Layer Buffers ----------------
-// Layer 0 is reserved (excluded from user rendering per requirement). Layers 1..VBE_NUM_Z_LAYERS-1 available.
-// Each layer stores 32-bit ARGB pixels; a pixel value of 0 means fully transparent (alpha==0).
-static uint32_t *vbe_z_layers[VBE_NUM_Z_LAYERS];
-static inline int vbe_z_valid(uint32_t z) { return (z > 0 && z < VBE_NUM_Z_LAYERS); }
+static vbe_z_layer_t *vbe_z_layers[VBE_NUM_Z_LAYERS];
+static inline int vbe_z_valid(uint8_t z) { return (z > 0 && z < VBE_NUM_Z_LAYERS); }
 
 #define DIRTY_BITMAP_SIZE ((SCREEN_WIDTH * SCREEN_HEIGHT + 7) / 8)
 uint8_t dirty_bitmap[DIRTY_BITMAP_SIZE];
@@ -87,6 +80,25 @@ static uint32_t term_max_rows(void)
     return vbe_info.height / VBE_FONT_HEIGHT;
 }
 
+vbe_z_layer_t* vbe_create_z_layer(uint8_t z, uint8_t alpha, uint8_t active) {
+    if (z >= VBE_NUM_Z_LAYERS)
+        kernel_panic("vbe_create_z_layer: attempt to allocate more then allowed z layers");
+
+    vbe_z_layer_t *z_layer = (vbe_z_layer_t*)kernel_malloc(sizeof(vbe_z_layer_t));
+    z_layer->z = z;
+    z_layer->alpha = alpha;
+    z_layer->active = active;
+    
+    uint32_t *z_layer_buf = (uint32_t*)kernel_malloc_align(16, fb_size_bytes);
+    z_layer->bufptr = z_layer_buf;
+    memset(z_layer->bufptr, 0, fb_size_bytes);
+
+    vbe_z_layers[z] = z_layer;
+    init_z++;
+
+    return z_layer;
+}
+
 /**
  * @brief Initialize the VBE (VESA BIOS Extensions) for graphics mode.
  *
@@ -124,26 +136,8 @@ void vbe_init(multiboot_info_t *mbi)
     }
 
     memset(vbe_info.backbuffer, 0, fb_size_bytes);
-
-    // Allocate z-layer buffers
-    for (uint32_t i = 1; i < VBE_NUM_Z_LAYERS; i++)
-    {
-        vbe_z_layers[i] = (uint32_t *)kernel_malloc(fb_size_bytes);
-        if (!vbe_z_layers[i])
-        {
-            kernel_panic("vbe_init: could not allocate z-layer buffer");
-        }
-        memset(vbe_z_layers[i], 0, fb_size_bytes);
-    }
-
-    {
-        uintptr_t back_start = (uintptr_t)vbe_info.backbuffer;
-        uintptr_t back_end = back_start + fb_size_bytes;
-        if (back_start < KERNEL_HEAP_VMA || back_end > (KERNEL_HEAP_VMA + KERNEL_HEAP_SIZE))
-        {
-            kernel_panic("vbe_init: backbuffer out of heap bounds");
-        }
-    }
+    vbe_create_z_layer(0,0,1);
+    vbe_create_z_layer(1,0,1);
 
     // create dirty bounding box
     dbb = kernel_malloc(sizeof(dirty_bb_t));
@@ -203,7 +197,7 @@ void vbe_putpixel(uint32_t x, uint32_t y, uint32_t color)
 {
     if (x >= vbe_info.width || y >= vbe_info.height)
         return;
-    uint8_t *row_start = (uint8_t *)vbe_info.backbuffer + (y * vbe_info.pitch);
+    uint8_t *row_start = (uint8_t *)vbe_z_layers[0]->bufptr + (y * vbe_info.pitch);
     uint32_t *dest = (uint32_t *)(row_start + (x * 4));
     *dest = color;
     vbe_mark_pixel_dirty(x, y);
@@ -249,7 +243,7 @@ void vbe_fillrect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color
         h = vbe_info.height - y;
     for (uint32_t row = 0; row < h; row++)
     {
-        vbe_fast_draw_hline(vbe_info.backbuffer, vbe_info.pitch, x, y + row, w, color);
+        vbe_fast_draw_hline(vbe_z_layers[0]->bufptr, vbe_info.pitch, x, y + row, w, color);
     }
     // vbe_fast_mark_dirty(x, y, w, h);
 }
@@ -279,8 +273,107 @@ inline uint32_t div255(uint32_t p)
     return p >> 8;
 }
 
-static inline void vbe_blend_area(uint32_t *dst, uint32_t *src, uint32_t x1, uint32_t x2, uint32_t y1, uint32_t y2) {
+__attribute__((noinline, force_align_arg_pointer))
+static void vbe_blend_area(uint32_t *dst, uint32_t *src, uint32_t x1, uint32_t x2, uint32_t y1, uint32_t y2) {
+    if (!dst || !src || x2 <= x1 || y2 <= y1) return;
 
+    const uint32_t w = x2 - x1;
+    const uint32_t h = y2 - y1;
+
+    const uint32_t pitch = vbe_info.pitch;
+
+    const __m128i vz   = _mm_setzero_si128();
+    const __m128i v255 = _mm_set1_epi16((short)255);
+    const __m128i vrnd = _mm_set1_epi32(128);
+    const __m128i amsk = _mm_set1_epi32(0xFF000000);
+
+    uint32_t *drow = dst + y1 * pitch + x1;
+    uint32_t *srow = src + y1 * pitch + x1;
+
+    for (uint32_t y = 0; y < h; y++) {
+        uint32_t i = 0;
+
+        // SIMD alpha blend
+        for (; i + 4 <= w; i += 4) {
+            // load 4 src/dst pixels, BBBB GGGG RRRR AAAA bytes per pixel, little endian
+            __m128i spx = _mm_loadu_si128((const __m128i *)&srow[i]);
+            __m128i dpx = _mm_loadu_si128((const __m128i *)&drow[i]);
+
+            // widen to 16 bit: [b0 g0 r0 a0 b1 g1 r1 a1] / [b2 g2 r2 a2 b3 g3 r3 a3]
+            __m128i s_lo = _mm_unpacklo_epi8(spx, vz);
+            __m128i s_hi = _mm_unpackhi_epi8(spx, vz);
+            __m128i d_lo = _mm_unpacklo_epi8(dpx, vz);
+            __m128i d_hi = _mm_unpackhi_epi8(dpx, vz);
+
+            // extract per pixel alpha bytes into words and replicate across channels
+            // after shift: each dword is 0x000000AA, bytes layout [AA 00 00 00 ...]
+            __m128i a   = _mm_srli_epi32(spx, 24);
+            __m128i a_lo = _mm_unpacklo_epi8(a, vz); // [a0 0 0 0 a1 0 0 0] (as 16 bit words)
+            __m128i a_hi = _mm_unpackhi_epi8(a, vz); // [a2 0 0 0 a3 0 0 0]
+
+            // replicate word 0 across low 64b, and word 4 across high 64b (=> [a0 a0 a0 a0 a1 a1 a1 a1])
+            a_lo = _mm_shufflelo_epi16(a_lo, 0x00);
+            a_lo = _mm_shufflehi_epi16(a_lo, 0x00);
+            a_hi = _mm_shufflelo_epi16(a_hi, 0x00);
+            a_hi = _mm_shufflehi_epi16(a_hi, 0x00);
+
+            // inv_a = 255 - a
+            __m128i ia_lo = _mm_sub_epi16(v255, a_lo);
+            __m128i ia_hi = _mm_sub_epi16(v255, a_hi);
+
+            // products in 16 bit
+            __m128i ps_lo = _mm_mullo_epi16(s_lo, a_lo);
+            __m128i pd_lo = _mm_mullo_epi16(d_lo, ia_lo);
+            __m128i ps_hi = _mm_mullo_epi16(s_hi, a_hi);
+            __m128i pd_hi = _mm_mullo_epi16(d_hi, ia_hi);
+
+            // widen to 32 bit before summing to avoid overflow
+            __m128i sum0 = _mm_add_epi32(_mm_unpacklo_epi16(ps_lo, vz), _mm_unpacklo_epi16(pd_lo, vz));
+            __m128i sum1 = _mm_add_epi32(_mm_unpackhi_epi16(ps_lo, vz), _mm_unpackhi_epi16(pd_lo, vz));
+            __m128i sum2 = _mm_add_epi32(_mm_unpacklo_epi16(ps_hi, vz), _mm_unpacklo_epi16(pd_hi, vz));
+            __m128i sum3 = _mm_add_epi32(_mm_unpackhi_epi16(ps_hi, vz), _mm_unpackhi_epi16(pd_hi, vz));
+
+            // add rounding
+            sum0 = _mm_add_epi32(sum0, vrnd);
+            sum1 = _mm_add_epi32(sum1, vrnd);
+            sum2 = _mm_add_epi32(sum2, vrnd);
+            sum3 = _mm_add_epi32(sum3, vrnd);
+
+            // >> 8
+            sum0 = _mm_srli_epi32(sum0, 8);
+            sum1 = _mm_srli_epi32(sum1, 8);
+            sum2 = _mm_srli_epi32(sum2, 8);
+            sum3 = _mm_srli_epi32(sum3, 8);
+
+            // pack 32->16 then 16->8
+            __m128i o_lo = _mm_packs_epi32(sum0, sum1);   // 8x16bit
+            __m128i o_hi = _mm_packs_epi32(sum2, sum3);   // 8x16bit
+            __m128i ob   = _mm_packus_epi16(o_lo, o_hi);  // 16x8bit, BGRA per pixel
+
+            // overwrite alpha with src alpha
+            __m128i rgb = _mm_andnot_si128(amsk, ob);
+            __m128i sa  = _mm_and_si128(spx, amsk);
+            __m128i out = _mm_or_si128(rgb, sa);
+
+            _mm_storeu_si128((__m128i *)&drow[i], out);
+        }
+
+        // scalar
+        for (; i < w; ++i) {
+            uint32_t s = srow[i];
+            uint32_t d = drow[i];
+            uint32_t a = s >> 24;
+            uint32_t ia = 255 - a;
+
+            uint32_t rb = (((d & 0x00FF00FFu) * ia) + ((s & 0x00FF00FFu) * a) + 0x00800080u) >> 8;
+            uint32_t g  = (((d & 0x0000FF00u) * ia) + ((s & 0x0000FF00u) * a) + 0x00008000u) >> 8;
+
+            drow[i] = (s & 0xFF000000u) | (rb & 0x00FF00FFu) | (g & 0x0000FF00u);
+        }
+
+        drow += pitch;
+        srow += pitch;
+    }
 }
 
 static inline void vbe_blend_row(uint32_t *dst, const uint32_t *src, size_t width_px)
@@ -477,6 +570,23 @@ void vbe_flip(void)
     uint32_t* src_ptr = vbe_info.backbuffer + y0 * vbe_info.pitch; 
     uint32_t* dst_ptr = vbe_info.framebuffer + y0 * vbe_info.pitch;
 
+    for (uint8_t z = 0; z < init_z; z++) {
+        vbe_z_layer_t *layer = (vbe_z_layer_t*)vbe_z_layers[z];
+        if (!layer->active)
+            continue;
+        if (layer->alpha) {
+            uint32_t* src_z_ptr = vbe_z_layers[z]->bufptr + y0 * vbe_info.pitch;
+            uint32_t* dst_z_ptr = src_ptr;
+
+            vbe_blend_area(dst_z_ptr, src_z_ptr, x0, x1, y0, y1);
+        } else {
+            uint32_t* src_z_ptr = vbe_z_layers[z]->bufptr + y0 * vbe_info.pitch;
+            uint32_t* dst_z_ptr = src_ptr;
+
+            memcpy(dst_z_ptr, src_z_ptr, rect_bytes);
+        }
+    }
+
     memcpy(dst_ptr, src_ptr, rect_bytes);
 
     dbb->x0 = 0;
@@ -521,7 +631,7 @@ void vbe_flip(void)
 void vbe_flip_all(void)
 {
     uint32_t stride = vbe_info.pitch / sizeof(uint32_t);
-    uint32_t *base_buf = vbe_info.backbuffer;
+    uint32_t *base_buf = vbe_z_layers[0]->bufptr;
     uint32_t *dst_buf = vbe_info.framebuffer;
     memcpy(dst_buf, base_buf, fb_size_bytes);
     dbb->x0 = 0;
@@ -547,7 +657,7 @@ void vbe_drawglyph(FontGlyph *glyph, uint32_t x, uint32_t y, uint32_t color)
         return;
 
     uint32_t stride = vbe_info.pitch / sizeof(uint32_t);
-    uint32_t *dst_buf = vbe_info.backbuffer;
+    uint32_t *dst_buf = vbe_z_layers[0]->bufptr;
 
     for (uint32_t row = 0; row < VBE_FONT_HEIGHT; row++)
     {
@@ -632,8 +742,8 @@ void vbe_terminal_putchar(char c)
     {
         uint32_t bytes_per_row = vbe_info.pitch * VBE_FONT_HEIGHT;
         uint32_t visible_rows = vbe_info.height - VBE_FONT_HEIGHT;
-        memmove(vbe_info.backbuffer,
-                (uint8_t *)vbe_info.backbuffer + bytes_per_row,
+        memmove(vbe_z_layers[0]->bufptr,
+                (uint32_t *)vbe_z_layers[0]->bufptr + bytes_per_row,
                 visible_rows * vbe_info.pitch);
         vbe_shift_dirty_bitmap_up(5);
         vbe_fillrect(0, visible_rows, vbe_info.width, VBE_FONT_HEIGHT, term_bg_color);
@@ -764,7 +874,7 @@ void vbe_fast_putpixel(uint32_t x, uint32_t y, uint32_t color)
 {
     if (x >= vbe_info.width || y >= vbe_info.height)
         return;
-    fast_putpixel(vbe_info.backbuffer,
+    fast_putpixel(vbe_z_layers[0]->bufptr,
                   vbe_info.pitch,
                   vbe_info.width,
                   vbe_info.height,
@@ -823,7 +933,7 @@ void vbe_set_cursor(uint32_t col, uint32_t row)
  */
 void vbe_clear_screen(uint32_t color)
 {
-    uint32_t *back_buf = vbe_info.backbuffer;
+    uint32_t *back_buf = vbe_z_layers[0]->bufptr;
     memset(back_buf, color, fb_size_bytes);
 }
 
@@ -833,7 +943,7 @@ void vbe_z_putpixel(uint32_t z, uint32_t x, uint32_t y, uint32_t color)
         return;
     if (x >= vbe_info.width || y >= vbe_info.height)
         return;
-    uint8_t *row_start = (uint8_t *)vbe_z_layers[z] + (y * vbe_info.pitch);
+    uint8_t *row_start = (uint8_t *)vbe_z_layers[z]->bufptr + (y * vbe_info.pitch);
     uint32_t *dest = (uint32_t *)(row_start + (x * 4));
     *dest = color;
     vbe_mark_pixel_dirty(x, y);
@@ -849,7 +959,7 @@ void vbe_z_fillrect(uint32_t z, uint32_t x, uint32_t y, uint32_t w, uint32_t h, 
         h = vbe_info.height - y;
     for (uint32_t row = 0; row < h; row++)
     {
-        uint8_t *row_ptr = (uint8_t *)vbe_z_layers[z] + ((y + row) * vbe_info.pitch);
+        uint8_t *row_ptr = (uint8_t *)vbe_z_layers[z]->bufptr + ((y + row) * vbe_info.pitch);
         uint32_t *dst = (uint32_t *)(row_ptr) + x;
         for (uint32_t col = 0; col < w; col++)
         {
@@ -864,7 +974,7 @@ void vbe_clear_z_layer(uint32_t z, uint32_t color)
 {
     if (!vbe_z_valid(z))
         return;
-    memset(vbe_z_layers[z], color, fb_size_bytes);
+    memset(vbe_z_layers[z]->bufptr, color, fb_size_bytes);
 }
 
 void vbe_clear_all_z_layers(void)
@@ -872,7 +982,7 @@ void vbe_clear_all_z_layers(void)
     for (uint32_t z = 1; z < VBE_NUM_Z_LAYERS; z++)
     {
         if (vbe_z_layers[z])
-            memset(vbe_z_layers[z], 0, fb_size_bytes);
+            memset(vbe_z_layers[z]->bufptr, 0, fb_size_bytes);
     }
 }
 
@@ -885,8 +995,8 @@ void vbe_z_copy_and_fade(uint32_t src_z, uint32_t dst_z, uint8_t fade_amount)
         return;
     if (!(dst_z > 0 && dst_z < VBE_NUM_Z_LAYERS))
         return;
-    uint32_t *src = vbe_z_layers[src_z];
-    uint32_t *dst = vbe_z_layers[dst_z];
+    uint32_t *src = vbe_z_layers[src_z]->bufptr;
+    uint32_t *dst = vbe_z_layers[dst_z]->bufptr;
     if (!src || !dst)
         return;
 

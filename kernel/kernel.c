@@ -727,6 +727,12 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     char* cpu_manufacturer = kernel_get_cpu_manufacturer();
 
     rtc_init();
+    pic_remap(0x20, 0x28);
+
+    init_idt();
+    struct idt_ptr idtp_read;
+    asm volatile ("sidt %0" : "=m"(idtp_read));
+    enable_interrupts();
     vbe_init(mbi);
     vbe_palette_init();
     vbe_flip();
@@ -781,14 +787,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     printfs(PRINT_STATUS_INFO,"Kernel now: 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x, cpu:%s\n",kernel_current_eip(),HEAP_START,magic,addr,cpu_manufacturer);
     printfs(PRINT_STATUS_INFO,"Booted with command line arguments: %s\n",cmdline);
     printfs(PRINT_STATUS_INFO,"Running in VESA VBE Graphics Mode: %dx%dx%d, pitch: %d\n",vbe_info.width,vbe_info.height,vbe_info.bpp,vbe_info.pitch);
-
-    pic_remap(0x20, 0x28);
-
-    init_idt();
-    struct idt_ptr idtp_read;
-    asm volatile ("sidt %0" : "=m"(idtp_read));
-    enable_interrupts();
-    printfs(PRINT_STATUS_SUCCESS,"Interrupts enabled! IDT: base:0x%08x,limit:0x%08x\n", idtp_read.base,idtp_read.limit);
 
     printfs(PRINT_STATUS_INFO,"Virtual Memory Manager: %d total pages detected\n", buddy_total_pages());
 
