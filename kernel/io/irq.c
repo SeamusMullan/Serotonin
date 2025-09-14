@@ -58,11 +58,18 @@ void irq_handler(int irq, processor_context_t *ctx) {
             int right = ps2_mouse_packet[0] & 0x02;
             int middle = ps2_mouse_packet[0] & 0x04;
 
-            int dx = (int8_t)ps2_mouse_packet[1];
-            int dy = (int8_t)ps2_mouse_packet[2];
+            int rel_x = ps2_mouse_packet[1];
+            if (ps2_mouse_packet[0] & 0x10) { // x sign bit
+                rel_x -= 256;
+            }
 
-            mouse_x += dx;
-            mouse_y -= dy;
+            int rel_y = ps2_mouse_packet[2];
+            if (ps2_mouse_packet[0] & 0x20) { // y sign bit
+                rel_y -= 256;
+            }
+
+            mouse_x += rel_x;
+            mouse_y -= rel_y;
 
             if (mouse_x < 0) mouse_x = 0;
             if (mouse_y < 0) mouse_y = 0;
@@ -73,8 +80,8 @@ void irq_handler(int irq, processor_context_t *ctx) {
 
             vbe_z_fillrect(1, mouse_x, mouse_y, 50, 50, 0xAE65E2FD);
 
-            vbe_set_cursor(0,0);
-            printf("Mouse abs: x=%d y=%d (dx=%d dy=%d) L=%d R=%d M=%d       \n", mouse_x, mouse_y, dx, dy, left, right, middle);
+                vbe_set_cursor(0,0);
+                printf("Mouse abs: x=%d y=%d (dx=%d dy=%d) L=%d R=%d M=%d       \n", mouse_x, mouse_y, rel_x, rel_y, left, right, middle);
         }
         goto end_irq;
     } else if (irq == IRQ_RTC) {
