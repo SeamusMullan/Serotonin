@@ -189,6 +189,34 @@ static inline void vbe_mark_pixel_dirty(uint16_t x, uint16_t y)
     }
 }
 
+
+inline void vbe_mark_region_dirty(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
+{
+    if (x + w > vbe_info.width)
+        w = vbe_info.width - x;
+    if (y + h > vbe_info.height)
+        h = vbe_info.height - y;
+    
+    if (dbb->x0 == (uint16_t)-1 ||
+        dbb->x1 == (uint16_t)-1 ||
+        dbb->y0 == (uint16_t)-1 ||
+        dbb->y1 == (uint16_t)-1)
+    {
+        dbb->x0 = x;
+        dbb->x1 = x+w;
+        dbb->y0 = y;
+        dbb->y1 = y+h;
+    }
+    else
+    {
+        if (x < dbb->x0) dbb->x0 = x;
+        if (x >= dbb->x1) dbb->x1 = x + w;
+
+        if (y < dbb->y0) dbb->y0 = y;
+        if (y >= dbb->y1) dbb->y1 = y + h;
+    }
+}
+ 
 /**
  * @brief Draw a pixel on the backbuffer.
  *
@@ -817,9 +845,9 @@ void vbe_z_fillrect(uint32_t z, uint32_t x, uint32_t y, uint32_t w, uint32_t h, 
         {
             dst[col] = color;
         }
-        for (uint32_t col = 0; col < w; col++)
-            vbe_mark_pixel_dirty(x + col, y + row);
     }
+
+    vbe_mark_region_dirty(x,y,w,h);
 }
 
 void vbe_clear_z_layer(uint32_t z, uint32_t color)

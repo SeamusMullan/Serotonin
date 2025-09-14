@@ -107,6 +107,6 @@ void vbe_clear_all_z_layers(void);
 // If resulting alpha <= 0 it becomes fully transparent (pixel value 0).
 void vbe_z_copy_and_fade(uint32_t src_z, uint32_t dst_z, uint8_t fade_amount);
 vbe_z_layer_t* vbe_create_z_layer(uint8_t z, uint8_t alpha, uint8_t active);
-
+void vbe_mark_region_dirty(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
 
 #endif

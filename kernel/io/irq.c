@@ -52,6 +52,8 @@ void irq_handler(int irq, processor_context_t *ctx) {
         ps2_mouse_packet[ps2_mouse_packet_index++] = mouse_data;
 
         if (ps2_mouse_packet_index == 3) {
+            vbe_z_fillrect(1, mouse_x, mouse_y, 50, 50, 0x00000000);
+
             int left = ps2_mouse_packet[0] & 0x01;
             int right = ps2_mouse_packet[0] & 0x02;
             int middle = ps2_mouse_packet[0] & 0x04;
@@ -69,14 +71,10 @@ void irq_handler(int irq, processor_context_t *ctx) {
 
             ps2_mouse_packet_index = 0;
 
+            vbe_z_fillrect(1, mouse_x, mouse_y, 50, 50, 0xAE65E2FD);
+
             vbe_set_cursor(0,0);
             printf("Mouse abs: x=%d y=%d (dx=%d dy=%d) L=%d R=%d M=%d       \n", mouse_x, mouse_y, dx, dy, left, right, middle);
-
-            vbe_clear_z_layer(1, 0xFF000000);
-            for (int x = 0; x < 50; x++)
-                for (int y = 0; y < 50; y++)
-                    vbe_z_putpixel(1, (uint32_t)mouse_x+x, (uint32_t)mouse_y+y, 0x443300FF);
-            vbe_flip();
         }
         goto end_irq;
     } else if (irq == IRQ_RTC) {
