@@ -39,22 +39,22 @@ static inline int vbe_z_valid(uint8_t z) { return (z > 0 && z < VBE_NUM_Z_LAYERS
 uint8_t dirty_bitmap[DIRTY_BITMAP_SIZE];
 
 uint32_t vbe_colors[16] = {
-    0xFF000000, // BLACK
-    0xFF0000AA, // BLUE
-    0xFF00AA00, // GREEN
-    0xFF00AAAA, // CYAN
-    0xFFAA0000, // RED
-    0xFFAA00AA, // MAGENTA
-    0xFFAA5500, // BROWN / YELLOW
-    0xFFAAAAAA, // LIGHT GRAY
-    0xFF555555, // DARK GRAY
-    0xFF5555FF, // LIGHT BLUE
-    0xFF55FF55, // LIGHT GREEN
-    0xFF55FFFF, // LIGHT CYAN
-    0xFFFF5555, // LIGHT RED
-    0xFFFF55FF, // LIGHT MAGENTA
-    0xFFFFFF00, // YELLOW / LIGHT YELLOW
-    0xFFFFFFFF  // WHITE
+    0x00000000, // BLACK
+    0x000000AA, // BLUE
+    0x0000AA00, // GREEN
+    0x0000AAAA, // CYAN
+    0x00AA0000, // RED
+    0x00AA00AA, // MAGENTA
+    0x00AA5500, // BROWN / YELLOW
+    0x00AAAAAA, // LIGHT GRAY
+    0x00555555, // DARK GRAY
+    0x005555FF, // LIGHT BLUE
+    0x0055FF55, // LIGHT GREEN
+    0x0055FFFF, // LIGHT CYAN
+    0x00FF5555, // LIGHT RED
+    0x00FF55FF, // LIGHT MAGENTA
+    0x00FFFF00, // YELLOW / LIGHT YELLOW
+    0x00FFFFFF  // WHITE
 };
 
 // dirty bounding box used for rect dirty marking
@@ -139,8 +139,11 @@ void vbe_init(multiboot_info_t *mbi)
     vbe_create_z_layer(0,0,1);
     vbe_create_z_layer(1,0,1);
 
+    vbe_clear_z_layer(0, 0x00000000);
+    vbe_clear_z_layer(1, 0x00000000);
+
     // create dirty bounding box
-    dbb = kernel_malloc(sizeof(dirty_bb_t));
+    dbb = (dirty_bb_t*)kernel_malloc(sizeof(dirty_bb_t));
     dbb->x0 = (uint16_t)-1;
     dbb->y0 = (uint16_t)-1;
     dbb->x1 = (uint16_t)-1;
@@ -281,14 +284,17 @@ static void vbe_blend_area(uint32_t *dst, uint32_t *src, uint32_t x1, uint32_t x
     const uint32_t h = y2 - y1;
 
     const uint32_t pitch = vbe_info.pitch;
+    const uint32_t stride = pitch / sizeof(uint32_t);
 
-    const __m128i vz   = _mm_setzero_si128();
-    const __m128i v255 = _mm_set1_epi16((short)255);
-    const __m128i vrnd = _mm_set1_epi32(128);
-    const __m128i amsk = _mm_set1_epi32(0xFF000000);
+    const __m128i vz     = _mm_setzero_si128();
+    const __m128i v255   = _mm_set1_epi16((short)255);
+    const __m128i v255_32= _mm_set1_epi32(0x000000FF);
+    const __m128i vrnd   = _mm_set1_epi32(128);
+    const __m128i amsk   = _mm_set1_epi32(0xFF000000);
+    const __m128i vones  = _mm_set1_epi32(-1);
 
-    uint32_t *drow = dst + y1 * pitch + x1;
-    uint32_t *srow = src + y1 * pitch + x1;
+    uint32_t *drow = dst + y1 * stride + x1;
+    uint32_t *srow = src + y1 * stride + x1;
 
     for (uint32_t y = 0; y < h; y++) {
         uint32_t i = 0;
@@ -299,6 +305,25 @@ static void vbe_blend_area(uint32_t *dst, uint32_t *src, uint32_t x1, uint32_t x
             __m128i spx = _mm_loadu_si128((const __m128i *)&srow[i]);
             __m128i dpx = _mm_loadu_si128((const __m128i *)&drow[i]);
 
+            // extract alpha bytes
+            __m128i a32 = _mm_srli_epi32(spx, 24);
+
+            __m128i m_trans = _mm_cmpeq_epi32(a32, vz);        // alpha == 0
+            __m128i m_opaque= _mm_cmpeq_epi32(a32, v255_32);   // alpha == 255
+
+            // fast paths if all 4 lanes are the same
+            int mt = _mm_movemask_epi8(m_trans);
+            if (mt == 0xFFFF) {
+                // transparent
+                continue;
+            }
+            int mo = _mm_movemask_epi8(m_opaque);
+            if (mo == 0xFFFF) {
+                // opaque
+                _mm_storeu_si128((__m128i *)&drow[i], spx);
+                continue;
+            }
+
             // widen to 16 bit: [b0 g0 r0 a0 b1 g1 r1 a1] / [b2 g2 r2 a2 b3 g3 r3 a3]
             __m128i s_lo = _mm_unpacklo_epi8(spx, vz);
             __m128i s_hi = _mm_unpackhi_epi8(spx, vz);
@@ -307,7 +332,7 @@ static void vbe_blend_area(uint32_t *dst, uint32_t *src, uint32_t x1, uint32_t x
 
             // extract per pixel alpha bytes into words and replicate across channels
             // after shift: each dword is 0x000000AA, bytes layout [AA 00 00 00 ...]
-            __m128i a   = _mm_srli_epi32(spx, 24);
+            __m128i a    = _mm_srli_epi32(spx, 24);
             __m128i a_lo = _mm_unpacklo_epi8(a, vz); // [a0 0 0 0 a1 0 0 0] (as 16 bit words)
             __m128i a_hi = _mm_unpackhi_epi8(a, vz); // [a2 0 0 0 a3 0 0 0]
 
@@ -359,20 +384,26 @@ static void vbe_blend_area(uint32_t *dst, uint32_t *src, uint32_t x1, uint32_t x
         }
 
         // scalar
-        for (; i < w; ++i) {
+        for (; i < w; i++) {
             uint32_t s = srow[i];
-            uint32_t d = drow[i];
             uint32_t a = s >> 24;
-            uint32_t ia = 255 - a;
+            if (a == 0) {
+                continue;
+            } else if (a == 255) {
+                drow[i] = s;
+            } else {
+                uint32_t d = drow[i];
+                uint32_t ia = 255 - a;
 
-            uint32_t rb = (((d & 0x00FF00FFu) * ia) + ((s & 0x00FF00FFu) * a) + 0x00800080u) >> 8;
-            uint32_t g  = (((d & 0x0000FF00u) * ia) + ((s & 0x0000FF00u) * a) + 0x00008000u) >> 8;
+                uint32_t rb = (((d & 0x00FF00FFu) * ia) + ((s & 0x00FF00FFu) * a) + 0x00800080u) >> 8;
+                uint32_t g  = (((d & 0x0000FF00u) * ia) + ((s & 0x0000FF00u) * a) + 0x00008000u) >> 8;
 
-            drow[i] = (s & 0xFF000000u) | (rb & 0x00FF00FFu) | (g & 0x0000FF00u);
+                drow[i] = (s & 0xFF000000u) | (rb & 0x00FF00FFu) | (g & 0x0000FF00u);
+            }
         }
 
-        drow += pitch;
-        srow += pitch;
+        drow += stride;
+        srow += stride;
     }
 }
 
@@ -558,7 +589,6 @@ static inline void vbe_blend_row(uint32_t *dst, const uint32_t *src, size_t widt
  */
 void vbe_flip(void)
 {
-
     uint16_t x0 = dbb->x0;
     uint16_t x1 = dbb->x1;
     uint16_t y0 = dbb->y0;
@@ -567,27 +597,24 @@ void vbe_flip(void)
     uint16_t rect_height = y1-y0;
     uint32_t rect_bytes = rect_height * vbe_info.pitch;
 
-    uint32_t* src_ptr = vbe_info.backbuffer + y0 * vbe_info.pitch; 
-    uint32_t* dst_ptr = vbe_info.framebuffer + y0 * vbe_info.pitch;
+    uint32_t* bb_ptr = vbe_info.backbuffer + y0 * vbe_info.pitch; 
+    uint32_t* fb_ptr = vbe_info.framebuffer + y0 * vbe_info.pitch;
+    uint32_t* buf0_ptr = vbe_z_layers[0]->bufptr + y0 * vbe_info.pitch;
 
-    for (uint8_t z = 0; z < init_z; z++) {
+    memcpy(bb_ptr, buf0_ptr, rect_bytes);
+
+    for (uint8_t z = 1; z < init_z; z++) {
         vbe_z_layer_t *layer = (vbe_z_layer_t*)vbe_z_layers[z];
         if (!layer->active)
             continue;
-        if (layer->alpha) {
-            uint32_t* src_z_ptr = vbe_z_layers[z]->bufptr + y0 * vbe_info.pitch;
-            uint32_t* dst_z_ptr = src_ptr;
 
-            vbe_blend_area(dst_z_ptr, src_z_ptr, x0, x1, y0, y1);
-        } else {
-            uint32_t* src_z_ptr = vbe_z_layers[z]->bufptr + y0 * vbe_info.pitch;
-            uint32_t* dst_z_ptr = src_ptr;
+        uint32_t* src_z_ptr = vbe_z_layers[z]->bufptr + y0 * vbe_info.pitch;
+        uint32_t* dst_z_ptr = bb_ptr;
 
-            memcpy(dst_z_ptr, src_z_ptr, rect_bytes);
-        }
+        vbe_blend_area(dst_z_ptr, src_z_ptr, x0, x1, y0, y1);
     }
 
-    memcpy(dst_ptr, src_ptr, rect_bytes);
+    memcpy(fb_ptr, bb_ptr, rect_bytes);
 
     dbb->x0 = 0;
     dbb->x1 = 0;
