@@ -189,6 +189,13 @@ static inline void io_wait_output_full() {
 }
 
 /**
+ * @brief Set the sample rate for the PS/2 mouse.
+ *
+ * @param rate The desired sample rate (in Hz).
+ */
+void ps2_mouse_set_sample_rate(uint8_t rate);
+
+/**
  * @brief Handle an IRQ.
  *
  * @param irq The IRQ number.

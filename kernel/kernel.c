@@ -791,6 +791,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     printfs(PRINT_STATUS_INFO,"Virtual Memory Manager: %d total pages detected\n", buddy_total_pages());
 
     ps2_mouse_init();
+    ps2_mouse_set_sample_rate(250);
 
     if (kernel_hypervisor_present()) {
         printfs(PRINT_STATUS_INFO,"A hypervisor is present.\n");
@@ -809,6 +810,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     printfs(PRINT_STATUS_SUCCESS,"Mounted rootfs!\n");
 
     multitasking_init();
+
+    
 
     process_control_block_t *idle_task = task_create(kernel_idle_task, "System Idle Task", CPU_KERNEL_MODE, 0);
     enqueue(idle_task);
