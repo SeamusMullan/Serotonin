@@ -168,10 +168,10 @@ static inline void vbe_mark_pixel_dirty(uint16_t x, uint16_t y)
 
     // check if outside existing bb and update the points to respect the new bounds
 
-    if (dbb->x0 == (uint32_t)-1 ||
-        dbb->x1 == (uint32_t)-1 ||
-        dbb->y0 == (uint32_t)-1 ||
-        dbb->y1 == (uint32_t)-1)
+    if (dbb->x0 == (uint16_t)-1 ||
+        dbb->x1 == (uint16_t)-1 ||
+        dbb->y0 == (uint16_t)-1 ||
+        dbb->y1 == (uint16_t)-1)
     {
         // dbb hasnt been used yet, assign start to curresnt pixel being marked dirty
         dbb->x0 = x;
@@ -407,183 +407,6 @@ static void vbe_blend_area(uint32_t *dst, uint32_t *src, uint32_t x1, uint32_t x
     }
 }
 
-static inline void vbe_blend_row(uint32_t *dst, const uint32_t *src, size_t width_px)
-{
-    size_t n4 = width_px >> 2; // groups of 4 pixels (16 bytes)
-    size_t rem = width_px & 3;
-
-    const uint8_t *s = (const uint8_t *)src;
-    uint8_t *d = (uint8_t *)dst;
-
-    if (n4)
-    {
-        asm volatile(
-            "pxor %%xmm7, %%xmm7\n\t" // xmm7 = 0
-            "1:\n\t"
-            // load 4 src and 4 dst pixels
-            "movdqu (%[s]), %%xmm0\n\t" // xmm0 = src bytes
-            "movdqu (%[d]), %%xmm1\n\t" // xmm1 = dst bytes
-
-            // unpack to u16 lanes [B,G,R,A,B,G,R,A] for low and high bytes
-            "pxor     %%xmm7, %%xmm7\n\t"
-            "movdqa   %%xmm0, %%xmm2\n\t"
-            "punpcklbw %%xmm7, %%xmm2\n\t" // s_lo
-            "movdqa   %%xmm0, %%xmm3\n\t"
-            "punpckhbw %%xmm7, %%xmm3\n\t" // s_hi
-            "movdqa   %%xmm1, %%xmm4\n\t"
-            "punpcklbw %%xmm7, %%xmm4\n\t" // d_lo
-            "movdqa   %%xmm1, %%xmm5\n\t"
-            "punpckhbw %%xmm7, %%xmm5\n\t" // d_hi
-
-            // ---- low half (2 pixels) ----
-            // A_lo = [a0,a0,a0,a0,a1,a1,a1,a1]
-            "movdqa   %%xmm2, %%xmm6\n\t"
-            "pshuflw  $0xFF, %%xmm6, %%xmm6\n\t"
-            "pshufhw  $0xFF, %%xmm6, %%xmm6\n\t"
-
-            // invA_lo = 255 - A_lo
-            "movdqa   %[K255], %%xmm1\n\t"
-            "psubw    %%xmm6, %%xmm1\n\t" // xmm1 = invA_lo
-
-            // Psa_lo = s_lo * A_lo (keep a copy for remainder)
-            "movdqa   %%xmm2, %%xmm0\n\t"
-            "pmullw   %%xmm6, %%xmm0\n\t" // xmm0 = Psa_lo
-            "movdqa   %%xmm0, %%xmm7\n\t" // save Psa_lo -> xmm7
-
-            // q1_lo = floor(Psa_lo/255)
-            "movdqa   %%xmm0, %%xmm6\n\t"
-            "paddw    %[K257], %%xmm6\n\t"
-            "psrlw    $8, %%xmm6\n\t"
-            "paddw    %%xmm6, %%xmm0\n\t"
-            "psrlw    $8, %%xmm0\n\t" // xmm0 = q1_lo
-
-            // Pda_lo = d_lo * invA_lo  (keep copy)
-            "movdqa   %%xmm4, %%xmm6\n\t"
-            "pmullw   %%xmm1, %%xmm6\n\t" // xmm6 = Pda_lo
-            "movdqa   %%xmm6, %%xmm1\n\t" // save Pda_lo -> xmm1
-
-            // q2_lo = floor(Pda_lo/255)
-            "movdqa   %%xmm6, %%xmm4\n\t"
-            "paddw    %[K257], %%xmm4\n\t"
-            "psrlw    $8, %%xmm4\n\t"
-            "paddw    %%xmm4, %%xmm6\n\t"
-            "psrlw    $8, %%xmm6\n\t" // xmm6 = q2_lo
-
-            // r1_lo = Psa_lo - (q1_lo<<8) + q1_lo
-            "movdqa   %%xmm0, %%xmm4\n\t"
-            "psllw    $8, %%xmm4\n\t"
-            "psubw    %%xmm4, %%xmm7\n\t"
-            "paddw    %%xmm0, %%xmm7\n\t" // xmm7 = r1_lo
-
-            // r2_lo = Pda_lo - (q2_lo<<8) + q2_lo
-            "movdqa   %%xmm6, %%xmm4\n\t"
-            "psllw    $8, %%xmm4\n\t"
-            "psubw    %%xmm4, %%xmm1\n\t"
-            "paddw    %%xmm6, %%xmm1\n\t" // xmm1 = r2_lo
-
-            // carry_lo = (r1_lo + r2_lo) >= 255 ? 1 : 0
-            "paddw    %%xmm1, %%xmm7\n\t" // rsum_lo
-            "movdqa   %%xmm7, %%xmm4\n\t"
-            "pcmpgtw  %[K254], %%xmm4\n\t" // rsum_lo > 254 -> 0xFFFF
-            "psrlw    $15, %%xmm4\n\t"     // 0/1 per lane
-
-            // q_lo = q1_lo + q2_lo + carry_lo
-            "paddw    %%xmm6, %%xmm0\n\t"
-            "paddw    %%xmm4, %%xmm0\n\t" // xmm0 = q_lo
-
-            // ---------- high half (pixels 2,3) ----------
-            // A_hi
-            "movdqa   %%xmm3, %%xmm6\n\t"
-            "pshuflw  $0xFF, %%xmm6, %%xmm6\n\t"
-            "pshufhw  $0xFF, %%xmm6, %%xmm6\n\t"
-
-            // invA_hi
-            "movdqa   %[K255], %%xmm2\n\t"
-            "psubw    %%xmm6, %%xmm2\n\t" // xmm2 = invA_hi
-
-            // Psa_hi, keep copy
-            "movdqa   %%xmm3, %%xmm7\n\t"
-            "pmullw   %%xmm6, %%xmm7\n\t" // xmm7 = Psa_hi
-            "movdqa   %%xmm7, %%xmm4\n\t" // save -> xmm4
-
-            // q1_hi
-            "movdqa   %%xmm7, %%xmm6\n\t"
-            "paddw    %[K257], %%xmm6\n\t"
-            "psrlw    $8, %%xmm6\n\t"
-            "paddw    %%xmm6, %%xmm7\n\t"
-            "psrlw    $8, %%xmm7\n\t" // xmm7 = q1_hi
-
-            // Pda_hi (keep copy), q2_hi
-            "movdqa   %%xmm5, %%xmm6\n\t"
-            "pmullw   %%xmm2, %%xmm6\n\t" // xmm6 = Pda_hi
-            "movdqa   %%xmm6, %%xmm2\n\t" // save -> xmm2
-            "movdqa   %%xmm6, %%xmm5\n\t"
-            "paddw    %[K257], %%xmm5\n\t"
-            "psrlw    $8, %%xmm5\n\t"
-            "paddw    %%xmm5, %%xmm6\n\t"
-            "psrlw    $8, %%xmm6\n\t" // xmm6 = q2_hi
-
-            // r1_hi
-            "movdqa   %%xmm7, %%xmm5\n\t"
-            "psllw    $8, %%xmm5\n\t"
-            "psubw    %%xmm5, %%xmm4\n\t"
-            "paddw    %%xmm7, %%xmm4\n\t" // xmm4 = r1_hi
-
-            // r2_hi
-            "movdqa   %%xmm6, %%xmm5\n\t"
-            "psllw    $8, %%xmm5\n\t"
-            "psubw    %%xmm5, %%xmm2\n\t"
-            "paddw    %%xmm6, %%xmm2\n\t" // xmm2 = r2_hi
-
-            // carry_hi
-            "paddw    %%xmm2, %%xmm4\n\t" // rsum_hi
-            "pcmpgtw  %[K254], %%xmm4\n\t"
-            "psrlw    $15, %%xmm4\n\t" // carry_hi
-
-            // q_hi
-            "paddw    %%xmm6, %%xmm7\n\t"
-            "paddw    %%xmm4, %%xmm7\n\t" // xmm7 = q_hi
-
-            // pack to bytes, set alpha=0xFF, store
-            "packuswb %%xmm7, %%xmm0\n\t" // BGRA BGRA BGRA BGRA
-            "por      %[KALPHA], %%xmm0\n\t"
-            "movdqu   %%xmm0, (%[d])\n\t"
-
-            // advance
-            "add      $16, %[s]\n\t"
-            "add      $16, %[d]\n\t"
-            "dec      %[n4]\n\t"
-            "jnz      1b\n\t"
-            : [d] "+r"(d), [s] "+r"(s), [n4] "+r"(n4)
-            : [K255] "m"(k255w), [K257] "m"(k257w), [K254] "m"(k254w), [KALPHA] "m"(kAlphaFF)
-            : "cc", "memory",
-              // clobbers
-              "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7");
-    }
-
-    // leftover 1..3 pixels
-    for (size_t i = 0; i < rem; ++i)
-    {
-        uint32_t s32 = ((const uint32_t *)s)[i];
-        if (!s32)
-            continue; // fast path: fully transparent
-        uint32_t d32 = ((uint32_t *)d)[i];
-
-        uint32_t a = (s32 >> 24) & 0xFFu;
-        uint32_t invA = 255u - a;
-
-        uint32_t sr = (s32 >> 16) & 0xFFu, sg = (s32 >> 8) & 0xFFu, sb = s32 & 0xFFu;
-        uint32_t dr = (d32 >> 16) & 0xFFu, dg = (d32 >> 8) & 0xFFu, db = d32 & 0xFFu;
-
-        // exact truncating /255
-        uint32_t rr = div255(sr * a) + div255(dr * invA);
-        uint32_t rg = div255(sg * a) + div255(dg * invA);
-        uint32_t rb = div255(sb * a) + div255(db * invA);
-
-        ((uint32_t *)d)[i] = (0xFFu << 24) | (rr << 16) | (rg << 8) | rb;
-    }
-}
-
 /**
  * @brief Copy the backbuffer contents to the framebuffer.
  */
@@ -614,7 +437,7 @@ void vbe_flip(void)
         vbe_blend_area(dst_z_ptr, src_z_ptr, x0, x1, y0, y1);
     }
 
-    memcpy(fb_ptr, bb_ptr, rect_bytes);
+    memcpy_nt(fb_ptr, bb_ptr, rect_bytes);
 
     dbb->x0 = 0;
     dbb->x1 = 0;
@@ -769,10 +592,12 @@ void vbe_terminal_putchar(char c)
     {
         uint32_t bytes_per_row = vbe_info.pitch * VBE_FONT_HEIGHT;
         uint32_t visible_rows = vbe_info.height - VBE_FONT_HEIGHT;
-        memmove(vbe_z_layers[0]->bufptr,
-                (uint32_t *)vbe_z_layers[0]->bufptr + bytes_per_row,
-                visible_rows * vbe_info.pitch);
-        vbe_shift_dirty_bitmap_up(5);
+
+        uint8_t *dst = (uint8_t *)vbe_z_layers[0]->bufptr;
+        uint8_t *src = dst + bytes_per_row;
+
+        memmove(dst, src, visible_rows * vbe_info.pitch);
+        //vbe_shift_dirty_bitmap_up(5);
         vbe_fillrect(0, visible_rows, vbe_info.width, VBE_FONT_HEIGHT, term_bg_color);
         term_cursor_row = term_max_rows() - 1;
         //vbe_fast_mark_dirty(0, 0, vbe_info.width, vbe_info.height);

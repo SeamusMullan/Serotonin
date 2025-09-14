@@ -249,3 +249,98 @@ void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
     return dstptr;
 }
 
+/**
+ * @brief Non temporal copy memory area.
+ * 
+ * @param dstptr Destination pointer.
+ * @param srcptr Source pointer.
+ * @param size Size of the memory area to copy.
+ * @return void* Pointer to the destination.
+ */
+void* memcpy_nt(void* restrict dstptr, const void* restrict srcptr, size_t size) {
+    unsigned char *dst = dstptr;
+    const unsigned char *src = srcptr;
+
+    // align dst up to 16 bytes
+    uintptr_t mis = (uintptr_t)dst & 15;
+    if (mis) {
+        size_t head = 16 - mis;
+        if (head > size) head = size;
+        for (size_t i = 0; i < head; i++) {
+            *dst++ = *src++;
+        }
+        size -= head;
+    }
+
+    // 128 byte copy
+    while (size >= 128) {
+        asm volatile (
+            "movdqu 0(%[s]), %%xmm0\n\t"
+            "movdqu 16(%[s]), %%xmm1\n\t"
+            "movdqu 32(%[s]), %%xmm2\n\t"
+            "movdqu 48(%[s]), %%xmm3\n\t"
+            "movdqu 64(%[s]), %%xmm4\n\t"
+            "movdqu 80(%[s]), %%xmm5\n\t"
+            "movdqu 96(%[s]), %%xmm6\n\t"
+            "movdqu 112(%[s]), %%xmm7\n\t"
+            "movntdq %%xmm0, 0(%[d])\n\t"
+            "movntdq %%xmm1, 16(%[d])\n\t"
+            "movntdq %%xmm2, 32(%[d])\n\t"
+            "movntdq %%xmm3, 48(%[d])\n\t"
+            "movntdq %%xmm4, 64(%[d])\n\t"
+            "movntdq %%xmm5, 80(%[d])\n\t"
+            "movntdq %%xmm6, 96(%[d])\n\t"
+            "movntdq %%xmm7, 112(%[d])\n\t"
+            : [d] "+r"(dst), [s] "+r"(src)
+            :
+            : "xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7","memory"
+        );
+        dst += 128;
+        src += 128;
+        size -= 128;
+    }
+
+
+    // 64 byte copy
+    while (size >= 64) {
+        asm volatile (
+            "movdqu 0(%[s]), %%xmm0\n\t"
+            "movdqu 16(%[s]), %%xmm1\n\t"
+            "movdqu 32(%[s]), %%xmm2\n\t"
+            "movdqu 48(%[s]), %%xmm3\n\t"
+            "movntdq %%xmm0, 0(%[d])\n\t"
+            "movntdq %%xmm1, 16(%[d])\n\t"
+            "movntdq %%xmm2, 32(%[d])\n\t"
+            "movntdq %%xmm3, 48(%[d])\n\t"
+            : [d] "+r"(dst), [s] "+r"(src)
+            :
+            : "xmm0","xmm1","xmm2","xmm3","memory"
+        );
+        dst += 64;
+        src += 64;
+        size -= 64;
+    }
+
+    // remainder 16 byte chunks
+    while (size >= 16) {
+        asm volatile (
+            "movdqu (%[s]), %%xmm0\n\t"
+            "movntdq %%xmm0, (%[d])\n\t"
+            : [d] "+r"(dst), [s] "+r"(src)
+            :
+            : "xmm0","memory"
+        );
+        dst += 16;
+        src += 16;
+        size -= 16;
+    }
+
+    // tail bytes
+    while (size--) {
+        *dst++ = *src++;
+    }
+
+    // order streaming stores before returning
+    asm volatile("sfence");
+    return dstptr;
+}
