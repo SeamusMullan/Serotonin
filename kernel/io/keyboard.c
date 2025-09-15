@@ -94,6 +94,22 @@ inline uint8_t ps2_read_mouse_response() {
     return inb(PS2_DATA_PORT);
 }
 
+/**
+ * @brief Set the sample rate for the PS/2 mouse.
+ *
+ * @param rate The desired sample rate (in Hz).
+ */
+void ps2_mouse_set_sample_rate(uint8_t rate) {
+    outb(PS2_STATUS_PORT, PS2_MOUSE_BYTE);
+    outb(PS2_DATA_PORT, PS2_MOUSE_SET_SAMPLE_RATE);
+    io_wait();
+    uint8_t ack = inb(PS2_DATA_PORT); // Should be 0xFA
+    outb(PS2_STATUS_PORT, PS2_MOUSE_BYTE);
+    outb(PS2_DATA_PORT, rate);        // sample rate
+    io_wait();
+    ack = inb(PS2_DATA_PORT);
+}
+
 void ps2_mouse_init(void) {
     clear_interrupts();
     while (inb(PS2_STATUS_PORT) & 1) inb(PS2_DATA_PORT);
@@ -123,6 +139,7 @@ void ps2_mouse_init(void) {
         ps2_send_mouse_command(PS2_MOUSE_ENABLE_PACKET_STREAMING);
         uint8_t ack = ps2_read_mouse_response();
         if (ack != PS2_MOUSE_ACK) return;
+        ps2_mouse_set_sample_rate(250);
         enable_interrupts();
     } else {
         printfs(PRINT_STATUS_ERROR, "Something went wrong while trying to init ps/2 mouse: %p\n",response);

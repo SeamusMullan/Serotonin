@@ -16,22 +16,6 @@ static int ps2_mouse_packet_index = 0;
 static int mouse_x = 0;
 static int mouse_y = 0;
 
-/**
- * @brief Set the sample rate for the PS/2 mouse.
- *
- * @param rate The desired sample rate (in Hz).
- */
-void ps2_mouse_set_sample_rate(uint8_t rate) {
-    outb(0xD4, 0x64);
-    outb(0xF3, 0x60);
-    while (!(inb(0x64) & 1)) asm("pause");
-    uint8_t ack = inb(0x60); // Should be 0xFA
-    outb(0xD4, 0x64);
-    outb(rate, 0x60);        // sample rate
-    while (!(inb(0x64) & 1)) asm("pause");
-    ack = inb(0x60);
-}
-
 
 /**
  * @brief Handle IRQ (Interrupt Request) signals.
