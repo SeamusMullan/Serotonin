@@ -129,7 +129,7 @@ void vbe_init(multiboot_info_t *mbi)
     vbe_info.bpp = bpp;
 
     fb_size_bytes = (uint32_t)height * pitch;
-    vbe_info.backbuffer = (uint32_t *)kernel_malloc(fb_size_bytes);
+    vbe_info.backbuffer = (uint32_t *)kernel_malloc_align(16, fb_size_bytes);
     if (!vbe_info.backbuffer)
     {
         kernel_panic("vbe_init: could not allocate backbuffer");
@@ -452,7 +452,7 @@ void vbe_flip(void)
     uint32_t* fb_ptr = vbe_info.framebuffer + y0 * vbe_info.pitch;
     uint32_t* buf0_ptr = vbe_z_layers[0]->bufptr + y0 * vbe_info.pitch;
 
-    memcpy(bb_ptr, buf0_ptr, rect_bytes);
+    memcpy_nt(bb_ptr, buf0_ptr, rect_bytes);
 
     for (uint8_t z = 1; z < init_z; z++) {
         vbe_z_layer_t *layer = (vbe_z_layer_t*)vbe_z_layers[z];
@@ -855,6 +855,10 @@ void vbe_clear_z_layer(uint32_t z, uint32_t color)
     if (!vbe_z_valid(z))
         return;
     memset(vbe_z_layers[z]->bufptr, color, fb_size_bytes);
+    dbb->x0 = 0;
+    dbb->x1 = SCREEN_WIDTH-1;
+    dbb->y0 = 0;
+    dbb->y1 = SCREEN_HEIGHT-1;
 }
 
 void vbe_clear_all_z_layers(void)

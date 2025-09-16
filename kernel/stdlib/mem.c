@@ -173,80 +173,205 @@ void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
     if (mis) {
         size_t head = 16 - mis;
         if (head > size) head = size;
-        for (size_t i = 0; i < head; i++) {
-            *dst++ = *src++;
+
+        switch (head) {
+            case 15: dst[14] = src[14];
+            case 14: dst[13] = src[13];
+            case 13: dst[12] = src[12];
+            case 12: dst[11] = src[11];
+            case 11: dst[10] = src[10];
+            case 10: dst[9]  = src[9];
+            case  9: dst[8]  = src[8];
+            case  8: dst[7]  = src[7];
+            case  7: dst[6]  = src[6];
+            case  6: dst[5]  = src[5];
+            case  5: dst[4]  = src[4];
+            case  4: dst[3]  = src[3];
+            case  3: dst[2]  = src[2];
+            case  2: dst[1]  = src[1];
+            case  1: dst[0]  = src[0];
+            case  0: break;
         }
+
+        dst += head;
+        src += head;
         size -= head;
     }
 
-    // 128 byte copy
-    while (size >= 128) {
-        asm volatile (
-            "movdqu 0(%[s]), %%xmm0\n\t"
-            "movdqu 16(%[s]), %%xmm1\n\t"
-            "movdqu 32(%[s]), %%xmm2\n\t"
-            "movdqu 48(%[s]), %%xmm3\n\t"
-            "movdqu 64(%[s]), %%xmm4\n\t"
-            "movdqu 80(%[s]), %%xmm5\n\t"
-            "movdqu 96(%[s]), %%xmm6\n\t"
-            "movdqu 112(%[s]), %%xmm7\n\t"
-            "movdqa %%xmm0, 0(%[d])\n\t"
-            "movdqa %%xmm1, 16(%[d])\n\t"
-            "movdqa %%xmm2, 32(%[d])\n\t"
-            "movdqa %%xmm3, 48(%[d])\n\t"
-            "movdqa %%xmm4, 64(%[d])\n\t"
-            "movdqa %%xmm5, 80(%[d])\n\t"
-            "movdqa %%xmm6, 96(%[d])\n\t"
-            "movdqa %%xmm7, 112(%[d])\n\t"
-            : [d] "+r"(dst), [s] "+r"(src)
-            :
-            : "xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7","memory"
-        );
-        dst += 128;
-        src += 128;
-        size -= 128;
-    }
+    uintptr_t src_mis = (uintptr_t)src & 15;
+    if (mis == src_mis) {
+        // aligned src
+
+        // 128 byte copy
+        while (size >= 128) {
+            asm volatile (
+                "movdqa 0(%[s]), %%xmm0\n\t"
+                "movdqa 16(%[s]), %%xmm1\n\t"
+                "movdqa 32(%[s]), %%xmm2\n\t"
+                "movdqa 48(%[s]), %%xmm3\n\t"
+                "movdqa 64(%[s]), %%xmm4\n\t"
+                "movdqa 80(%[s]), %%xmm5\n\t"
+                "movdqa 96(%[s]), %%xmm6\n\t"
+                "movdqa 112(%[s]), %%xmm7\n\t"
+                "movdqa %%xmm0, 0(%[d])\n\t"
+                "movdqa %%xmm1, 16(%[d])\n\t"
+                "movdqa %%xmm2, 32(%[d])\n\t"
+                "movdqa %%xmm3, 48(%[d])\n\t"
+                "movdqa %%xmm4, 64(%[d])\n\t"
+                "movdqa %%xmm5, 80(%[d])\n\t"
+                "movdqa %%xmm6, 96(%[d])\n\t"
+                "movdqa %%xmm7, 112(%[d])\n\t"
+                : [d] "+r"(dst), [s] "+r"(src)
+                :
+                : "xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7","memory"
+            );
+            dst += 128;
+            src += 128;
+            size -= 128;
+        }
 
 
-    // 64 byte copy
-    while (size >= 64) {
-        asm volatile (
-            "movdqu 0(%[s]), %%xmm0\n\t"
-            "movdqu 16(%[s]), %%xmm1\n\t"
-            "movdqu 32(%[s]), %%xmm2\n\t"
-            "movdqu 48(%[s]), %%xmm3\n\t"
-            "movdqa %%xmm0, 0(%[d])\n\t"
-            "movdqa %%xmm1, 16(%[d])\n\t"
-            "movdqa %%xmm2, 32(%[d])\n\t"
-            "movdqa %%xmm3, 48(%[d])\n\t"
-            : [d] "+r"(dst), [s] "+r"(src)
-            :
-            : "xmm0","xmm1","xmm2","xmm3","memory"
-        );
-        dst += 64;
-        src += 64;
-        size -= 64;
-    }
+        // 64 byte copy
+        while (size >= 64) {
+            asm volatile (
+                "movdqa 0(%[s]), %%xmm0\n\t"
+                "movdqa 16(%[s]), %%xmm1\n\t"
+                "movdqa 32(%[s]), %%xmm2\n\t"
+                "movdqa 48(%[s]), %%xmm3\n\t"
+                "movdqa %%xmm0, 0(%[d])\n\t"
+                "movdqa %%xmm1, 16(%[d])\n\t"
+                "movdqa %%xmm2, 32(%[d])\n\t"
+                "movdqa %%xmm3, 48(%[d])\n\t"
+                : [d] "+r"(dst), [s] "+r"(src)
+                :
+                : "xmm0","xmm1","xmm2","xmm3","memory"
+            );
+            dst += 64;
+            src += 64;
+            size -= 64;
+        }
 
-    // remainder 16 byte chunks
-    while (size >= 16) {
-        asm volatile (
-            "movdqu (%[s]), %%xmm0\n\t"
-            "movdqa %%xmm0, (%[d])\n\t"
-            : [d] "+r"(dst), [s] "+r"(src)
-            :
-            : "xmm0","memory"
-        );
-        dst += 16;
-        src += 16;
-        size -= 16;
-    }
+        // remainder 16 byte chunks
+        while (size >= 16) {
+            asm volatile (
+                "movdqa (%[s]), %%xmm0\n\t"
+                "movdqa %%xmm0, (%[d])\n\t"
+                : [d] "+r"(dst), [s] "+r"(src)
+                :
+                : "xmm0","memory"
+            );
+            dst += 16;
+            src += 16;
+            size -= 16;
+        }
 
-    // tail bytes
-    while (size--) {
-        *dst++ = *src++;
+        // tail bytes
+        switch (size) {
+            case 15: dst[14] = src[14];
+            case 14: dst[13] = src[13];
+            case 13: dst[12] = src[12];
+            case 12: dst[11] = src[11];
+            case 11: dst[10] = src[10];
+            case 10: dst[9]  = src[9];
+            case  9: dst[8]  = src[8];
+            case  8: dst[7]  = src[7];
+            case  7: dst[6]  = src[6];
+            case  6: dst[5]  = src[5];
+            case  5: dst[4]  = src[4];
+            case  4: dst[3]  = src[3];
+            case  3: dst[2]  = src[2];
+            case  2: dst[1]  = src[1];
+            case  1: dst[0]  = src[0];
+            case  0: break;
+        }
+        return dstptr;
+    } else {
+        // unaligned src
+
+        // 128 byte copy
+        while (size >= 128) {
+            asm volatile (
+                "movdqu 0(%[s]), %%xmm0\n\t"
+                "movdqu 16(%[s]), %%xmm1\n\t"
+                "movdqu 32(%[s]), %%xmm2\n\t"
+                "movdqu 48(%[s]), %%xmm3\n\t"
+                "movdqu 64(%[s]), %%xmm4\n\t"
+                "movdqu 80(%[s]), %%xmm5\n\t"
+                "movdqu 96(%[s]), %%xmm6\n\t"
+                "movdqu 112(%[s]), %%xmm7\n\t"
+                "movdqa %%xmm0, 0(%[d])\n\t"
+                "movdqa %%xmm1, 16(%[d])\n\t"
+                "movdqa %%xmm2, 32(%[d])\n\t"
+                "movdqa %%xmm3, 48(%[d])\n\t"
+                "movdqa %%xmm4, 64(%[d])\n\t"
+                "movdqa %%xmm5, 80(%[d])\n\t"
+                "movdqa %%xmm6, 96(%[d])\n\t"
+                "movdqa %%xmm7, 112(%[d])\n\t"
+                : [d] "+r"(dst), [s] "+r"(src)
+                :
+                : "xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7","memory"
+            );
+            dst += 128;
+            src += 128;
+            size -= 128;
+        }
+
+
+        // 64 byte copy
+        while (size >= 64) {
+            asm volatile (
+                "movdqu 0(%[s]), %%xmm0\n\t"
+                "movdqu 16(%[s]), %%xmm1\n\t"
+                "movdqu 32(%[s]), %%xmm2\n\t"
+                "movdqu 48(%[s]), %%xmm3\n\t"
+                "movdqa %%xmm0, 0(%[d])\n\t"
+                "movdqa %%xmm1, 16(%[d])\n\t"
+                "movdqa %%xmm2, 32(%[d])\n\t"
+                "movdqa %%xmm3, 48(%[d])\n\t"
+                : [d] "+r"(dst), [s] "+r"(src)
+                :
+                : "xmm0","xmm1","xmm2","xmm3","memory"
+            );
+            dst += 64;
+            src += 64;
+            size -= 64;
+        }
+
+        // remainder 16 byte chunks
+        while (size >= 16) {
+            asm volatile (
+                "movdqu (%[s]), %%xmm0\n\t"
+                "movdqa %%xmm0, (%[d])\n\t"
+                : [d] "+r"(dst), [s] "+r"(src)
+                :
+                : "xmm0","memory"
+            );
+            dst += 16;
+            src += 16;
+            size -= 16;
+        }
+
+        // tail bytes
+        switch (size) {
+            case 15: dst[14] = src[14];
+            case 14: dst[13] = src[13];
+            case 13: dst[12] = src[12];
+            case 12: dst[11] = src[11];
+            case 11: dst[10] = src[10];
+            case 10: dst[9]  = src[9];
+            case  9: dst[8]  = src[8];
+            case  8: dst[7]  = src[7];
+            case  7: dst[6]  = src[6];
+            case  6: dst[5]  = src[5];
+            case  5: dst[4]  = src[4];
+            case  4: dst[3]  = src[3];
+            case  3: dst[2]  = src[2];
+            case  2: dst[1]  = src[1];
+            case  1: dst[0]  = src[0];
+            case  0: break;
+        }
+        return dstptr;
     }
-    return dstptr;
 }
 
 /**
@@ -266,81 +391,211 @@ void* memcpy_nt(void* restrict dstptr, const void* restrict srcptr, size_t size)
     if (mis) {
         size_t head = 16 - mis;
         if (head > size) head = size;
-        for (size_t i = 0; i < head; i++) {
-            *dst++ = *src++;
+
+        switch (head) {
+            case 15: dst[14] = src[14];
+            case 14: dst[13] = src[13];
+            case 13: dst[12] = src[12];
+            case 12: dst[11] = src[11];
+            case 11: dst[10] = src[10];
+            case 10: dst[9]  = src[9];
+            case  9: dst[8]  = src[8];
+            case  8: dst[7]  = src[7];
+            case  7: dst[6]  = src[6];
+            case  6: dst[5]  = src[5];
+            case  5: dst[4]  = src[4];
+            case  4: dst[3]  = src[3];
+            case  3: dst[2]  = src[2];
+            case  2: dst[1]  = src[1];
+            case  1: dst[0]  = src[0];
+            case  0: break;
         }
+
+        dst += head;
+        src += head;
         size -= head;
     }
 
-    // 128 byte copy
-    while (size >= 128) {
-        asm volatile (
-            "movdqu 0(%[s]), %%xmm0\n\t"
-            "movdqu 16(%[s]), %%xmm1\n\t"
-            "movdqu 32(%[s]), %%xmm2\n\t"
-            "movdqu 48(%[s]), %%xmm3\n\t"
-            "movdqu 64(%[s]), %%xmm4\n\t"
-            "movdqu 80(%[s]), %%xmm5\n\t"
-            "movdqu 96(%[s]), %%xmm6\n\t"
-            "movdqu 112(%[s]), %%xmm7\n\t"
-            "movntdq %%xmm0, 0(%[d])\n\t"
-            "movntdq %%xmm1, 16(%[d])\n\t"
-            "movntdq %%xmm2, 32(%[d])\n\t"
-            "movntdq %%xmm3, 48(%[d])\n\t"
-            "movntdq %%xmm4, 64(%[d])\n\t"
-            "movntdq %%xmm5, 80(%[d])\n\t"
-            "movntdq %%xmm6, 96(%[d])\n\t"
-            "movntdq %%xmm7, 112(%[d])\n\t"
-            : [d] "+r"(dst), [s] "+r"(src)
-            :
-            : "xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7","memory"
-        );
-        dst += 128;
-        src += 128;
-        size -= 128;
+    uintptr_t src_mis = (uintptr_t)src & 15;
+    if (mis == src_mis) {
+        // aligned src
+
+        // 128 byte copy
+        while (size >= 128) {
+            asm volatile (
+                "movdqa 0(%[s]), %%xmm0\n\t"
+                "movdqa 16(%[s]), %%xmm1\n\t"
+                "movdqa 32(%[s]), %%xmm2\n\t"
+                "movdqa 48(%[s]), %%xmm3\n\t"
+                "movdqa 64(%[s]), %%xmm4\n\t"
+                "movdqa 80(%[s]), %%xmm5\n\t"
+                "movdqa 96(%[s]), %%xmm6\n\t"
+                "movdqa 112(%[s]), %%xmm7\n\t"
+                "movntdq %%xmm0, 0(%[d])\n\t"
+                "movntdq %%xmm1, 16(%[d])\n\t"
+                "movntdq %%xmm2, 32(%[d])\n\t"
+                "movntdq %%xmm3, 48(%[d])\n\t"
+                "movntdq %%xmm4, 64(%[d])\n\t"
+                "movntdq %%xmm5, 80(%[d])\n\t"
+                "movntdq %%xmm6, 96(%[d])\n\t"
+                "movntdq %%xmm7, 112(%[d])\n\t"
+                : [d] "+r"(dst), [s] "+r"(src)
+                :
+                : "xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7","memory"
+            );
+            dst += 128;
+            src += 128;
+            size -= 128;
+        }
+
+
+        // 64 byte copy
+        while (size >= 64) {
+            asm volatile (
+                "movdqa 0(%[s]), %%xmm0\n\t"
+                "movdqa 16(%[s]), %%xmm1\n\t"
+                "movdqa 32(%[s]), %%xmm2\n\t"
+                "movdqa 48(%[s]), %%xmm3\n\t"
+                "movntdq %%xmm0, 0(%[d])\n\t"
+                "movntdq %%xmm1, 16(%[d])\n\t"
+                "movntdq %%xmm2, 32(%[d])\n\t"
+                "movntdq %%xmm3, 48(%[d])\n\t"
+                : [d] "+r"(dst), [s] "+r"(src)
+                :
+                : "xmm0","xmm1","xmm2","xmm3","memory"
+            );
+            dst += 64;
+            src += 64;
+            size -= 64;
+        }
+
+        // remainder 16 byte chunks
+        while (size >= 16) {
+            asm volatile (
+                "movdqa (%[s]), %%xmm0\n\t"
+                "movntdq %%xmm0, (%[d])\n\t"
+                : [d] "+r"(dst), [s] "+r"(src)
+                :
+                : "xmm0","memory"
+            );
+            dst += 16;
+            src += 16;
+            size -= 16;
+        }
+
+        // tail bytes
+        switch (size) {
+            case 15: dst[14] = src[14];
+            case 14: dst[13] = src[13];
+            case 13: dst[12] = src[12];
+            case 12: dst[11] = src[11];
+            case 11: dst[10] = src[10];
+            case 10: dst[9]  = src[9];
+            case  9: dst[8]  = src[8];
+            case  8: dst[7]  = src[7];
+            case  7: dst[6]  = src[6];
+            case  6: dst[5]  = src[5];
+            case  5: dst[4]  = src[4];
+            case  4: dst[3]  = src[3];
+            case  3: dst[2]  = src[2];
+            case  2: dst[1]  = src[1];
+            case  1: dst[0]  = src[0];
+            case  0: break;
+        }
+
+        // order streaming stores before returning
+        asm volatile("sfence");
+
+        return dstptr;
+    } else {
+        // unaligned src
+
+        // 128 byte copy
+        while (size >= 128) {
+            asm volatile (
+                "movdqu 0(%[s]), %%xmm0\n\t"
+                "movdqu 16(%[s]), %%xmm1\n\t"
+                "movdqu 32(%[s]), %%xmm2\n\t"
+                "movdqu 48(%[s]), %%xmm3\n\t"
+                "movdqu 64(%[s]), %%xmm4\n\t"
+                "movdqu 80(%[s]), %%xmm5\n\t"
+                "movdqu 96(%[s]), %%xmm6\n\t"
+                "movdqu 112(%[s]), %%xmm7\n\t"
+                "movntdq %%xmm0, 0(%[d])\n\t"
+                "movntdq %%xmm1, 16(%[d])\n\t"
+                "movntdq %%xmm2, 32(%[d])\n\t"
+                "movntdq %%xmm3, 48(%[d])\n\t"
+                "movntdq %%xmm4, 64(%[d])\n\t"
+                "movntdq %%xmm5, 80(%[d])\n\t"
+                "movntdq %%xmm6, 96(%[d])\n\t"
+                "movntdq %%xmm7, 112(%[d])\n\t"
+                : [d] "+r"(dst), [s] "+r"(src)
+                :
+                : "xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7","memory"
+            );
+            dst += 128;
+            src += 128;
+            size -= 128;
+        }
+
+
+        // 64 byte copy
+        while (size >= 64) {
+            asm volatile (
+                "movdqu 0(%[s]), %%xmm0\n\t"
+                "movdqu 16(%[s]), %%xmm1\n\t"
+                "movdqu 32(%[s]), %%xmm2\n\t"
+                "movdqu 48(%[s]), %%xmm3\n\t"
+                "movntdq %%xmm0, 0(%[d])\n\t"
+                "movntdq %%xmm1, 16(%[d])\n\t"
+                "movntdq %%xmm2, 32(%[d])\n\t"
+                "movntdq %%xmm3, 48(%[d])\n\t"
+                : [d] "+r"(dst), [s] "+r"(src)
+                :
+                : "xmm0","xmm1","xmm2","xmm3","memory"
+            );
+            dst += 64;
+            src += 64;
+            size -= 64;
+        }
+
+        // remainder 16 byte chunks
+        while (size >= 16) {
+            asm volatile (
+                "movdqu (%[s]), %%xmm0\n\t"
+                "movntdq %%xmm0, (%[d])\n\t"
+                : [d] "+r"(dst), [s] "+r"(src)
+                :
+                : "xmm0","memory"
+            );
+            dst += 16;
+            src += 16;
+            size -= 16;
+        }
+
+        // tail bytes
+        switch (size) {
+            case 15: dst[14] = src[14];
+            case 14: dst[13] = src[13];
+            case 13: dst[12] = src[12];
+            case 12: dst[11] = src[11];
+            case 11: dst[10] = src[10];
+            case 10: dst[9]  = src[9];
+            case  9: dst[8]  = src[8];
+            case  8: dst[7]  = src[7];
+            case  7: dst[6]  = src[6];
+            case  6: dst[5]  = src[5];
+            case  5: dst[4]  = src[4];
+            case  4: dst[3]  = src[3];
+            case  3: dst[2]  = src[2];
+            case  2: dst[1]  = src[1];
+            case  1: dst[0]  = src[0];
+            case  0: break;
+        }
+
+        // order streaming stores before returning
+        asm volatile("sfence");
+
+        return dstptr;
     }
-
-
-    // 64 byte copy
-    while (size >= 64) {
-        asm volatile (
-            "movdqu 0(%[s]), %%xmm0\n\t"
-            "movdqu 16(%[s]), %%xmm1\n\t"
-            "movdqu 32(%[s]), %%xmm2\n\t"
-            "movdqu 48(%[s]), %%xmm3\n\t"
-            "movntdq %%xmm0, 0(%[d])\n\t"
-            "movntdq %%xmm1, 16(%[d])\n\t"
-            "movntdq %%xmm2, 32(%[d])\n\t"
-            "movntdq %%xmm3, 48(%[d])\n\t"
-            : [d] "+r"(dst), [s] "+r"(src)
-            :
-            : "xmm0","xmm1","xmm2","xmm3","memory"
-        );
-        dst += 64;
-        src += 64;
-        size -= 64;
-    }
-
-    // remainder 16 byte chunks
-    while (size >= 16) {
-        asm volatile (
-            "movdqu (%[s]), %%xmm0\n\t"
-            "movntdq %%xmm0, (%[d])\n\t"
-            : [d] "+r"(dst), [s] "+r"(src)
-            :
-            : "xmm0","memory"
-        );
-        dst += 16;
-        src += 16;
-        size -= 16;
-    }
-
-    // tail bytes
-    while (size--) {
-        *dst++ = *src++;
-    }
-
-    // order streaming stores before returning
-    asm volatile("sfence");
-    return dstptr;
 }
