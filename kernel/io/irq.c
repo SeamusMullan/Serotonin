@@ -16,6 +16,7 @@ static int ps2_mouse_packet_index = 0;
 static int mouse_x = 0;
 static int mouse_y = 0;
 
+
 /**
  * @brief Handle IRQ (Interrupt Request) signals.
  *
@@ -52,15 +53,24 @@ void irq_handler(int irq, processor_context_t *ctx) {
         ps2_mouse_packet[ps2_mouse_packet_index++] = mouse_data;
 
         if (ps2_mouse_packet_index == 3) {
+            vbe_z_fillrect(1, mouse_x, mouse_y, 50, 50, 0x00000000);
+
             int left = ps2_mouse_packet[0] & 0x01;
             int right = ps2_mouse_packet[0] & 0x02;
             int middle = ps2_mouse_packet[0] & 0x04;
 
-            int dx = (int8_t)ps2_mouse_packet[1];
-            int dy = (int8_t)ps2_mouse_packet[2];
+            int rel_x = ps2_mouse_packet[1];
+            if (ps2_mouse_packet[0] & 0x10) { // x sign bit
+                rel_x -= 256;
+            }
 
-            mouse_x += dx;
-            mouse_y -= dy;
+            int rel_y = ps2_mouse_packet[2];
+            if (ps2_mouse_packet[0] & 0x20) { // y sign bit
+                rel_y -= 256;
+            }
+
+            mouse_x += rel_x;
+            mouse_y -= rel_y;
 
             if (mouse_x < 0) mouse_x = 0;
             if (mouse_y < 0) mouse_y = 0;
@@ -69,14 +79,10 @@ void irq_handler(int irq, processor_context_t *ctx) {
 
             ps2_mouse_packet_index = 0;
 
-            vbe_set_cursor(0,0);
-            printf("Mouse abs: x=%d y=%d (dx=%d dy=%d) L=%d R=%d M=%d       \n", mouse_x, mouse_y, dx, dy, left, right, middle);
+            vbe_z_fillrect(1, mouse_x, mouse_y, 50, 50, 0xAE65E2FD);
 
-            vbe_clear_z_layer(1, 0x00000000);
-            for (int x = 0; x < 50; x++)
-                for (int y = 0; y < 50; y++)
-                    vbe_z_putpixel(1, (uint32_t)mouse_x+x, (uint32_t)mouse_y+y, 0x443300FF);
-            vbe_flip_all();
+            vbe_set_cursor(0,0);
+            printf("Mouse abs: x=%d y=%d (dx=%d dy=%d) L=%d R=%d M=%d       \n", mouse_x, mouse_y, rel_x, rel_y, left, right, middle);
         }
         goto end_irq;
     } else if (irq == IRQ_RTC) {

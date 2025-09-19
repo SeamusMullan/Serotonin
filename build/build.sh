@@ -54,7 +54,7 @@ i686-elf-gcc -c vmm/paging_init.c -o vmm/paging_init.o -std=gnu99 -ffreestanding
 i686-elf-gcc -c vmm/vmm.c -o vmm/vmm.o -std=gnu99 -ffreestanding -O0 -Wall -Wextra
 
 i686-elf-gcc -c video/font.c -o video/font.o $CFLAGS
-i686-elf-gcc -c video/vbe/vbe.c -o video/vbe/vbe.o $CFLAGS
+i686-elf-gcc -c video/vbe/vbe.c -o video/vbe/vbe.o $CFLAGS -mstackrealign
 i686-elf-gcc -c video/splash.c -o video/splash.o $CFLAGS
 i686-elf-gcc -c video/pipes.c -o video/pipes.o $CFLAGS
 
