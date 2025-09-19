@@ -81,8 +81,8 @@ void irq_handler(int irq, processor_context_t *ctx) {
 
             vbe_z_fillrect(1, mouse_x, mouse_y, 50, 50, 0xAE65E2FD);
 
-                vbe_set_cursor(0,0);
-                printf("Mouse abs: x=%d y=%d (dx=%d dy=%d) L=%d R=%d M=%d       \n", mouse_x, mouse_y, rel_x, rel_y, left, right, middle);
+            vbe_set_cursor(0,0);
+            printf("Mouse abs: x=%d y=%d (dx=%d dy=%d) L=%d R=%d M=%d       \n", mouse_x, mouse_y, rel_x, rel_y, left, right, middle);
         }
         goto end_irq;
     } else if (irq == IRQ_RTC) {

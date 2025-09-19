@@ -139,7 +139,7 @@ void ps2_mouse_init(void) {
         ps2_send_mouse_command(PS2_MOUSE_ENABLE_PACKET_STREAMING);
         uint8_t ack = ps2_read_mouse_response();
         if (ack != PS2_MOUSE_ACK) return;
-        ps2_mouse_set_sample_rate(250);
+        ps2_mouse_set_sample_rate(200);
         enable_interrupts();
     } else {
         printfs(PRINT_STATUS_ERROR, "Something went wrong while trying to init ps/2 mouse: %p\n",response);
