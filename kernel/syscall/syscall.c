@@ -65,7 +65,9 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
 
             file_handle_t *handle = current_task->fd_table[fd];
 
-            int written = vfs_write(handle->node, 0, buf_size, write_ptr);
+            int written = vfs_write(handle->node, handle->offset, buf_size, write_ptr);
+
+            handle->offset += written;
             ctx->eax = written;
             break;
     }
@@ -165,6 +167,7 @@ static void sys_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
     handle->refcount = 1;
 
     int fd = alloc_fd(current_task, handle);
+
     if (fd < 0) {
         vfs_close(node);
         kernel_free(handle);
@@ -304,6 +307,33 @@ static void sys_waitpid(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) 
     return;
 }
 
+static int sys_lseek(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
+    int fd = arg2;
+    int offset = (uint32_t)arg3;
+    int whence = (uint32_t)arg4;
+
+    if (fd >= FD_MAX || current_task->fd_table[fd] == NULL) {
+        handle_illegal_call(arg2, arg3, arg4, ctx->eip);
+        __builtin_unreachable();
+    }
+
+    file_handle_t *handle = current_task->fd_table[fd];
+
+    int new_offset;
+    switch (whence) {
+        case SEEK_SET:
+            new_offset = offset;
+            break;
+        default:
+            handle_illegal_call(arg2, arg3, arg4, ctx->eip);
+            __builtin_unreachable();
+    }
+
+    handle->offset = new_offset;
+    ctx->eax = new_offset;
+    return new_offset;
+}
+
 /**
  * @brief Handle system calls.
  *
@@ -351,6 +381,9 @@ void system_call(processor_context_t *ctx) {
         case SYSTEM_CALL_WAITPID:
             sys_waitpid(arg2, arg3, ctx);
             break;
+        case SYSTEM_CALL_LSEEK:
+            sys_lseek(arg2, arg3, arg4, ctx);
+            return;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);
             __builtin_unreachable();

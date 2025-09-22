@@ -64,6 +64,12 @@ enum {
     READ_STDIN = 0
 };
 
+enum {
+    SEEK_SET = 0,
+    SEEK_CUR = 1,
+    SEEK_END = 2
+};
+
 void system_call(processor_context_t *ctx);
 extern void isr_syscall(void);
 
