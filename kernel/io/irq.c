@@ -1,4 +1,5 @@
 #include "io.h"
+#include "serial.h"
 #include "../stdio/stdio.h"
 #include "../stdlib/stdlib.h"
 #include "../schedule/schedule.h"
@@ -41,6 +42,7 @@ void irq_handler(int irq, processor_context_t *ctx) {
         // fires every keypress
         uint8_t scancode = inb(PS2_DATA_PORT);
         handle_scancode(scancode);
+        goto end_irq;
     } else if (irq == IRQ_MOUSE) {
         uint8_t mouse_data = inb(PS2_DATA_PORT);
 

@@ -9,6 +9,7 @@
 #include "../filesystem/vfs.h"
 #include "../filesystem/user_fs/user_fs.h"
 #include "../video/vbe/vbe.h"
+#include "../io/serial.h"
 #include <stdint.h>
 
 
@@ -50,8 +51,10 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
 
     switch (arg2) {
         case WRITE_STDOUT:
-            printf("%s", write_ptr);
+            vbe_terminal_puts(write_ptr);
+            serial_puts(COM1_BASE, write_ptr);
             ctx->eax = buf_size;
+            vbe_flip();
             break;
         case WRITE_STDERR:
             printfs(PRINT_STATUS_ERROR, "%s", write_ptr);

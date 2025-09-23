@@ -24,6 +24,7 @@
 #include "gdt.h"
 #include "audio/startup/opl2_sound/opl2_startup.h"
 #include "video/pipes.h"
+#include "io/serial.h"
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 2
@@ -733,6 +734,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     struct idt_ptr idtp_read;
     asm volatile ("sidt %0" : "=m"(idtp_read));
     enable_interrupts();
+    serial_init(COM1_BASE);
     vbe_init(mbi);
     vbe_palette_init();
     vbe_flip();
