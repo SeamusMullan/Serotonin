@@ -124,51 +124,15 @@ void* memset(void* bufptr, int value, size_t size) {
         n -= head;
     }
 
-    // SSE2 main loop: 128 bytes at a time
-    if (n >= 128) {
-        uint32_t cnt = (uint8_t)value;
-        cnt |= cnt << 8;
-        cnt |= cnt << 16;
+    // SSE2 main loop: 16 bytes at a time
+    if (n >= 16) {
+        uint32_t c = (uint8_t)value;
+        c |= c << 8;
+        c |= c << 16;
         asm volatile (
             "movd   %0, %%xmm0       \n\t" // load 32‐bit
             "pshufd $0, %%xmm0, %%xmm0\n\t" // broadcast to all lanes
-            "movdqa %%xmm0, %%xmm1      \n\t"
-            "movdqa %%xmm0, %%xmm2      \n\t"
-            "movdqa %%xmm0, %%xmm3      \n\t"
-            "movdqa %%xmm0, %%xmm4      \n\t"
-            "movdqa %%xmm0, %%xmm5      \n\t"
-            "movdqa %%xmm0, %%xmm6      \n\t"
-            "movdqa %%xmm0, %%xmm7      \n\t"
-            "1:                         \n\t"
-            "movdqa %%xmm0,   0(%[p])   \n\t"
-            "movdqa %%xmm1,  16(%[p])   \n\t"
-            "movdqa %%xmm2,  32(%[p])   \n\t"
-            "movdqa %%xmm3,  48(%[p])   \n\t"
-            "movdqa %%xmm4,  64(%[p])   \n\t"
-            "movdqa %%xmm5,  80(%[p])   \n\t"
-            "movdqa %%xmm6,  96(%[p])   \n\t"
-            "movdqa %%xmm7, 112(%[p])   \n\t"
-            "add    $128, %[p]          \n\t"
-            "dec    %[c]                \n\t"
-            "jnz    1b                  \n\t"
-            : [p] "+r"(dst), [c] "+r"(cnt)
-            :
-            : "xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7","memory"
-        );
-
-        n &= 127;
-    }
-
-    // handle any remaining 16-byte chunks
-    if (n >= 16) {
-        uint32_t cnt = (uint8_t)value;
-        cnt |= cnt << 8;
-        cnt |= cnt << 16;
-
-        asm volatile (
-            "movd   %[cnt], %%xmm0       \n\t"
-            "pshufd $0, %%xmm0, %%xmm0 \n\t"
-            : : [cnt]"r"(cnt) : "xmm0"
+            : : "r"(c) : "xmm0"
         );
 
         size_t cnt = n / 16;
