@@ -718,6 +718,7 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
  */
 void kernel_main_high(unsigned long magic, unsigned long addr)
 {
+    serial_puts(COM1_BASE,"init_high: in higher half\n");
     if (magic != MULTIBOOT_BOOTLOADER_MAGIC)
     {
         kernel_panic("multiboot - invalid magic number");
@@ -727,19 +728,31 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     const char *cmdline = (const char *)(uintptr_t)mbi->cmdline;
     char* cpu_manufacturer = kernel_get_cpu_manufacturer();
 
+    serial_puts(COM1_BASE,"init_high: initializing rtc\n");
+
     rtc_init();
+
+    serial_puts(COM1_BASE,"init_high: remapping pic\n");
+
     pic_remap(0x20, 0x28);
+
+    serial_puts(COM1_BASE,"init_high: initializing idt\n");
 
     init_idt();
     struct idt_ptr idtp_read;
     asm volatile ("sidt %0" : "=m"(idtp_read));
+    serial_puts(COM1_BASE,"init_high: irqs ready\n");
     enable_interrupts();
-    serial_init(COM1_BASE);
+
     vbe_init(mbi);
     vbe_palette_init();
     vbe_flip();
     splash_render(0,0);
     //create_color_render(275);
+
+    serial_puts(COM1_BASE,"init_high: framebuffer ready, early init complete\n");
+
+    kernel_panic("a generic panic");
 
     printfs_set_mask(
         (1 << PRINT_STATUS_WARNING) |
@@ -856,14 +869,37 @@ __attribute__((target("no-sse"))) __attribute__((section(".identity"))) void ker
 
     paging_init((uintptr_t)mbi->framebuffer_addr);
 
+    serial_init(COM1_BASE);
+
+    serial_puts(COM1_BASE, "init: paging enabled\n");
+
     kernel_setup_fpu();
+
+    serial_puts(COM1_BASE, "init: fpu, sse2 enabled\n");
 
     uint32_t kernel_phys_start = (uint32_t)__kernel_load_base;
     uint32_t kernel_phys_end   = (uint32_t)__kernel_end - (uint32_t)__kernel_virtual_base + (uint32_t)__kernel_load_base;
     buddy_init(mbi, kernel_phys_start, kernel_phys_end, (uint32_t)mbi->framebuffer_addr, (uint32_t)(mbi->framebuffer_height) * (uint32_t)(mbi->framebuffer_pitch));
+    
+    serial_puts(COM1_BASE, "init: physical memory manager initialized\n");
+    
     vmm_init();
 
-    kernel_main_high(arg1,arg2);
+    serial_puts(COM1_BASE, "init: virtual memory manager initialized\n");
 
-    kernel_panic("returned from higher half kernel!");
+    serial_puts(COM1_BASE, "init: jumping to higher half kernel\n");
+
+    uint32_t kernel_esp = 0xF03FFFFF;
+
+    asm volatile (
+        "movl %0, %%esp\n"
+        "xor %%ebp, %%ebp\n"
+        "pushl %2\n"
+        "pushl %1\n"
+        "pushl $0\n"
+        "jmp kernel_main_high"
+        :
+        : "r"(kernel_esp), "r"(arg1), "r"(arg2)
+        : "memory"
+    );
 }
