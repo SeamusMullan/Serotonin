@@ -752,8 +752,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     serial_puts(COM1_BASE,"init_high: framebuffer ready, early init complete\n");
 
-    kernel_panic("a generic panic");
-
     printfs_set_mask(
         (1 << PRINT_STATUS_WARNING) |
         (1 << PRINT_STATUS_ERROR) |
