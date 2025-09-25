@@ -10,10 +10,12 @@
 #include "../filesystem/user_fs/user_fs.h"
 #include "../video/vbe/vbe.h"
 #include "../io/serial.h"
+#include "sys/errno.h"
 #include <stdint.h>
 
 
 static uint32_t next_fd = FIRST_FD;
+static int errno = 0;
 
 /**
  * @brief Handle illegal system calls.
@@ -53,12 +55,12 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
         case WRITE_STDOUT:
             vbe_terminal_puts(write_ptr);
             serial_puts(COM1_BASE, write_ptr);
-            ctx->eax = buf_size;
+            errno = buf_size;
             vbe_flip();
             break;
         case WRITE_STDERR:
             printfs(PRINT_STATUS_ERROR, "%s", write_ptr);
-            ctx->eax = buf_size;
+            errno = buf_size;
             break;
         default:
             if (fd >= FD_MAX || current_task->fd_table[fd] == NULL) {
@@ -71,7 +73,7 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
             int written = vfs_write(handle->node, handle->offset, buf_size, write_ptr);
 
             handle->offset += written;
-            ctx->eax = written;
+            errno = written;
             break;
     }
 }
@@ -128,7 +130,7 @@ static void sys_fork(processor_context_t *ctx) {
     memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
     process_control_block_t *pcb = task_fork(current_task);
     enqueue(pcb);
-    ctx->eax = pcb->pid;
+    errno = pcb->pid;
     pcb->processor_context->eax = 0;
 }
 
@@ -138,7 +140,7 @@ static void sys_fork(processor_context_t *ctx) {
  * @param ctx The processor context.
  */
 static void sys_get_pid(processor_context_t *ctx) {
-    ctx->eax = current_task->pid;
+    errno = current_task->pid;
 }
 
 /**
@@ -156,12 +158,12 @@ static void sys_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
 
     vfs_node_t *node = vfs_open(path);
     if (!node)
-        ctx->eax = (uint32_t)-1;
+        errno = -ENOENT;
 
     file_handle_t *handle = kernel_malloc(sizeof(file_handle_t));
     if (!handle) {
         vfs_close(node);
-        ctx->eax = (uint32_t)-1;
+        errno = -EIO;
     }
 
     handle->node = node;
@@ -176,7 +178,7 @@ static void sys_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
         kernel_free(handle);
     }
 
-    ctx->eax = (uint32_t)fd;
+    errno = fd;
 }
 
 /**
@@ -263,7 +265,7 @@ static void sys_sbrk(uint32_t arg2, processor_context_t *ctx) {
     uint32_t new_brk = old_brk + arg2;
 
     if (new_brk < brk_start || new_brk >= USER_HEAP_MAX) {
-        ctx->eax = -1;
+        errno = -ENOMEM;
     }
 
     if (increment > 0) {
@@ -282,7 +284,7 @@ static void sys_sbrk(uint32_t arg2, processor_context_t *ctx) {
     }
 
     current_task->brk_end = new_brk;
-    ctx->eax = old_brk;
+    errno = old_brk;
 }
 
 static void sys_waitpid(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) {
@@ -294,7 +296,7 @@ static void sys_waitpid(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) 
         target = target->next;
 
     if (!target) {
-        ctx->eax = -1;
+        errno = -ESRCH;
         return;
     }
 
@@ -333,7 +335,7 @@ static int sys_lseek(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
     }
 
     handle->offset = new_offset;
-    ctx->eax = new_offset;
+    errno = new_offset;
     return new_offset;
 }
 
@@ -344,6 +346,8 @@ static int sys_lseek(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
  */
 void system_call(processor_context_t *ctx) {
     preempt_disable();
+
+    errno = 0;
 
     uint32_t operation = ctx->eax;
     uint32_t arg2      = ctx->ebx;
@@ -391,6 +395,8 @@ void system_call(processor_context_t *ctx) {
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);
             __builtin_unreachable();
     }
+
+    ctx->eax = errno;
 
     preempt_enable();
 }
