@@ -132,6 +132,13 @@ void page_fault_handler(uint32_t error_code) {
 
     if (multitasking_ready == 1) {
         printfs(PRINT_STATUS_ERROR,"Process \"%s\" (pid=%d) has attempted an illegal operation on memory and will be terminated.\n", current_task->name,current_task->pid);
+        printfs(PRINT_STATUS_ERROR,"Register dump:\n");
+        printfs(PRINT_STATUS_ERROR,"EAX: 0x%08x EBX: 0x%08x ECX: 0x%08x EDX: 0x%08x\n", current_task->processor_context->eax, current_task->processor_context->ebx, current_task->processor_context->ecx, current_task->processor_context->edx);
+        printfs(PRINT_STATUS_ERROR,"ESI: 0x%08x EDI: 0x%08x EBP: 0x%08x ESP: 0x%08x\n", current_task->processor_context->esi, current_task->processor_context->edi, current_task->processor_context->ebp, current_task->processor_context->esp_at_trap);
+        printfs(PRINT_STATUS_ERROR,"EIP: 0x%08x EFLAGS: 0x%08x\n", current_task->processor_context->eip, current_task->processor_context->eflags);
+        printfs(PRINT_STATUS_ERROR,"CS: 0x%08x DS: 0x%08x ES: 0x%08x FS: 0x%08x GS: 0x%08x SS: 0x%08x\n",
+                current_task->processor_context->cs, current_task->processor_context->ds, current_task->processor_context->es,
+                current_task->processor_context->fs, current_task->processor_context->gs, current_task->processor_context->ss);
         task_exit(EXIT_SIGSEGV);
         return;
     }
@@ -149,6 +156,13 @@ void gp_fault_handler(uint32_t error_code) {
 
     if (multitasking_ready == 1) {
         printfs(PRINT_STATUS_ERROR,"Process \"%s\" (pid=%d) has attempted to execute an illegal instruction and will be terminated.\n", current_task->name,current_task->pid);
+        printfs(PRINT_STATUS_ERROR,"Register dump:\n");
+        printfs(PRINT_STATUS_ERROR,"EAX: 0x%08x EBX: 0x%08x ECX: 0x%08x EDX: 0x%08x\n", current_task->processor_context->eax, current_task->processor_context->ebx, current_task->processor_context->ecx, current_task->processor_context->edx);
+        printfs(PRINT_STATUS_ERROR,"ESI: 0x%08x EDI: 0x%08x EBP: 0x%08x ESP: 0x%08x\n", current_task->processor_context->esi, current_task->processor_context->edi, current_task->processor_context->ebp, current_task->processor_context->esp_at_trap);
+        printfs(PRINT_STATUS_ERROR,"EIP: 0x%08x EFLAGS: 0x%08x\n", current_task->processor_context->eip, current_task->processor_context->eflags);
+        printfs(PRINT_STATUS_ERROR,"CS: 0x%08x DS: 0x%08x ES: 0x%08x FS: 0x%08x GS: 0x%08x SS: 0x%08x\n",
+                current_task->processor_context->cs, current_task->processor_context->ds, current_task->processor_context->es,
+                current_task->processor_context->fs, current_task->processor_context->gs, current_task->processor_context->ss);
         task_exit(EXIT_SIGILL);
         return;
     }
@@ -163,6 +177,13 @@ void gp_fault_handler(uint32_t error_code) {
 void div_zero_fault_handler(void) {
     if (multitasking_ready == 1) {
         printfs(PRINT_STATUS_ERROR,"Process \"%s\" attempted to divide by zero and will be terminated.\n",current_task->name);
+        printfs(PRINT_STATUS_ERROR,"Register dump:\n");
+        printfs(PRINT_STATUS_ERROR,"EAX: 0x%08x EBX: 0x%08x ECX: 0x%08x EDX: 0x%08x\n", current_task->processor_context->eax, current_task->processor_context->ebx, current_task->processor_context->ecx, current_task->processor_context->edx);
+        printfs(PRINT_STATUS_ERROR,"ESI: 0x%08x EDI: 0x%08x EBP: 0x%08x ESP: 0x%08x\n", current_task->processor_context->esi, current_task->processor_context->edi, current_task->processor_context->ebp, current_task->processor_context->esp_at_trap);
+        printfs(PRINT_STATUS_ERROR,"EIP: 0x%08x EFLAGS: 0x%08x\n", current_task->processor_context->eip, current_task->processor_context->eflags);
+        printfs(PRINT_STATUS_ERROR,"CS: 0x%08x DS: 0x%08x ES: 0x%08x FS: 0x%08x GS: 0x%08x SS: 0x%08x\n",
+                current_task->processor_context->cs, current_task->processor_context->ds, current_task->processor_context->es,
+                current_task->processor_context->fs, current_task->processor_context->gs, current_task->processor_context->ss);
         task_exit(EXIT_SIGILL);
         return;
     }
