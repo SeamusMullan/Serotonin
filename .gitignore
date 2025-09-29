@@ -8,3 +8,6 @@ build-tools/src
 docs/html
 docs/latex
 docs/Doxyfile
+.DS_Store
+user/init/init
+user/init/test

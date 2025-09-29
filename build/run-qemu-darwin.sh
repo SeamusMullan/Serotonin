@@ -1,7 +1,12 @@
 
 #!/usr/bin/env bash
+
 set -euo pipefail
 
+# --- Configuration ---
+IMG_FILE="serotonin.img"
+IMG_SIZE_MB=1024 # Size in MB
+VOLUME_NAME="SEROTONIN"
 # Resolve script directory to ensure relative paths work regardless of CWD
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -19,6 +24,7 @@ if [[ -z "${DISK_IMAGE}" ]]; then
 		DISK_IMAGE=""
 	fi
 fi
+
 
 # Basic sanity checks with friendly messages
 if [[ ! -f "$ISO" ]]; then
