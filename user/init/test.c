@@ -1,3 +1,4 @@
+#include "../../kernel/syscall/sys/file.h" // :troll:
 #include <stdint.h>
 
 /**
@@ -76,6 +77,19 @@ int main(int argc, char **argv, char **envp) {
             system_call(14, fd, 0, 0);
             system_call(2, fd, (uint32_t)read_buf, 12);
             system_call(1, 0, (uint32_t)read_buf, 0); 
+
+            strdbg = "\nTest 2.4: Filesystem test, trying fstat()";
+            system_call(1, 0, (uint32_t)strdbg, 0);
+            struct stat st = {0};
+            int stat_res = system_call(16, fd, (uint32_t)&st, 0);
+            if (stat_res == 0) {
+                strdbg = ".. PASS\n";
+                system_call(1, 0, (uint32_t)strdbg, 0); 
+            } else {
+                strdbg = ".. FAIL\n";
+                system_call(1, 0, (uint32_t)strdbg, 0); 
+            }
+
             strdbg = "\nClosing file...";
             system_call(1, 0, (uint32_t)strdbg, 0); 
             system_call(8, fd, 0, 0);
