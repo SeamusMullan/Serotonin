@@ -30,7 +30,8 @@ enum {
     SYSTEM_CALL_LINK     = 13,
     SYSTEM_CALL_LSEEK    = 14,
     SYSTEM_CALL_STAT     = 15,
-    SYSTEM_CALL_FSTAT    = 16
+    SYSTEM_CALL_FSTAT    = 16,
+    SYSTEM_CALL_KILL     = 17
 };
 
 /**
