@@ -1,6 +1,9 @@
 #ifndef _SYS_FILE
 #define _SYS_FILE
 
+#include "types.h"
+#include "timespec.h"
+
 #define	_FOPEN		(-1)	/* from sys/file.h, kernel use only */
 #define	_FREAD		0x0001	/* read enabled */
 #define	_FWRITE		0x0002	/* write enabled */
@@ -34,5 +37,22 @@
 #define O_SYNC		_FSYNC
 #define O_NONBLOCK _FNDELAY
 #define O_NOCTTY _FNOCTTY
+
+struct stat 
+{
+    dev_t		st_dev;
+    ino_t		st_ino;
+    mode_t	st_mode;
+    nlink_t	st_nlink;
+    uid_t		st_uid;
+    gid_t		st_gid;
+    dev_t		st_rdev;
+    off_t		st_size;
+    struct timespec st_atim;
+    struct timespec st_mtim;
+    struct timespec st_ctim;
+    blksize_t     st_blksize;
+    blkcnt_t	st_blocks;
+};
 
 #endif

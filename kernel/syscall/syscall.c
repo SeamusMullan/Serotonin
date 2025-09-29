@@ -11,6 +11,9 @@
 #include "../video/vbe/vbe.h"
 #include "../io/serial.h"
 #include "sys/errno.h"
+#include "sys/types.h"
+#include "sys/timespec.h"
+#include "sys/file.h"
 #include <stdint.h>
 
 
@@ -312,7 +315,7 @@ static void sys_waitpid(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) 
     return;
 }
 
-static int sys_lseek(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
+static void sys_lseek(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
     int fd = arg2;
     int offset = (uint32_t)arg3;
     int whence = (uint32_t)arg4;
@@ -336,7 +339,30 @@ static int sys_lseek(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
 
     handle->offset = new_offset;
     errno = new_offset;
-    return new_offset;
+}
+
+static void sys_fstat(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) {
+    int fd = arg2;
+    struct stat *statbuf = (struct stat*)arg3;
+
+    if (fd >= FD_MAX || current_task->fd_table[fd] == NULL) {
+        handle_illegal_call(arg2, arg3, 0, ctx->eip);
+        __builtin_unreachable();
+    }
+
+    file_handle_t *handle = current_task->fd_table[fd];
+    vfs_node_t *node = handle->node;
+
+    struct stat *k_statbuf = (struct stat*)kernel_malloc_align(sizeof(struct stat), 16);
+    memset(k_statbuf, 0, sizeof(struct stat));
+    k_statbuf->st_ino = node->inode;
+    k_statbuf->st_mode = node->flags;
+    k_statbuf->st_size = node->size;
+
+    memcpy(statbuf, k_statbuf, sizeof(struct stat));
+    kernel_free(k_statbuf);
+
+    errno = 0;
 }
 
 /**
@@ -390,7 +416,10 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_LSEEK:
             sys_lseek(arg2, arg3, arg4, ctx);
-            return;
+            break;
+        case SYSTEM_CALL_FSTAT:
+            sys_fstat(arg2, arg3, ctx);
+            break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);
             __builtin_unreachable();
