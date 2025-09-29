@@ -27,6 +27,7 @@ typedef struct {
 
 /* Number conversion functions */
 void itoa(int value, char* str);
+int map_range(int input, int in_min, int in_max, int out_min, int out_max);
 void utoa_hex(uint32_t value, char* str);
 void utoa(uint32_t value, char* str);
 void ltoa(long value, char* buffer);

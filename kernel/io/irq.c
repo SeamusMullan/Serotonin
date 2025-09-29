@@ -17,7 +17,6 @@ static int ps2_mouse_packet_index = 0;
 static int mouse_x = 0;
 static int mouse_y = 0;
 
-
 /**
  * @brief Handle IRQ (Interrupt Request) signals.
  *
@@ -81,7 +80,16 @@ void irq_handler(int irq, processor_context_t *ctx) {
 
             ps2_mouse_packet_index = 0;
 
-            vbe_z_fillrect(1, mouse_x, mouse_y, 50, 50, 0xAE65E2FD);
+            int r = map_range(mouse_x, 0, SCREEN_WIDTH, 127, 255);
+            int g = map_range(mouse_y, 0, SCREEN_HEIGHT, 127, 255);
+            int b = abs(r - g);
+            if (b > 255) b = 255;
+            if (b < 127) b=127;
+
+            int a = 0xAA;
+            int col = (a << 24) | (r << 16) | (g << 8) | b;
+
+            vbe_z_fillrect(1, mouse_x, mouse_y, 50, 50, col);
 
             vbe_set_cursor(0,0);
             printf("Mouse abs: x=%d y=%d (dx=%d dy=%d) L=%d R=%d M=%d       \n", mouse_x, mouse_y, rel_x, rel_y, left, right, middle);
