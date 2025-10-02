@@ -1,3 +1,6 @@
+.extern __libc_init_array
+.extern _exit
+
 .global _start
 _start:
     movl (%esp), %eax
@@ -7,10 +10,9 @@ _start:
     pushl %ecx
     pushl %ebx
     pushl %eax
+    call __libc_init_array
+    addl $12, %esp
     call main
 
-    movl %eax, %ebx
-    movl $0, %eax
-    movl $0, %ecx
-    movl $0, %edx
-    int $0x80
+    pushl %eax
+    call _exit
