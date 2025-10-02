@@ -51,8 +51,8 @@ enum {
  * This enum defines the various write system calls available in the kernel.
  */
 enum {
-    WRITE_STDOUT = 0,
-    WRITE_STDERR = 1,
+    WRITE_STDERR = 0,
+    WRITE_STDOUT = 1,
     WRITE_FRMBUF = 2
 };
 

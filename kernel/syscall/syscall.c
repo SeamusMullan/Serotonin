@@ -56,13 +56,18 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
 
     switch (arg2) {
         case WRITE_STDOUT:
-            vbe_terminal_puts(write_ptr);
-            serial_puts(COM1_BASE, write_ptr);
+            for (uint32_t i = 0; i < buf_size; i++) {
+                vbe_terminal_putchar(write_ptr[i]);
+                serial_putchar(COM1_BASE, write_ptr[i]);
+            }
             errno = buf_size;
             vbe_flip();
             break;
         case WRITE_STDERR:
-            printfs(PRINT_STATUS_ERROR, "%s", write_ptr);
+            for (uint32_t i = 0; i < buf_size; i++) {
+                vbe_terminal_putchar(write_ptr[i]);
+                serial_putchar(COM1_BASE, write_ptr[i]);
+            }
             errno = buf_size;
             break;
         default:
@@ -274,7 +279,7 @@ static void sys_sbrk(uint32_t arg2, processor_context_t *ctx) {
     if (increment > 0) {
         for (uint32_t va = old_brk; va < new_brk; va += PAGE_SIZE) {
             uint32_t frame = (uint32_t)alloc_frame();
-            map_page(current_task->address_space, va, frame, USER_PAGE_FLAGS, 0);
+            map_page(current_task->address_space, va, frame, USER_PAGE_FLAGS, 1);
         }
     } else if (increment < 0) {
         for (uint32_t va = new_brk; va < old_brk; va += PAGE_SIZE) {
@@ -345,24 +350,40 @@ static void sys_fstat(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) {
     int fd = arg2;
     struct stat *statbuf = (struct stat*)arg3;
 
-    if (fd >= FD_MAX || current_task->fd_table[fd] == NULL) {
+    if ((fd >= FD_MAX || current_task->fd_table[fd] == NULL) && fd > 2) {
         handle_illegal_call(arg2, arg3, 0, ctx->eip);
         __builtin_unreachable();
     }
 
-    file_handle_t *handle = current_task->fd_table[fd];
-    vfs_node_t *node = handle->node;
-
     struct stat *k_statbuf = (struct stat*)kernel_malloc_align(sizeof(struct stat), 16);
     memset(k_statbuf, 0, sizeof(struct stat));
-    k_statbuf->st_ino = node->inode;
-    k_statbuf->st_mode = node->flags;
-    k_statbuf->st_size = node->size;
+
+    // ill define these later, im too tired and i just want to get this fucking working
+    if (fd < 3) {
+        k_statbuf->st_mode = 0x2000;
+        k_statbuf->st_blksize = 1024;
+    } else {
+        file_handle_t *handle = current_task->fd_table[fd];
+        vfs_node_t *node = handle->node;
+
+        k_statbuf->st_ino = node->inode;
+        k_statbuf->st_mode = 0x8000;
+        k_statbuf->st_size = node->size;
+    }
 
     memcpy(statbuf, k_statbuf, sizeof(struct stat));
     kernel_free(k_statbuf);
 
     errno = 0;
+}
+
+static void sys_isatty(uint32_t arg2) {
+    uint32_t fd = arg2;
+    if (fd < 3) {
+        errno = 1;
+    } else {
+        errno = 0;
+    }
 }
 
 /**
@@ -389,13 +410,13 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_WRITE:
             sys_write(arg2, arg3, arg4, ctx);
-            return;
+            break;
         case SYSTEM_CALL_READ:
             sys_read(arg2, arg3, arg4, ctx);
-            return;
+            break;
         case SYSTEM_CALL_EXECVE:
             sys_execve(arg2, arg3, arg4, ctx);
-            return;
+            break;
         case SYSTEM_CALL_FORK:
             sys_fork(ctx);
             break;
@@ -420,12 +441,17 @@ void system_call(processor_context_t *ctx) {
         case SYSTEM_CALL_FSTAT:
             sys_fstat(arg2, arg3, ctx);
             break;
+        case SYSTEM_CALL_TTY:
+            sys_isatty(arg2);
+            break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);
             __builtin_unreachable();
     }
 
     ctx->eax = errno;
+
+    printfs(PRINT_STATUS_DEBUG, "[SYSCALL] exiting kernel\n");
 
     preempt_enable();
 }
