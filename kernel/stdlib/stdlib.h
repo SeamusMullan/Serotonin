@@ -9,27 +9,10 @@
 #define EXIT_SUCCESS 0
 #define EXIT_FAILURE 1
 
-/* Type definitions for div functions */
-typedef struct {
-    int quot;
-    int rem;
-} div_t;
-
-typedef struct {
-    long quot;
-    long rem;
-} ldiv_t;
-
-typedef struct {
-    long long quot;
-    long long rem;
-} lldiv_t;
-
 /* Number conversion functions */
-void itoa(int value, char* str);
+void kitoa(int value, char* str);
 int map_range(int input, int in_min, int in_max, int out_min, int out_max);
-void utoa_hex(uint32_t value, char* str);
-void utoa(uint32_t value, char* str);
+void kutoa(uint32_t value, char* str);
 void ltoa(long value, char* buffer);
 void ultoa(unsigned long value, char* buffer);
 void ultoa_hex(unsigned long value, char* buffer);
@@ -53,9 +36,6 @@ void* memchr(const void* ptr, int value, size_t num);
 int abs(int n);
 long labs(long n);
 long long llabs(long long n);
-div_t div(int numer, int denom);
-ldiv_t ldiv(long numer, long denom);
-lldiv_t lldiv(long long numer, long long denom);
 float powf(float x, float y);
 
 /* Pseudo-random number generation */
@@ -79,6 +59,7 @@ int tolower(int c);
 /* String conversion */
 char* itoa_base(int value, char* str, int base);
 char* utoa_base(unsigned int value, char* str, int base);
+void utoa_hex(uint32_t value, char* str);
 
 /* Additional string utility functions */
 char* strcpy(char* dest, const char* src);

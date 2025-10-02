@@ -67,7 +67,7 @@ void printf_internal(const char* p, void** arg_ptr) {
                         case LEN_LL: val = (long long)(intptr_t)*arg_ptr++; break;
                         default:     val = (int)(intptr_t)*arg_ptr++; break;
                     }
-                    itoa(val, buffer);
+                    kitoa(val, buffer);
                     break;
                 }
 
@@ -80,7 +80,7 @@ void printf_internal(const char* p, void** arg_ptr) {
                         case LEN_LL: val = (unsigned long long)(uintptr_t)*arg_ptr++; break;
                         default:     val = (unsigned int)(uintptr_t)*arg_ptr++; break;
                     }
-                    utoa(val, buffer);
+                    kutoa(val, buffer);
                     break;
                 }
 

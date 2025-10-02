@@ -4,11 +4,11 @@
 
 /**
  * @brief Convert an integer to a string (base 10).
- *
+ * 
  * @param value The integer value to convert.
  * @param str The output string buffer.
  */
-void itoa(int value, char* str) {
+void kitoa(int value, char* str) {
     char buffer[12];
     int i = 0, is_negative = 0;
 
@@ -83,7 +83,7 @@ void utoa_hex(uint32_t value, char* str) {
  * @param value The unsigned integer value to convert.
  * @param str The output string buffer.
  */
-void utoa(uint32_t value, char* str) {
+void kutoa(uint32_t value, char* str) {
     char buffer[11];
     int i = 0;
 
@@ -234,7 +234,7 @@ void ulltoa_hex(unsigned long long value, char* str) {
 
 /**
  * @brief Halt System.
- *
+ * 
  * This function is called when a critical error occurs, such as a kernel panic.
  * It prints an abort message and halts the system.
  */
@@ -249,19 +249,19 @@ sys_halt:
 
 /**
  * @brief Convert string to integer.
- *
+ * 
  * @param str The string to convert.
  * @return int The converted integer value.
  */
 int atoi(const char* str) {
     int result = 0;
     int sign = 1;
-
+    
     // Skip whitespace
     while (*str == ' ' || *str == '\t' || *str == '\n' || *str == '\r') {
         str++;
     }
-
+    
     // Handle sign
     if (*str == '-') {
         sign = -1;
@@ -269,31 +269,31 @@ int atoi(const char* str) {
     } else if (*str == '+') {
         str++;
     }
-
+    
     // Convert digits
     while (*str >= '0' && *str <= '9') {
         result = result * 10 + (*str - '0');
         str++;
     }
-
+    
     return sign * result;
 }
 
 /**
  * @brief Convert string to long integer.
- *
+ * 
  * @param str The string to convert.
  * @return long The converted long integer value.
  */
 long atol(const char* str) {
     long result = 0;
     int sign = 1;
-
+    
     // Skip whitespace
     while (*str == ' ' || *str == '\t' || *str == '\n' || *str == '\r') {
         str++;
     }
-
+    
     // Handle sign
     if (*str == '-') {
         sign = -1;
@@ -301,31 +301,31 @@ long atol(const char* str) {
     } else if (*str == '+') {
         str++;
     }
-
+    
     // Convert digits
     while (*str >= '0' && *str <= '9') {
         result = result * 10 + (*str - '0');
         str++;
     }
-
+    
     return sign * result;
 }
 
 /**
  * @brief Convert string to long long integer.
- *
+ * 
  * @param str The string to convert.
  * @return long long The converted long long integer value.
  */
 long long atoll(const char* str) {
     long long result = 0;
     int sign = 1;
-
+    
     // Skip whitespace
     while (*str == ' ' || *str == '\t' || *str == '\n' || *str == '\r') {
         str++;
     }
-
+    
     // Handle sign
     if (*str == '-') {
         sign = -1;
@@ -333,19 +333,19 @@ long long atoll(const char* str) {
     } else if (*str == '+') {
         str++;
     }
-
+    
     // Convert digits
     while (*str >= '0' && *str <= '9') {
         result = result * 10 + (*str - '0');
         str++;
     }
-
+    
     return sign * result;
 }
 
 /**
  * @brief Find first occurrence of character in memory block.
- *
+ * 
  * @param ptr Pointer to the memory block.
  * @param value Character to search for.
  * @param num Number of bytes to search.
@@ -354,19 +354,19 @@ long long atoll(const char* str) {
 void* memchr(const void* ptr, int value, size_t num) {
     const unsigned char* p = (const unsigned char*)ptr;
     unsigned char c = (unsigned char)value;
-
+    
     for (size_t i = 0; i < num; i++) {
         if (p[i] == c) {
             return (void*)(p + i);
         }
     }
-
+    
     return NULL;
 }
 
 /**
  * @brief Compute absolute value of integer.
- *
+ * 
  * @param n The integer value.
  * @return int The absolute value.
  */
@@ -376,7 +376,7 @@ int abs(int n) {
 
 /**
  * @brief Compute absolute value of long integer.
- *
+ * 
  * @param n The long integer value.
  * @return long The absolute value.
  */
@@ -386,7 +386,7 @@ long labs(long n) {
 
 /**
  * @brief Compute absolute value of long long integer.
- *
+ * 
  * @param n The long long integer value.
  * @return long long The absolute value.
  */
@@ -394,39 +394,10 @@ long long llabs(long long n) {
     return (n < 0) ? -n : n;
 }
 
-/**
- * @brief Divide two integers and return quotient and remainder.
- *
- * @param numer The numerator.
- * @param denom The denominator.
- * @return div_t Structure containing quotient and remainder.
- */
-div_t div(int numer, int denom) {
-    div_t result;
-    result.quot = numer / denom;
-    result.rem = numer % denom;
-    return result;
-}
-
-/**
- * @brief Divide two long integers and return quotient and remainder.
- *
- * @param numer The numerator.
- * @param denom The denominator.
- * @return ldiv_t Structure containing quotient and remainder.
- */
-ldiv_t ldiv(long numer, long denom) {
-    ldiv_t result;
-    result.quot = numer / denom;
-    result.rem = numer % denom;
-    return result;
-}
-
-
 // ========== This currently breaks the build so we got comments for that ==========
 /**
  * @brief Divide two long long integers and return quotient and remainder.
- *
+ * 
  * @param numer The numerator.
  * @param denom The denominator.
  * @return lldiv_t Structure containing quotient and remainder.
@@ -444,7 +415,7 @@ static unsigned long next = 1;
 
 /**
  * @brief Generate pseudo-random number.
- *
+ * 
  * @return int Random number between 0 and RAND_MAX.
  */
 int rand(void) {
@@ -454,7 +425,7 @@ int rand(void) {
 
 /**
  * @brief Seed the random number generator.
- *
+ * 
  * @param seed The seed value.
  */
 void srand(unsigned int seed) {
@@ -463,7 +434,7 @@ void srand(unsigned int seed) {
 
 /**
  * @brief Check if character is alphabetic.
- *
+ * 
  * @param c The character to check.
  * @return int Non-zero if alphabetic, zero otherwise.
  */
@@ -473,7 +444,7 @@ int isalpha(int c) {
 
 /**
  * @brief Check if character is a digit.
- *
+ * 
  * @param c The character to check.
  * @return int Non-zero if digit, zero otherwise.
  */
@@ -483,7 +454,7 @@ int isdigit(int c) {
 
 /**
  * @brief Check if character is alphanumeric.
- *
+ * 
  * @param c The character to check.
  * @return int Non-zero if alphanumeric, zero otherwise.
  */
@@ -493,7 +464,7 @@ int isalnum(int c) {
 
 /**
  * @brief Check if character is whitespace.
- *
+ * 
  * @param c The character to check.
  * @return int Non-zero if whitespace, zero otherwise.
  */
@@ -503,7 +474,7 @@ int isspace(int c) {
 
 /**
  * @brief Check if character is uppercase.
- *
+ * 
  * @param c The character to check.
  * @return int Non-zero if uppercase, zero otherwise.
  */
@@ -513,7 +484,7 @@ int isupper(int c) {
 
 /**
  * @brief Check if character is lowercase.
- *
+ * 
  * @param c The character to check.
  * @return int Non-zero if lowercase, zero otherwise.
  */
@@ -523,7 +494,7 @@ int islower(int c) {
 
 /**
  * @brief Check if character is printable.
- *
+ * 
  * @param c The character to check.
  * @return int Non-zero if printable, zero otherwise.
  */
@@ -533,7 +504,7 @@ int isprint(int c) {
 
 /**
  * @brief Check if character is punctuation.
- *
+ * 
  * @param c The character to check.
  * @return int Non-zero if punctuation, zero otherwise.
  */
@@ -543,7 +514,7 @@ int ispunct(int c) {
 
 /**
  * @brief Check if character is control character.
- *
+ * 
  * @param c The character to check.
  * @return int Non-zero if control character, zero otherwise.
  */
@@ -553,7 +524,7 @@ int iscntrl(int c) {
 
 /**
  * @brief Check if character is hexadecimal digit.
- *
+ * 
  * @param c The character to check.
  * @return int Non-zero if hexadecimal digit, zero otherwise.
  */
@@ -563,7 +534,7 @@ int isxdigit(int c) {
 
 /**
  * @brief Convert character to uppercase.
- *
+ * 
  * @param c The character to convert.
  * @return int The uppercase character.
  */
@@ -576,7 +547,7 @@ int toupper(int c) {
 
 /**
  * @brief Convert character to lowercase.
- *
+ * 
  * @param c The character to convert.
  * @return int The lowercase character.
  */
@@ -589,7 +560,7 @@ int tolower(int c) {
 
 /**
  * @brief Convert integer to string with specified base.
- *
+ * 
  * @param value The integer value to convert.
  * @param str The output string buffer.
  * @param base The base for conversion (2-36).
@@ -600,17 +571,17 @@ char* itoa_base(int value, char* str, int base) {
         *str = '\0';
         return str;
     }
-
+    
     char* digits = "0123456789abcdefghijklmnopqrstuvwxyz";
     char buffer[65];
     int i = 0;
     int is_negative = 0;
-
+    
     if (value < 0 && base == 10) {
         is_negative = 1;
         value = -value;
     }
-
+    
     if (value == 0) {
         buffer[i++] = '0';
     } else {
@@ -619,23 +590,23 @@ char* itoa_base(int value, char* str, int base) {
             value /= base;
         }
     }
-
+    
     if (is_negative) {
         buffer[i++] = '-';
     }
-
+    
     int j;
     for (j = 0; j < i; j++) {
         str[j] = buffer[i - 1 - j];
     }
     str[j] = '\0';
-
+    
     return str;
 }
 
 /**
  * @brief Convert unsigned integer to string with specified base.
- *
+ * 
  * @param value The unsigned integer value to convert.
  * @param str The output string buffer.
  * @param base The base for conversion (2-36).
@@ -646,11 +617,11 @@ char* utoa_base(unsigned int value, char* str, int base) {
         *str = '\0';
         return str;
     }
-
+    
     char* digits = "0123456789abcdefghijklmnopqrstuvwxyz";
     char buffer[65];
     int i = 0;
-
+    
     if (value == 0) {
         buffer[i++] = '0';
     } else {
@@ -659,19 +630,19 @@ char* utoa_base(unsigned int value, char* str, int base) {
             value /= base;
         }
     }
-
+    
     int j;
     for (j = 0; j < i; j++) {
         str[j] = buffer[i - 1 - j];
     }
     str[j] = '\0';
-
+    
     return str;
 }
 
 /**
  * @brief Quick sort implementation.
- *
+ * 
  * @param base Pointer to the array to sort.
  * @param num Number of elements in the array.
  * @param size Size of each element in bytes.
@@ -679,19 +650,19 @@ char* utoa_base(unsigned int value, char* str, int base) {
  */
 void qsort(void* base, size_t num, size_t size, int (*compare)(const void*, const void*)) {
     if (num < 2) return;
-
+    
     char* arr = (char*)base;
     char* pivot = arr + (num / 2) * size;
     char temp[256]; // Use fixed-size buffer instead of alloca
-
+    
     if (size > sizeof(temp)) return; // Safety check
-
+    
     size_t left = 0, right = num - 1;
-
+    
     while (left <= right) {
         while (compare(arr + left * size, pivot) < 0) left++;
         while (compare(arr + right * size, pivot) > 0) right--;
-
+        
         if (left <= right) {
             memcpy(temp, arr + left * size, size);
             memcpy(arr + left * size, arr + right * size, size);
@@ -700,14 +671,14 @@ void qsort(void* base, size_t num, size_t size, int (*compare)(const void*, cons
             right--;
         }
     }
-
+    
     if (right > 0) qsort(arr, right + 1, size, compare);
     if (left < num) qsort(arr + left * size, num - left, size, compare);
 }
 
 /**
  * @brief Binary search implementation.
- *
+ * 
  * @param key Pointer to the key to search for.
  * @param base Pointer to the sorted array.
  * @param num Number of elements in the array.
@@ -718,11 +689,11 @@ void qsort(void* base, size_t num, size_t size, int (*compare)(const void*, cons
 void* bsearch(const void* key, const void* base, size_t num, size_t size, int (*compare)(const void*, const void*)) {
     const char* arr = (const char*)base;
     size_t left = 0, right = num;
-
+    
     while (left < right) {
         size_t mid = (left + right) / 2;
         int cmp = compare(key, arr + mid * size);
-
+        
         if (cmp == 0) {
             return (void*)(arr + mid * size);
         } else if (cmp < 0) {
@@ -731,13 +702,13 @@ void* bsearch(const void* key, const void* base, size_t num, size_t size, int (*
             left = mid + 1;
         }
     }
-
+    
     return NULL;
 }
 
 /**
  * @brief Execute system command (stub implementation).
- *
+ * 
  * @param command The command to execute.
  * @return int Always returns -1 (not implemented in kernel).
  */
@@ -748,7 +719,7 @@ int system(const char* command) {
 
 /**
  * @brief Exit program with status code.
- *
+ * 
  * @param status The exit status code.
  */
 __attribute__((__noreturn__))
@@ -761,7 +732,7 @@ void exit(int status) {
 
 /**
  * @brief Copy string.
- *
+ * 
  * @param dest Destination string buffer.
  * @param src Source string.
  * @return char* Pointer to destination string.
@@ -774,7 +745,7 @@ char* strcpy(char* dest, const char* src) {
 
 /**
  * @brief Copy at most n characters from string.
- *
+ * 
  * @param dest Destination string buffer.
  * @param src Source string.
  * @param n Maximum number of characters to copy.
@@ -789,7 +760,7 @@ char* strncpy(char* dest, const char* src, size_t n) {
 
 /**
  * @brief Concatenate strings.
- *
+ * 
  * @param dest Destination string buffer.
  * @param src Source string to append.
  * @return char* Pointer to destination string.
@@ -803,7 +774,7 @@ char* strcat(char* dest, const char* src) {
 
 /**
  * @brief Concatenate at most n characters from string.
- *
+ * 
  * @param dest Destination string buffer.
  * @param src Source string to append.
  * @param n Maximum number of characters to append.
@@ -819,7 +790,7 @@ char* strncat(char* dest, const char* src, size_t n) {
 
 /**
  * @brief Compare two strings.
- *
+ * 
  * @param str1 First string.
  * @param str2 Second string.
  * @return int Negative if str1 < str2, positive if str1 > str2, zero if equal.
@@ -834,7 +805,7 @@ int strcmp(const char* str1, const char* str2) {
 
 /**
  * @brief Compare at most n characters of two strings.
- *
+ * 
  * @param str1 First string.
  * @param str2 Second string.
  * @param n Maximum number of characters to compare.
@@ -852,7 +823,7 @@ int strncmp(const char* str1, const char* str2, size_t n) {
 
 /**
  * @brief Find first occurrence of character in string.
- *
+ * 
  * @param str The string to search.
  * @param c The character to find.
  * @return char* Pointer to first occurrence, or NULL if not found.
@@ -867,7 +838,7 @@ char* strchr(const char* str, int c) {
 
 /**
  * @brief Find last occurrence of character in string.
- *
+ * 
  * @param str The string to search.
  * @param c The character to find.
  * @return char* Pointer to last occurrence, or NULL if not found.
@@ -883,33 +854,33 @@ char* strrchr(const char* str, int c) {
 
 /**
  * @brief Find substring in string.
- *
+ * 
  * @param haystack The string to search in.
  * @param needle The substring to find.
  * @return char* Pointer to first occurrence, or NULL if not found.
  */
 char* strstr(const char* haystack, const char* needle) {
     if (!*needle) return (char*)haystack;
-
+    
     while (*haystack) {
         const char* h = haystack;
         const char* n = needle;
-
+        
         while (*h && *n && (*h == *n)) {
             h++;
             n++;
         }
-
+        
         if (!*n) return (char*)haystack;
         haystack++;
     }
-
+    
     return NULL;
 }
 
 /**
  * @brief Get length of prefix matching characters in set.
- *
+ * 
  * @param str1 The string to check.
  * @param str2 The set of characters.
  * @return size_t Length of the prefix.
@@ -918,7 +889,7 @@ size_t strspn(const char* str1, const char* str2) {
     const char* p;
     const char* a;
     size_t count = 0;
-
+    
     for (p = str1; *p; p++) {
         for (a = str2; *a; a++) {
             if (*p == *a) break;
@@ -926,13 +897,13 @@ size_t strspn(const char* str1, const char* str2) {
         if (*a == '\0') return count;
         count++;
     }
-
+    
     return count;
 }
 
 /**
  * @brief Get length of prefix not matching characters in set.
- *
+ * 
  * @param str1 The string to check.
  * @param str2 The set of characters.
  * @return size_t Length of the prefix.
@@ -941,20 +912,20 @@ size_t strcspn(const char* str1, const char* str2) {
     const char* p;
     const char* a;
     size_t count = 0;
-
+    
     for (p = str1; *p; p++) {
         for (a = str2; *a; a++) {
             if (*p == *a) return count;
         }
         count++;
     }
-
+    
     return count;
 }
 
 /**
  * @brief Find first character in string that matches any character in set.
- *
+ * 
  * @param str1 The string to search.
  * @param str2 The set of characters.
  * @return char* Pointer to first matching character, or NULL if not found.
@@ -976,38 +947,38 @@ static char* strtok_last = NULL;
 
 /**
  * @brief Split string into tokens.
- *
+ * 
  * @param str String to tokenize (NULL to continue with previous string).
  * @param delim Delimiter characters.
  * @return char* Pointer to next token, or NULL if no more tokens.
  */
 char* strtok(char* str, const char* delim) {
     char* token_start;
-
+    
     if (str != NULL) {
         strtok_last = str;
     } else if (strtok_last == NULL) {
         return NULL;
     }
-
+    
     // Skip leading delimiters
     strtok_last += strspn(strtok_last, delim);
-
+    
     if (*strtok_last == '\0') {
         strtok_last = NULL;
         return NULL;
     }
-
+    
     token_start = strtok_last;
-
+    
     // Find end of token
     strtok_last = strpbrk(token_start, delim);
-
+    
     if (strtok_last != NULL) {
         *strtok_last = '\0';
         strtok_last++;
     }
-
+    
     return token_start;
 }
 
@@ -1024,7 +995,7 @@ void ftoa(double n, char *res, int precision) {
     double fpart = n - (double)ipart;
 
     // Convert integer part
-    utoa(ipart, res);
+    kutoa(ipart, res);
     while (*res != '\0') res++; // Move to end of integer string
 
     *res++ = '.';

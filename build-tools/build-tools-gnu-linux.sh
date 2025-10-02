@@ -75,12 +75,8 @@ echo "Configuring GCC..."
 ../gcc/configure --target=$TARGET --prefix="$PREFIX" --disable-nls --enable-languages=c,c++ --without-headers --disable-hosted-libstdcxx
 echo "Building GCC..."
 make all-gcc -j$(nproc)
-make all-target-libgcc -j$(nproc)
-make all-target-libstdc++-v3 -j$(nproc)
 echo "Installing GCC..."
 make install-gcc
-make install-target-libgcc
-make install-target-libstdc++-v3
 cd ../..
 
 echo "=== Build complete! ==="
