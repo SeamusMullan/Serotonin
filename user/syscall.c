@@ -93,4 +93,12 @@ void *sbrk(ptrdiff_t incr) {
     return (void *)ret;
 }
 
+pid_t fork() {
+    return do_syscall(SYSTEM_CALL_FORK, 0, 0, 0);
+}
+
+int waitpid(pid_t pid, int *status) {
+    return do_syscall(SYSTEM_CALL_WAITPID, pid, (uint32_t)status, 0);
+}
+
 void _init(void) {}

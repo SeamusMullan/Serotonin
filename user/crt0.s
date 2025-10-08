@@ -10,8 +10,6 @@ _start:
     pushl %ecx
     pushl %ebx
     pushl %eax
-    call __libc_init_array
-    addl $12, %esp
     call main
 
     pushl %eax
