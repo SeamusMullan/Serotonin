@@ -260,9 +260,14 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
         printfs(PRINT_STATUS_DEBUG, "execve: executing %s, pid=%d\n", path, current_task->pid);
         kernel_free(argv);
         kernel_free(envp);
+        kernel_free(path);
         task_yield(0);
     } else {
         printfs(PRINT_STATUS_WARNING, "execve: failed to load elf %s, pid=%d\n", path, current_task->pid);
+        kernel_free(argv);
+        kernel_free(envp);
+        kernel_free(path);
+        errno = -EIO;
     }
 }
 
