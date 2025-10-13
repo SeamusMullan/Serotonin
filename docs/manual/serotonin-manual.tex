@@ -15,6 +15,7 @@
 \usepackage{fancyhdr}
 \usepackage{enumitem}
 \usepackage{titlesec}
+\usepackage{etoolbox}  % For BeforeBeginEnvironment and AfterEndEnvironment
 
 % --------------------
 % PAGE SETTINGS
@@ -25,6 +26,7 @@
 \fancyhead[L]{\leftmark}
 \fancyhead[R]{\thepage}
 \setlength{\parskip}{0.5em}
+\raggedbottom  % Allow pages to have flexible height to avoid breaking code blocks
 
 % --------------------
 % COLORS AND CODE BLOCKS
@@ -48,6 +50,10 @@
 	captionpos=b,
 	language=C % Change to your preferred language
 }
+
+% Prevent page breaks within lstlisting environments by wrapping them in minipages
+\BeforeBeginEnvironment{lstlisting}{\par\nobreak\minipage{\linewidth}}
+\AfterEndEnvironment{lstlisting}{\endminipage}
 
 % --------------------
 % TITLE
