@@ -11,3 +11,17 @@ docs/Doxyfile
 .DS_Store
 user/init/init
 user/init/test
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg
+*.lof
+*.lot
+*.nav
+*.snm
+*.vrb
