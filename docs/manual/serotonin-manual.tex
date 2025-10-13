@@ -615,8 +615,39 @@ error:
 
     \subsubsection{Tiling Window Manager - Ionic}
 
-    Serotonin implements a tiling window manager (WM) called Ionic, named after Ionic bonds. The WM is a simplistic, low fidelity UI made purely for performance. This is advised for lower end hardware nearer to the Hardware Requirements spec. Windows are organised in a grid-like structure and can be moved using \lstinline{MOD + ARROW_KEY}. This WM is enabled by default in the settings.
+	Serotonin implements a tiling window manager (WM) called Ionic, named after Ionic bonds.
+	The WM is a simplistic, low fidelity UI made purely for performance.
+	This is advised for lower end hardware nearer to the Hardware Requirements spec.
+	Windows are organised in a grid-like structure.
+	This WM is enabled by default in the settings.
 
+	Ionic features 2-dimensional workspaces, meaning users can have multiple virtual desktops arranged both horizontally and vertically, categorized with numbers and letters.
+
+	\subsubsection{Ionic Shortcuts}
+	
+	\begin{table}[h]
+		\centering
+		\begin{tabular}{|l|l|}
+			\hline
+			\textbf{Action} & \textbf{Shortcut} \\
+			\hline
+			Move window & \lstinline{MOD + ARROW_KEY} \\
+			\hline
+			Swap workspace (horizontal) & \lstinline{MOD + CTRL + ARROW_KEY} \\
+			\hline
+			Move window between workspaces (horizontal) & \lstinline{MOD + SHIFT + ARROW_KEY} \\
+			\hline
+			Swap workspace (vertical) & \lstinline{MOD + CTRL + PAGE UP/PAGE DOWN} \\
+			\hline
+			Move window between workspaces (vertical) & \lstinline{MOD + SHIFT + PAGE UP/PAGE DOWN} \\
+			\hline
+			Move window to workspace 1-9 & \lstinline{MOD + SHIFT + NUM} \\
+			\hline
+			Move window to workspace Q-E & \lstinline{MOD + SHIFT + LETTER} \\
+			\hline
+		\end{tabular}
+		\caption{Ionic Window Manager Shortcuts}
+	\end{table}
     \subsubsection{Floating / Stacking Window Manager - Covalence}
 
     Covalence is a floating WM implemented into Serotonin as an alternative to Ionic. Covalence is much more intuitive for end users familiar with operating systems like MacOS, Windows and other WMs like Gnome or KDE. Named after covalence bonds, this window manager allows users to move, resize, minimize and close windows with their mouse, or optionally with keyboard shortcuts. Naturally this WM is more computationally expensive and must be enabled manually by the user.
