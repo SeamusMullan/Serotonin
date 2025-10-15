@@ -101,4 +101,8 @@ int waitpid(pid_t pid, int *status) {
     return do_syscall(SYSTEM_CALL_WAITPID, pid, (uint32_t)status, 0);
 }
 
+int execve(char *name, char **argv, char **envp) {
+    return do_syscall(SYSTEM_CALL_EXECVE, (uint32_t)argv, (uint32_t)envp)
+}
+
 void _init(void) {}
