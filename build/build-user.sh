@@ -11,8 +11,8 @@ cd ../user
 
 i686-elf-as crt0.s -o crt0.o
 
-i686-elf-gcc -c init/init.c -o init/init.o $CFLAGS
-i686-elf-gcc -c init/test.c -o init/test.o $CFLAGS
+i686-elf-gcc -c test.c -o test.o
+i686-elf-gcc -c syscall.c -o syscall.o
 
-i686-elf-ld -Ttext=0x400100 -o init/test init/test.o crt0.o
-i686-elf-ld -Ttext=0x400100 -o init/init init/init.o crt0.o
+i686-elf-gcc -Ttext=0x400100 -nostdlib crt0.o test.o syscall.o -Wl,--start-group -lc -lm -Wl,--end-group -o test.elf
+
