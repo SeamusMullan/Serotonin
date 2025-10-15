@@ -251,10 +251,10 @@ void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
             size -= 64;
         }
 
-        // remainder 16 byte chunks
+        // remainder 16 byte chunks (unaligned copy)
         while (size >= 16) {
             asm volatile (
-                "movdqa (%[s]), %%xmm0\n\t"
+                "movdqu (%[s]), %%xmm0\n\t"
                 "movdqa %%xmm0, (%[d])\n\t"
                 : [d] "+r"(dst), [s] "+r"(src)
                 :

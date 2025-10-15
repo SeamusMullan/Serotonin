@@ -51,8 +51,10 @@ void handle_scancode(uint8_t scancode) {
         uint32_t old_cr3 = read_cr3();
         write_cr3(stdin_lock->owner->address_space->phys_pdir);
 
-        stdio_buffer[stdin_idx] = '\0';
-        memcpy(stdin_ptr,stdio_buffer,stdin_idx+1);
+        stdio_buffer[stdin_idx] = '\n';
+        stdin_idx++;
+        memcpy(stdin_ptr,stdio_buffer,stdin_idx);
+        stdin_lock->owner->processor_context->eax = stdin_idx;
         stdin_idx = 0;
 
         write_cr3(old_cr3);
