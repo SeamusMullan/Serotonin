@@ -11,3 +11,4 @@ docs/Doxyfile
 .DS_Store
 user/init/init
 user/init/test
+newlib/
