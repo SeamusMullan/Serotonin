@@ -622,3 +622,27 @@ void task_semaphore_release(lock_semaphore_t *semaphore) {
 
     unlock_scheduler();
 }
+
+/**
+ * @brief Get the current running task.
+ * @return Pointer to the current task's PCB.
+ */
+process_control_block_t* get_current_task(void) {
+    return current_task;
+}
+
+/**
+ * @brief Get the total number of tasks in the system.
+ * @return The number of tasks.
+ */
+uint32_t get_task_count(void) {
+    uint32_t count = 0;
+    process_control_block_t *task = task_list;
+    
+    while (task != NULL) {
+        count++;
+        task = task->next;
+    }
+    
+    return count;
+}
