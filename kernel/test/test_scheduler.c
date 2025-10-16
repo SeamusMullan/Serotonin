@@ -154,6 +154,7 @@ KTEST_DEFINE(pid_uniqueness_test) {
 // Test yield (smoke test - should not crash)
 KTEST_DEFINE(yield_test) {
     // Call yield - should return control back to us
+    // TODO: Fix kernel yield to return back when only task running.
     kernel_yield();
     
     KTEST_ASSERT(1, "yield completed without crash");
@@ -172,7 +173,7 @@ void test_scheduler_suite(void) {
         KTEST_RUN(task_name_test),
         KTEST_RUN(task_stack_test),
         KTEST_RUN(pid_uniqueness_test),
-        // KTEST_RUN(yield_test),
+        KTEST_RUN(yield_test),
     };
     
     ktest_run_suite("Task Scheduler", tests, sizeof(tests) / sizeof(tests[0]));
