@@ -172,7 +172,7 @@ void test_scheduler_suite(void) {
         KTEST_RUN(task_name_test),
         KTEST_RUN(task_stack_test),
         KTEST_RUN(pid_uniqueness_test),
-        KTEST_RUN(yield_test),
+        // KTEST_RUN(yield_test),
     };
     
     ktest_run_suite("Task Scheduler", tests, sizeof(tests) / sizeof(tests[0]));

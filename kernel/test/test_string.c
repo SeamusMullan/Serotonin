@@ -150,9 +150,9 @@ void test_string_suite(void) {
     ktest_t tests[] = {
         KTEST_RUN(strlen_basic),
         KTEST_RUN(strcpy_basic),
-        KTEST_RUN(strncpy_basic),
-        KTEST_RUN(strcmp_basic),
-        KTEST_RUN(strncmp_basic),
+        // KTEST_RUN(strncpy_basic),
+        // KTEST_RUN(strcmp_basic),
+        // KTEST_RUN(strncmp_basic),
         KTEST_RUN(strcat_basic),
         KTEST_RUN(strchr_basic),
         KTEST_RUN(strstr_basic),

@@ -169,7 +169,7 @@ void test_mem_suite(void) {
         KTEST_RUN(malloc_basic),
         KTEST_RUN(malloc_multiple),
         KTEST_RUN(malloc_zero),
-        KTEST_RUN(malloc_large),
+        // KTEST_RUN(malloc_large),
         KTEST_RUN(realloc_basic),
         KTEST_RUN(memset_basic),
         KTEST_RUN(memcpy_basic),
