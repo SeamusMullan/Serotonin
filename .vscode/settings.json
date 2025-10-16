@@ -1,0 +1,13 @@
+{
+    "cSpell.words": [
+        "ktest",
+        "multiboot",
+        "stdlib"
+    ],
+    "files.associations": {
+        "flake.lock": "json",
+        "schedule.h": "c",
+        "stdio.h": "c",
+        "vmm.h": "c"
+    }
+}
