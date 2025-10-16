@@ -1,0 +1,38 @@
+{
+    "tasks": [
+        {
+            "type": "cppbuild",
+            "label": "C/C++: i686-elf-gcc build active file",
+            "command": "i686-elf-gcc",
+            "args": [
+                "-std=gnu99",
+                "-ffreestanding",
+                "-O2",
+                "-Wall",
+                "-Wextra",
+                "-msse",
+                "-msse2",
+                "-mfpmath=sse",
+                "-c",
+                "${file}",
+                "-o",
+                "${fileDirname}/${fileBasenameNoExtension}.o"
+            ],
+            "options": {
+                "cwd": "${fileDirname}",
+                "env": {
+                    "PATH": "${workspaceFolder}/build-tools/bin/bin:${env:PATH}"
+                }
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "Build using i686-elf-gcc cross-compiler for Serotonin OS"
+        }
+    ],
+    "version": "2.0.0"
+}
