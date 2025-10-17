@@ -71,6 +71,7 @@ uint32_t align(uint32_t size) {
  * @brief Read the CR0 register.
  *
  * This function reads the value of the CR0 register.
+ * Target is "no-sse" to avoid SSE instructions in case they are not enabled yet.
  * @return uint32_t The value of the CR0 register.
  */
 __attribute__((target("no-sse"))) static inline uint32_t kernel_read_cr0(void) {
@@ -724,7 +725,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         kernel_panic("multiboot - invalid magic number");
     }
     multiboot_info_t *mbi = (multiboot_info_t *) addr;
-    page_directory_t *page_dir = (page_directory_t*)page_dir_ptr;
+    // page_directory_t *page_dir = (page_directory_t*)page_dir_ptr;
     const char *cmdline = (const char *)(uintptr_t)mbi->cmdline;
     char* cpu_manufacturer = kernel_get_cpu_manufacturer();
 

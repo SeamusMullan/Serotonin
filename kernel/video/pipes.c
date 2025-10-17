@@ -106,13 +106,13 @@ static void pick_new_direction(Pipe *p, int seg_len)
  * @param p Pointer to the pipe structure.
  * @param dir Direction to turn (-1 for left, 1 for right).
  */
-static void turn_90(Pipe *p, int dir)
-{
-    int ndx = dir * p->dy;
-    int ndy = -dir * p->dx;
-    p->dx = ndx;
-    p->dy = ndy;
-}
+// static void turn_90(Pipe *p, int dir)
+// {
+//     int ndx = dir * p->dy;
+//     int ndy = -dir * p->dx;
+//     p->dx = ndx;
+//     p->dy = ndy;
+// }
 
 /**
  * @brief Generate a random color.
@@ -213,7 +213,6 @@ void pipes_demo(void)
     vbe_clear_screen(0xFF000000);
     vbe_clear_z_layer(PIPES_Z_LAYER, 0x00000000); // start fully transparent
 
-    uint32_t frame_count = 0;
 
     uint32_t start_tick = timer_ticks;
     uint32_t dt = 0;
@@ -233,7 +232,6 @@ void pipes_demo(void)
                 advance_pipe(&pipes[i], seg_len, 1);
 
             vbe_flip();
-            frame_count++;
             kernel_yield();
         }
         kernel_yield();

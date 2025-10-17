@@ -25425,9 +25425,9 @@ void splash_render(int offset_x,int offset_y) {
  * 
  */
 void create_color_render(int height) {
-  unsigned int r = 255, g = 0, b = 0;
-  unsigned int color;
-  int step_size = 1; // Control how many colors (larger step = fewer colors)
+  // unsigned int r = 255, g = 0, b = 0;
+  // unsigned int color;
+  // int step_size = 1; // Control how many colors (larger step = fewer colors)
 
   for (int i = 0; i < NUM_STEPS; i++) {
     // integer hue from 0..1535 (≈ 6×256)

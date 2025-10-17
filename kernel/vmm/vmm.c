@@ -333,6 +333,7 @@ void *alloc_pages(int order) {
         if (p) return p;
     }
     kernel_panic("out of memory (buddy alloc)");
+    __builtin_unreachable();
 }
 
 /**
