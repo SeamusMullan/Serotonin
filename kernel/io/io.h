@@ -82,7 +82,7 @@ extern volatile rtc_time_t last_rtc_time;
  * @param port The port number.
  * @param val The value to output.
  */
-static inline void outb(uint16_t port, uint8_t val)
+inline void outb(uint16_t port, uint8_t val)
 {
     asm volatile ( "outb %b0, %w1" : : "a"(val), "Nd"(port) : "memory");
 }
@@ -93,7 +93,7 @@ static inline void outb(uint16_t port, uint8_t val)
  * @param port The port number.
  * @return uint8_t The value read from the port.
  */
-static inline uint8_t inb(uint16_t port)
+inline uint8_t inb(uint16_t port)
 {
     uint8_t ret;
     asm volatile ( "inb %w1, %b0"
@@ -109,7 +109,7 @@ static inline uint8_t inb(uint16_t port)
  * This function waits for I/O operations to complete by reading from the
  * specified port.
  */
-static inline void io_wait(void)
+inline void io_wait(void)
 {
     outb(0x80, 0);
 }
