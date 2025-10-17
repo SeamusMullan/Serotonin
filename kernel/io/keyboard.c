@@ -102,11 +102,11 @@ void ps2_mouse_set_sample_rate(uint8_t rate) {
     outb(PS2_STATUS_PORT, PS2_MOUSE_BYTE);
     outb(PS2_DATA_PORT, PS2_MOUSE_SET_SAMPLE_RATE);
     io_wait();
-    uint8_t ack = inb(PS2_DATA_PORT); // Should be 0xFA
+    //uint8_t ack = inb(PS2_DATA_PORT); // Should be 0xFA, check this in tests.
     outb(PS2_STATUS_PORT, PS2_MOUSE_BYTE);
     outb(PS2_DATA_PORT, rate);        // sample rate
     io_wait();
-    ack = inb(PS2_DATA_PORT);
+    //ack = inb(PS2_DATA_PORT);
 }
 
 void ps2_mouse_init(void) {
@@ -134,7 +134,7 @@ void ps2_mouse_init(void) {
     if (response == PS2_MOUSE_ACK) {
         uint8_t selftest = ps2_read_mouse_response();
         if (selftest != PS2_MOUSE_SELFTEST_GOOD) return;
-        uint8_t mouseid = ps2_read_mouse_response();
+        //uint8_t mouseid = ps2_read_mouse_response();
         ps2_send_mouse_command(PS2_MOUSE_ENABLE_PACKET_STREAMING);
         uint8_t ack = ps2_read_mouse_response();
         if (ack != PS2_MOUSE_ACK) return;
