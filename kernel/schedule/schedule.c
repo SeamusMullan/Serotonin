@@ -228,7 +228,7 @@ void task_exit(uint8_t exit) {
 
     process_control_block_t *waiter = task_list;
     while (waiter) {
-        if (waiter->waiting_on == current_task->pid) {
+        if (waiter->waiting_on == (int)current_task->pid) {
             waiter->waiting_on = -1;
             switch_address_space(waiter->address_space);
             memset(waiter->status_ptr, exit, sizeof(uint8_t));
