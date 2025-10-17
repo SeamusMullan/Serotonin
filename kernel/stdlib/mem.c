@@ -175,21 +175,21 @@ void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
         if (head > size) head = size;
 
         switch (head) {
-            case 15: dst[14] = src[14];
-            case 14: dst[13] = src[13];
-            case 13: dst[12] = src[12];
-            case 12: dst[11] = src[11];
-            case 11: dst[10] = src[10];
-            case 10: dst[9]  = src[9];
-            case  9: dst[8]  = src[8];
-            case  8: dst[7]  = src[7];
-            case  7: dst[6]  = src[6];
-            case  6: dst[5]  = src[5];
-            case  5: dst[4]  = src[4];
-            case  4: dst[3]  = src[3];
-            case  3: dst[2]  = src[2];
-            case  2: dst[1]  = src[1];
-            case  1: dst[0]  = src[0];
+            case 15: dst[14] = src[14]; __attribute__((fallthrough));
+            case 14: dst[13] = src[13]; __attribute__((fallthrough));
+            case 13: dst[12] = src[12]; __attribute__((fallthrough));
+            case 12: dst[11] = src[11]; __attribute__((fallthrough));
+            case 11: dst[10] = src[10]; __attribute__((fallthrough));
+            case 10: dst[9]  = src[9]; __attribute__((fallthrough));
+            case  9: dst[8]  = src[8]; __attribute__((fallthrough));
+            case  8: dst[7]  = src[7]; __attribute__((fallthrough));
+            case  7: dst[6]  = src[6]; __attribute__((fallthrough));
+            case  6: dst[5]  = src[5]; __attribute__((fallthrough));
+            case  5: dst[4]  = src[4]; __attribute__((fallthrough));
+            case  4: dst[3]  = src[3]; __attribute__((fallthrough));
+            case  3: dst[2]  = src[2]; __attribute__((fallthrough));
+            case  2: dst[1]  = src[1]; __attribute__((fallthrough));
+            case  1: dst[0]  = src[0]; __attribute__((fallthrough));
             case  0: break;
         }
 
@@ -267,21 +267,21 @@ void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
 
         // tail bytes
         switch (size) {
-            case 15: dst[14] = src[14];
-            case 14: dst[13] = src[13];
-            case 13: dst[12] = src[12];
-            case 12: dst[11] = src[11];
-            case 11: dst[10] = src[10];
-            case 10: dst[9]  = src[9];
-            case  9: dst[8]  = src[8];
-            case  8: dst[7]  = src[7];
-            case  7: dst[6]  = src[6];
-            case  6: dst[5]  = src[5];
-            case  5: dst[4]  = src[4];
-            case  4: dst[3]  = src[3];
-            case  3: dst[2]  = src[2];
-            case  2: dst[1]  = src[1];
-            case  1: dst[0]  = src[0];
+            case 15: dst[14] = src[14]; __attribute__((fallthrough));
+            case 14: dst[13] = src[13]; __attribute__((fallthrough));
+            case 13: dst[12] = src[12]; __attribute__((fallthrough));
+            case 12: dst[11] = src[11]; __attribute__((fallthrough));
+            case 11: dst[10] = src[10]; __attribute__((fallthrough));
+            case 10: dst[9]  = src[9]; __attribute__((fallthrough));
+            case  9: dst[8]  = src[8]; __attribute__((fallthrough));
+            case  8: dst[7]  = src[7]; __attribute__((fallthrough));
+            case  7: dst[6]  = src[6]; __attribute__((fallthrough));
+            case  6: dst[5]  = src[5]; __attribute__((fallthrough));
+            case  5: dst[4]  = src[4]; __attribute__((fallthrough));
+            case  4: dst[3]  = src[3]; __attribute__((fallthrough));
+            case  3: dst[2]  = src[2]; __attribute__((fallthrough));
+            case  2: dst[1]  = src[1]; __attribute__((fallthrough));
+            case  1: dst[0]  = src[0]; __attribute__((fallthrough));
             case  0: break;
         }
         return dstptr;
@@ -353,21 +353,21 @@ void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
 
         // tail bytes
         switch (size) {
-            case 15: dst[14] = src[14];
-            case 14: dst[13] = src[13];
-            case 13: dst[12] = src[12];
-            case 12: dst[11] = src[11];
-            case 11: dst[10] = src[10];
-            case 10: dst[9]  = src[9];
-            case  9: dst[8]  = src[8];
-            case  8: dst[7]  = src[7];
-            case  7: dst[6]  = src[6];
-            case  6: dst[5]  = src[5];
-            case  5: dst[4]  = src[4];
-            case  4: dst[3]  = src[3];
-            case  3: dst[2]  = src[2];
-            case  2: dst[1]  = src[1];
-            case  1: dst[0]  = src[0];
+            case 15: dst[14] = src[14]; __attribute__((fallthrough));
+            case 14: dst[13] = src[13]; __attribute__((fallthrough));
+            case 13: dst[12] = src[12]; __attribute__((fallthrough));
+            case 12: dst[11] = src[11]; __attribute__((fallthrough));
+            case 11: dst[10] = src[10]; __attribute__((fallthrough));
+            case 10: dst[9]  = src[9]; __attribute__((fallthrough));
+            case  9: dst[8]  = src[8]; __attribute__((fallthrough));
+            case  8: dst[7]  = src[7]; __attribute__((fallthrough));
+            case  7: dst[6]  = src[6]; __attribute__((fallthrough));
+            case  6: dst[5]  = src[5]; __attribute__((fallthrough));
+            case  5: dst[4]  = src[4]; __attribute__((fallthrough));
+            case  4: dst[3]  = src[3]; __attribute__((fallthrough));
+            case  3: dst[2]  = src[2]; __attribute__((fallthrough));
+            case  2: dst[1]  = src[1]; __attribute__((fallthrough));
+            case  1: dst[0]  = src[0]; __attribute__((fallthrough));
             case  0: break;
         }
         return dstptr;
@@ -485,21 +485,21 @@ void* memcpy_nt(void* restrict dstptr, const void* restrict srcptr, size_t size)
 
         // tail bytes
         switch (size) {
-            case 15: dst[14] = src[14];
-            case 14: dst[13] = src[13];
-            case 13: dst[12] = src[12];
-            case 12: dst[11] = src[11];
-            case 11: dst[10] = src[10];
-            case 10: dst[9]  = src[9];
-            case  9: dst[8]  = src[8];
-            case  8: dst[7]  = src[7];
-            case  7: dst[6]  = src[6];
-            case  6: dst[5]  = src[5];
-            case  5: dst[4]  = src[4];
-            case  4: dst[3]  = src[3];
-            case  3: dst[2]  = src[2];
-            case  2: dst[1]  = src[1];
-            case  1: dst[0]  = src[0];
+            case 15: dst[14] = src[14]; __attribute__((fallthrough));
+            case 14: dst[13] = src[13]; __attribute__((fallthrough));
+            case 13: dst[12] = src[12]; __attribute__((fallthrough));
+            case 12: dst[11] = src[11]; __attribute__((fallthrough));
+            case 11: dst[10] = src[10]; __attribute__((fallthrough));
+            case 10: dst[9]  = src[9]; __attribute__((fallthrough));
+            case  9: dst[8]  = src[8]; __attribute__((fallthrough));
+            case  8: dst[7]  = src[7]; __attribute__((fallthrough));
+            case  7: dst[6]  = src[6]; __attribute__((fallthrough));
+            case  6: dst[5]  = src[5]; __attribute__((fallthrough));
+            case  5: dst[4]  = src[4]; __attribute__((fallthrough));
+            case  4: dst[3]  = src[3]; __attribute__((fallthrough));
+            case  3: dst[2]  = src[2]; __attribute__((fallthrough));
+            case  2: dst[1]  = src[1]; __attribute__((fallthrough));
+            case  1: dst[0]  = src[0]; __attribute__((fallthrough));
             case  0: break;
         }
 
@@ -575,21 +575,21 @@ void* memcpy_nt(void* restrict dstptr, const void* restrict srcptr, size_t size)
 
         // tail bytes
         switch (size) {
-            case 15: dst[14] = src[14];
-            case 14: dst[13] = src[13];
-            case 13: dst[12] = src[12];
-            case 12: dst[11] = src[11];
-            case 11: dst[10] = src[10];
-            case 10: dst[9]  = src[9];
-            case  9: dst[8]  = src[8];
-            case  8: dst[7]  = src[7];
-            case  7: dst[6]  = src[6];
-            case  6: dst[5]  = src[5];
-            case  5: dst[4]  = src[4];
-            case  4: dst[3]  = src[3];
-            case  3: dst[2]  = src[2];
-            case  2: dst[1]  = src[1];
-            case  1: dst[0]  = src[0];
+            case 15: dst[14] = src[14]; __attribute__((fallthrough));
+            case 14: dst[13] = src[13]; __attribute__((fallthrough));
+            case 13: dst[12] = src[12]; __attribute__((fallthrough));
+            case 12: dst[11] = src[11]; __attribute__((fallthrough));
+            case 11: dst[10] = src[10]; __attribute__((fallthrough));
+            case 10: dst[9]  = src[9]; __attribute__((fallthrough));
+            case  9: dst[8]  = src[8]; __attribute__((fallthrough));
+            case  8: dst[7]  = src[7]; __attribute__((fallthrough));
+            case  7: dst[6]  = src[6]; __attribute__((fallthrough));
+            case  6: dst[5]  = src[5]; __attribute__((fallthrough));
+            case  5: dst[4]  = src[4]; __attribute__((fallthrough));
+            case  4: dst[3]  = src[3]; __attribute__((fallthrough));
+            case  3: dst[2]  = src[2]; __attribute__((fallthrough));
+            case  2: dst[1]  = src[1]; __attribute__((fallthrough));
+            case  1: dst[0]  = src[0]; __attribute__((fallthrough));
             case  0: break;
         }
 
