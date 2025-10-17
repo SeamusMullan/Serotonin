@@ -1,37 +1,58 @@
 {
     "tasks": [
         {
-            "type": "cppbuild",
-            "label": "C/C++: i686-elf-gcc build active file",
-            "command": "i686-elf-gcc",
-            "args": [
-                "-std=gnu99",
-                "-ffreestanding",
-                "-O2",
-                "-Wall",
-                "-Wextra",
-                "-msse",
-                "-msse2",
-                "-mfpmath=sse",
-                "-c",
-                "${file}",
-                "-o",
-                "${fileDirname}/${fileBasenameNoExtension}.o"
-            ],
+            "type": "shell",
+            "label": "Build All (Serotonin)",
+            "command": "./build.sh",
             "options": {
-                "cwd": "${fileDirname}",
+                "cwd": "${workspaceFolder}/build",
                 "env": {
                     "PATH": "${workspaceFolder}/build-tools/bin/bin:${env:PATH}"
                 }
             },
-            "problemMatcher": [
-                "$gcc"
-            ],
+            "problemMatcher": {
+                "owner": "cpp",
+                "fileLocation": ["relative", "${workspaceFolder}/kernel"],
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            },
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
-            "detail": "Build using i686-elf-gcc cross-compiler for Serotonin OS"
+            "detail": "Build entire Serotonin OS kernel and create ISO"
+        },
+        {
+            "type": "shell",
+            "label": "Build All (Debug)",
+            "command": "./build.sh",
+            "args": ["-g"],
+            "options": {
+                "cwd": "${workspaceFolder}/build",
+                "env": {
+                    "PATH": "${workspaceFolder}/build-tools/bin/bin:${env:PATH}"
+                }
+            },
+            "problemMatcher": {
+                "owner": "cpp",
+                "fileLocation": ["relative", "${workspaceFolder}/kernel"],
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            },
+            "group": "build",
+            "detail": "Build Serotonin OS kernel with debug symbols"
         }
     ],
     "version": "2.0.0"
