@@ -93,8 +93,9 @@ void enqueue_task_list(process_control_block_t* pcb) {
         task_list = pcb;
     } else {
         process_control_block_t *tail = task_list;
-        while (tail->next)
+        while (tail->next) {
             tail = tail->next;
+        }
         tail->next = pcb;
     }
 }
@@ -303,6 +304,7 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
     pcb->esp_max = stack;
     pcb->esp_min = stk_top;
     pcb->entry = entry;
+    pcb->next = NULL;
 
     printfs(PRINT_STATUS_DEBUG,"Creating task '%s', esp=%p, esp0=%p\n", name, pcb->esp,pcb->esp0);
 
@@ -389,7 +391,7 @@ void task_unblock(process_control_block_t *pcb) {
     enqueue(pcb);
 }
 
-static void enqueue_waiter(lock_t *lock, process_control_block_t *pcb) {
+void enqueue_waiter(lock_t *lock, process_control_block_t *pcb) {
     wait_node_t *node = kernel_malloc(sizeof(*node));
     node->task = pcb;
     node->next = NULL;
@@ -533,11 +535,8 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
         kunmap();
     }
 
-    uint32_t stk_offset = ((uint32_t)parent->esp_min - (uint32_t)parent->processor_context->esp_at_trap);
-    uint32_t bp_offset = ((uint32_t)parent->esp_min - (uint32_t)parent->processor_context->ebp);
-
-    uint32_t c_esp = c_stack_top - stk_offset;
-    uint32_t c_ebp = c_stack_top - bp_offset;
+    uint32_t c_esp = (uint32_t)parent->processor_context->esp_at_trap;
+    uint32_t c_ebp = (uint32_t)parent->processor_context->ebp;
 
     pcb->esp = (uint32_t*)c_stack_top;
     pcb->esp_max = (void*)c_stack_base;
@@ -545,6 +544,7 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     pcb->processor_context->ebp = c_ebp;
     pcb->brk_start = USER_HEAP_START;
     pcb->brk_end = USER_HEAP_START;
+    pcb->next = NULL;
 
     /*
     // create stack
@@ -574,7 +574,7 @@ void task_semaphore_init(lock_semaphore_t *semaphore, uint32_t max_count) {
     semaphore->waiters_tail = NULL;
 }
 
-static void enqueue_waiter_semaphore(lock_semaphore_t *semaphore, process_control_block_t *pcb) {
+void enqueue_waiter_semaphore(lock_semaphore_t *semaphore, process_control_block_t *pcb) {
     wait_node_t *node = kernel_malloc(sizeof(*node));
     node->task = pcb;
     node->next = NULL;

@@ -37,24 +37,16 @@ int main(int argc, char **argv, char **envp) {
         printf("child exited with status: %d\n",status);
     }
 
-    // Now launch the physics demo
-    printf("\n=== Launching Physics Demo ===\n");
-    int physics_pid = fork();
-    if (physics_pid == 0) {
-        // Child process - execute physics demo
-        char *physics_argv[] = {"/bin/physics_demo", NULL};
-        char *physics_envp[] = {"PATH=/", NULL};
-        execve("/bin/physics_demo", physics_argv, physics_envp);
-        // If execve fails, print error
-        printf("Failed to execute physics demo\n");
-        return 1;
+    int pid2 = fork();
+    if (pid2 == 0) {
+        printf("child2\n");
     } else {
-        // Parent process - wait for physics demo to complete
-        printf("Waiting for physics demo to complete...\n");
-        int physics_status = 0;
-        waitpid(physics_pid, &physics_status);
-        printf("Physics demo exited with status: %d\n", physics_status);
+        printf("parent2\n");
+        int status = 0;
+        waitpid(pid2, &status);
+        printf("child2 exited with status: %d\n",status);
     }
+    
 
     return 0;
 }
