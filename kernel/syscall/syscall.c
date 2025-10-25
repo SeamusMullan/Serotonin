@@ -272,7 +272,7 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
 }
 
 static void sys_sbrk(uint32_t arg2, processor_context_t *ctx) {
-    uint32_t increment = arg2;
+    int increment = arg2;
     uint32_t brk_start = current_task->brk_start;
     uint32_t old_brk = current_task->brk_end;
     uint32_t new_brk = old_brk + arg2;

@@ -39,7 +39,7 @@ void fault_handler(int vector) {
             kernel_panic("unhandled exception - device not available (#NM)");
             break;
         case ISR_DOUBLE_FAULT:
-            kernel_panic("unhandled exception - double fault (#DF)");
+            kernel_panic("fatal exception - double fault (#DF)");
             break;
         case ISR_COPROC_SEG_OVERRUN:
             kernel_panic("unhandled exception - coprocessor segment overrun");
