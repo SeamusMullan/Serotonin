@@ -165,13 +165,22 @@ static void sys_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
     int mode = (int)arg4;
 
     vfs_node_t *node = vfs_open(path);
-    if (!node)
+    if (!node) {
+        if (flags & O_CREAT) {
+            node = vfs_create(path);
+            goto nodeCreated;
+        }
         errno = -ENOENT;
+        return;
+    }
+
+nodeCreated:
 
     file_handle_t *handle = kernel_malloc(sizeof(file_handle_t));
     if (!handle) {
         vfs_close(node);
         errno = -EIO;
+        return;
     }
 
     handle->node = node;
@@ -187,6 +196,8 @@ static void sys_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
     }
 
     errno = fd;
+
+    return;
 }
 
 /**
