@@ -40,7 +40,7 @@ static inline int do_syscall(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_
 
     if ((int)eax < 0) {
         errno = -(int)eax;
-        return -1;
+        return errno;
     }
     return eax;
 }
