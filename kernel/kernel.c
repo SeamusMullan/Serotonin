@@ -296,6 +296,7 @@ static void kernel_get_cpu_features(cpu_features_t *f) {
  * @param f Pointer to a cpu_features_t structure containing the features.
  */
 static void kernel_print_cpu_features(const cpu_features_t *f) {
+    if (!debug_mode) return;
     struct { const char *name; uint8_t val; } feat_map[] = {
         {"sse3",         f->sse3},
         {"pclmulqdq",    f->pclmulqdq},
@@ -347,7 +348,7 @@ static void kernel_print_cpu_features(const cpu_features_t *f) {
         {"lm",           f->lm},
     };
 
-    printfs(PRINT_STATUS_INFO,"CPU features:\n");
+    printfs(PRINT_STATUS_DEBUG,"CPU features:\n");
     for (size_t i = 0; i < sizeof(feat_map)/sizeof(feat_map[0]); i++) {
         if (feat_map[i].val)
             printf("  %s", feat_map[i].name);
@@ -788,27 +789,23 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
                 (1 << PRINT_STATUS_FATAL) |
                 (1 << PRINT_STATUS_SUCCESS)
             );
+        } else if (strcmp(token, "quiet") == 0) {
+            printfs_set_mask(0);
         }
     }
 
-    vbe_set_cursor(0,14);
+    vbe_set_cursor(0,0);
 
     cpu_features_t processor_features = {0};
     kernel_get_cpu_features(&processor_features);
 
-	printfs(PRINT_STATUS_INFO,"Serotonin Kernel - Version %d.%d.%d - Compile Time: %s %s\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__);
+	printfs(PRINT_STATUS_INFO,"Serotonin Kernel %d.%d.%d | Compile Time: %s %s | %d pages free | Hypervisor:%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__,buddy_free_pages(), kernel_hypervisor_present());
     kernel_print_cpu_features(&processor_features);
     printfs(PRINT_STATUS_INFO,"Kernel now: 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x, cpu:%s\n",kernel_current_eip(),HEAP_START,magic,addr,cpu_manufacturer);
     printfs(PRINT_STATUS_INFO,"Booted with command line arguments: %s\n",cmdline);
     printfs(PRINT_STATUS_INFO,"Running in VESA VBE Graphics Mode: %dx%dx%d, pitch: %d\n",vbe_info.width,vbe_info.height,vbe_info.bpp,vbe_info.pitch);
 
-    printfs(PRINT_STATUS_INFO,"Virtual Memory Manager: %d total pages detected\n", buddy_total_pages());
-
     ps2_mouse_init();
-
-    if (kernel_hypervisor_present()) {
-        printfs(PRINT_STATUS_INFO,"A hypervisor is present.\n");
-    }
 
     printfs(PRINT_STATUS_INFO,"Trying to mount rootfs drive 1\n");
 
