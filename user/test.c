@@ -37,16 +37,11 @@ int main(int argc, char **argv, char **envp) {
         printf("child exited with status: %d\n",status);
     }
 
-    int pid2 = fork();
-    if (pid2 == 0) {
-        printf("child2\n");
-    } else {
-        printf("parent2\n");
-        int status = 0;
-        waitpid(pid2, &status);
-        printf("child2 exited with status: %d\n",status);
-    }
-    
+    FILE* fptr;
+    fptr = fopen("/home/troll.txt", "w+");
+    printf("fptr:%d\n",fptr);
+    fprintf(fptr, "%s", "testing");
+    fclose(fptr);
 
     return 0;
 }
