@@ -387,7 +387,7 @@ void game_loop(void) {
     
     init_game(&game);
     clear_screen();
-    
+    print_line("\n"); 
     print_line("=====================================");
     print_line("   CAVE ADVENTURE");
     print_line("=====================================");
@@ -404,6 +404,7 @@ void game_loop(void) {
             continue;
         }
         
+        print_string("\n");  // Add newline after user input
         process_command(&game, input);
     }
     
