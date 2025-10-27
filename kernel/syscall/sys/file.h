@@ -27,6 +27,16 @@
 #define	_FDIRECTORY	0x200000
 #define	_FEXECSRCH	0x400000
 
+#define S_IFMT   0xF000 
+
+#define S_IFREG  0x8000   /* Regular file */
+#define S_IFDIR  0x4000   /* Directory */
+#define S_IFCHR  0x2000   /* Character device */
+#define S_IFBLK  0x6000   /* Block device */
+#define S_IFIFO  0x1000   /* FIFO (named pipe) */
+#define S_IFLNK  0xA000   /* Symbolic link */
+#define S_IFSOCK 0xC000   /* Socket */
+
 #define	O_RDONLY	0		/* +1 == FREAD */
 #define	O_WRONLY	1		/* +1 == FWRITE */
 #define	O_RDWR		2		/* +1 == FREAD|FWRITE */

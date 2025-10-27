@@ -367,24 +367,34 @@ static void sys_fstat(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) {
     struct stat *statbuf = (struct stat*)arg3;
 
     if ((fd >= FD_MAX || current_task->fd_table[fd] == NULL) && fd > 2) {
-        handle_illegal_call(arg2, arg3, 0, ctx->eip);
-        __builtin_unreachable();
+        errno = -EBADF;
+        return;
     }
 
     struct stat *k_statbuf = (struct stat*)kernel_malloc_align(sizeof(struct stat), 16);
     memset(k_statbuf, 0, sizeof(struct stat));
 
-    // ill define these later, im too tired and i just want to get this fucking working
     if (fd < 3) {
-        k_statbuf->st_mode = 0x2000;
+        k_statbuf->st_mode = S_IFCHR;
         k_statbuf->st_blksize = 1024;
     } else {
         file_handle_t *handle = current_task->fd_table[fd];
         vfs_node_t *node = handle->node;
 
+        k_statbuf->st_dev = (dev_t)(uintptr_t)node->fs;
         k_statbuf->st_ino = node->inode;
-        k_statbuf->st_mode = 0x8000;
+
+        if (node->flags & VFS_FLAG_DIRECTORY) {
+            k_statbuf->st_mode = S_IFDIR | 0755;
+        } else if (node->flags & VFS_FLAG_SYMLINK) {
+            k_statbuf->st_mode = S_IFLNK | 0777;
+        } else {
+            k_statbuf->st_mode = S_IFREG | 0644;
+        }
+
         k_statbuf->st_size = node->size;
+        k_statbuf->st_blksize = 4096; // some reasonable value lol
+        k_statbuf->st_blocks = (node->size + 511) / 512;
     }
 
     memcpy(statbuf, k_statbuf, sizeof(struct stat));
