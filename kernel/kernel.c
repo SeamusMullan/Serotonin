@@ -805,7 +805,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     printfs(PRINT_STATUS_INFO,"Booted with command line arguments: %s\n",cmdline);
     printfs(PRINT_STATUS_INFO,"Running in VESA VBE Graphics Mode: %dx%dx%d, pitch: %d\n",vbe_info.width,vbe_info.height,vbe_info.bpp,vbe_info.pitch);
 
-    ps2_mouse_init();
+    //ps2_mouse_init();
 
     printfs(PRINT_STATUS_INFO,"Trying to mount rootfs drive 1\n");
 

@@ -43,5 +43,7 @@ int main(int argc, char **argv, char **envp) {
     fprintf(fptr, "%s", "testing");
     fclose(fptr);
 
+    execve("/bin/shell", 0, 0);
+
     return 0;
 }
