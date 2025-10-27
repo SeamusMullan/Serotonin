@@ -1,3 +1,4 @@
 test.elf bin/init
 shell.elf bin/shell
+sponk.elf /bin/sponk
 lua.elf bin/lua
