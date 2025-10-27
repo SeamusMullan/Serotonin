@@ -25,8 +25,8 @@ fi
 rm -rf build-tools/binutils-gdb build-tools/gcc # cleanup
 mkdir -p build-tools
 
-git clone git://sourceware.org/git/binutils-gdb.git build-tools/binutils-gdb
-git clone git://gcc.gnu.org/git/gcc.git build-tools/gcc
+git clone git://sourceware.org/git/binutils-gdb.git build-tools/src/binutils-gdb
+git clone git://gcc.gnu.org/git/gcc.git build-tools/src/gcc
 
 echo "=== Download complete! ==="
 echo "Binutils and GCC have been downloaded to the 'build-tools' directory."
