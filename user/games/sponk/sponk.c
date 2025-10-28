@@ -1,8 +1,16 @@
+/**
+ * @file sponk.c
+ * @brief Implementation of the Sponk text adventure game
+ * 
+ * Contains all game logic, command processing, and utility functions
+ * for the cave exploration adventure game.
+ */
+
 #include "sponk.h"
 #include <unistd.h>
 #include <string.h>
 
-// Room data
+/** Room database with all game locations */
 static Room rooms[ROOM_COUNT] = {
     [ROOM_CAVE_ENTRANCE] = {
         .id = ROOM_CAVE_ENTRANCE,
@@ -78,7 +86,10 @@ static Room rooms[ROOM_COUNT] = {
     }
 };
 
-// Utility functions
+/* ============================================================================
+ * Utility Functions
+ * ========================================================================== */
+
 void print_string(const char *str) {
     write(1, str, strlen(str));
 }
@@ -124,7 +135,10 @@ bool string_starts_with(const char *str, const char *prefix) {
     return true;
 }
 
-// Convert string to lowercase (in-place)
+/**
+ * @brief Convert string to lowercase (in-place)
+ * @param str String to convert
+ */
 void to_lower(char *str) {
     while (*str) {
         if (*str >= 'A' && *str <= 'Z') {
@@ -134,7 +148,10 @@ void to_lower(char *str) {
     }
 }
 
-// Game functions
+/* ============================================================================
+ * Game Functions
+ * ========================================================================== */
+
 Room *get_room(RoomID id) {
     if (id >= 0 && id < ROOM_COUNT) {
         return &rooms[id];
