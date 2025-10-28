@@ -1,6 +1,27 @@
+/**
+ * @file shell.c
+ * @brief Simple command-line shell for Serotonin OS
+ * 
+ * Provides a basic interactive shell that reads commands from stdin,
+ * forks child processes to execute them, and waits for completion.
+ * The shell runs in a loop until EOF (Ctrl+D) is received.
+ */
+
 #include <unistd.h>
 #include <sys/wait.h>
 
+/**
+ * @brief Main shell loop
+ * 
+ * Implements a read-eval-execute loop that:
+ * 1. Displays a prompt
+ * 2. Reads user input
+ * 3. Forks a child process
+ * 4. Executes the command in the child
+ * 5. Waits for the child to complete
+ * 
+ * @return 0 on normal exit, 1 on error
+ */
 int main()
 {
 	char command[256];
