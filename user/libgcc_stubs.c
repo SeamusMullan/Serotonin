@@ -10,6 +10,17 @@ typedef union {
     } s;
 } udwords;
 
+/**
+ * @brief Unsigned 64-bit division with optional remainder
+ * 
+ * Performs division of two 64-bit unsigned integers using shift-and-subtract
+ * algorithm suitable for systems without native 64-bit division support.
+ * 
+ * @param num Numerator (dividend)
+ * @param den Denominator (divisor)
+ * @param rem_p Pointer to store remainder (can be NULL if not needed)
+ * @return Quotient of num / den
+ */
 u64 __udivmoddi4(u64 num, u64 den, u64 *rem_p) {
     u64 quot = 0, qbit = 1;
 
@@ -37,16 +48,41 @@ u64 __udivmoddi4(u64 num, u64 den, u64 *rem_p) {
     return quot;
 }
 
+/**
+ * @brief Unsigned 64-bit division
+ * 
+ * @param num Numerator
+ * @param den Denominator
+ * @return Quotient of num / den
+ */
 u64 __udivdi3(u64 num, u64 den) {
     return __udivmoddi4(num, den, 0);
 }
 
+/**
+ * @brief Unsigned 64-bit modulo operation
+ * 
+ * @param num Numerator
+ * @param den Denominator
+ * @return Remainder of num % den
+ */
 u64 __umoddi3(u64 num, u64 den) {
     u64 v;
     __udivmoddi4(num, den, &v);
     return v;
 }
 
+/**
+ * @brief Signed 64-bit division with optional remainder
+ * 
+ * Handles signed division by converting to unsigned operations
+ * and adjusting the sign of the result accordingly.
+ * 
+ * @param num Numerator (dividend)
+ * @param den Denominator (divisor)
+ * @param rem_p Pointer to store remainder (can be NULL if not needed)
+ * @return Quotient of num / den
+ */
 s64 __divmoddi4(s64 num, s64 den, s64 *rem_p) {
     int minus = 0;
     s64 v;
@@ -70,10 +106,24 @@ s64 __divmoddi4(s64 num, s64 den, s64 *rem_p) {
     return v;
 }
 
+/**
+ * @brief Signed 64-bit division
+ * 
+ * @param num Numerator
+ * @param den Denominator
+ * @return Quotient of num / den
+ */
 s64 __divdi3(s64 num, s64 den) {
     return __divmoddi4(num, den, 0);
 }
 
+/**
+ * @brief Signed 64-bit modulo operation
+ * 
+ * @param num Numerator
+ * @param den Denominator
+ * @return Remainder of num % den
+ */
 s64 __moddi3(s64 num, s64 den) {
     s64 v;
     __divmoddi4(num, den, &v);
