@@ -13,7 +13,16 @@ static const char scancode_map[128] = {
     'z','x','c','v','b','n','m',',','.','/',   0, '*',  0, ' ',
 };
 
+static const char scancode_map_shift[128] = {
+    0, 27, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', '\b',
+    '\t','Q','W','E','R','T','Y','U','I','O','P','{','}','\n', 0,
+    'A','S','D','F','G','H','J','K','L',':','"','~',  0, '|',
+    'Z','X','C','V','B','N','M','<','>','?',   0, '*',  0, ' ',
+};
+
+
 char stdio_buffer[STDIO_INPUT_BUFFER];
+static uint8_t shift_pressed = 0;
 
 /**
  * @brief Handle keyboard scancodes.
@@ -39,15 +48,19 @@ void handle_scancode(uint8_t scancode) {
     if (stdin_idx >= STDIO_INPUT_BUFFER || stdin_idx >= stdio_buf_size)
         return;
 
-    if (scancode > 127)
+    if (scancode > 255)
         return;
 
     if (scancode & 0x80) {
-        // key release
+        uint8_t released = scancode & 0x7F;
+        if (released == 0x2A || released == 0x36) {
+            shift_pressed = 0;
+        }
     }
     else if (scancode == 0x1C)
     {
 
+        printf("\n");
         uint32_t old_cr3 = read_cr3();
         write_cr3(stdin_lock->owner->address_space->phys_pdir);
 
@@ -61,7 +74,7 @@ void handle_scancode(uint8_t scancode) {
 
         task_lock_release(stdin_lock);
     }
-    else if (scancode == 0x0E)
+    else if (scancode == 0x0E && stdin_idx != 0)
     {
         stdio_buffer[stdin_idx] = '\0';
         stdin_idx--;
@@ -69,7 +82,10 @@ void handle_scancode(uint8_t scancode) {
     }
     else
     {
-        char c = scancode_map[scancode];
+        if (scancode == 0x2A || scancode == 0x36) {
+            shift_pressed = 1;
+        }
+        char c = shift_pressed ? scancode_map_shift[scancode] : scancode_map[scancode];
         if (c) {
             stdio_buffer[stdin_idx] = (unsigned char)c;
             stdin_idx++;
