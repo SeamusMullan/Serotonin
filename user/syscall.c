@@ -1,3 +1,12 @@
+/**
+ * @file syscall.c
+ * @brief System call interface for Serotonin OS
+ * 
+ * Provides user-space wrappers for kernel system calls using the
+ * interrupt-based system call mechanism (int 0x80). Each function
+ * invokes the appropriate system call and handles error conditions.
+ */
+
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
