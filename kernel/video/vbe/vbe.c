@@ -57,6 +57,28 @@ uint32_t vbe_colors[16] = {
     0x00FFFFFF  // WHITE
 };
 
+static uint32_t ansi_color_table[16] = {
+    0x00000000, // black
+    0x00FF0000, // red
+    0x0000FF00, // green
+    0x00FFFF00, // yellow
+    0x000000FF, // blue
+    0x00FF00FF, // magenta
+    0x0000FFFF, // cyan
+    0x00FFFFFF, // white
+    0x00404040, // bright black (gray)
+    0x00FF4040, // bright red
+    0x0040FF40, // bright green
+    0x00FFFF40, // bright yellow
+    0x004040FF, // bright blue
+    0x00FF40FF, // bright magenta
+    0x0040FFFF, // bright cyan
+    0x00FFFFFF  // bright white
+};
+
+static uint32_t ansi_fg = 0xFFFFFFFF;
+static uint32_t ansi_bg = 0xFF000000;
+
 // dirty bounding box used for rect dirty marking
 dirty_bb_t *dbb;
 
@@ -637,11 +659,36 @@ void vbe_terminal_putchar(char c)
  *
  * @param str The string to print.
  */
-void vbe_terminal_puts(const char *str)
-{
-    while (*str)
-    {
-        vbe_terminal_putchar(*str++);
+void vbe_terminal_puts(const char *str, int len) {
+    uint8_t in_escape = 0;
+    char esc_buf[32];
+    int esc_len = 0;
+    int str_len = len;
+    if (len == 0)
+        str_len = strlen(str);
+
+    for (int i = 0; i < str_len; i++) {
+        char c = str[i];
+        if (!in_escape) {
+            if (c == '\033') { // escape
+                in_escape = 1;
+                esc_len = 0;
+            } else { vbe_terminal_putchar(c); }
+        } else {
+            if (esc_len < (int)sizeof(esc_buf) - 1)
+                esc_buf[esc_len++] = c;
+
+            // ansi sequences end with a letter
+            if (isalpha(c)) {
+                esc_buf[esc_len] = '\0';
+                in_escape = 0;
+
+                if (esc_buf[0] == '[')
+                {
+                    vbe_handle_ansi_sequence(esc_buf + 1); // skip [
+                }
+            }
+        }
     }
 }
 
@@ -929,5 +976,117 @@ void vbe_z_copy_and_fade(uint32_t src_z, uint32_t dst_z, uint8_t fade_amount)
             a -= fade_amount;
             dst[i] = ((uint32_t)a << 24) | (c & 0x00FFFFFFu);
         }
+    }
+}
+
+void vbe_handle_ansi_sequence(const char *seq) {
+    char buf[64];
+    strncpy(buf, seq, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = '\0';
+
+    // find command letter
+    int len = strlen(buf);
+    if (len == 0)
+        return;
+    char cmd = buf[len - 1];
+    buf[len - 1] = '\0'; // remove command char for parsing
+    
+    // split params
+    char *params[16];
+    int count = 0;
+    char *tok = strtok(buf, ";");
+    while (tok && count < 16) {
+        params[count++] = tok;
+        tok = strtok(NULL, ";");
+    }
+
+    switch (cmd) {
+        case 'm': { // SGR (Select Graphic Rendition)
+            if (count == 0) {
+                // reset
+                ansi_fg = 0xFFFFFFFF;
+                ansi_bg = 0xFF000000;
+                vbe_setcolor_fg(ansi_fg);
+                vbe_setcolor_bg(ansi_bg);
+                return;
+            }
+
+            for (int i = 0; i < count; i++) {
+                int code = atoi(params[i]);
+
+                if (code == 0) {
+                    ansi_fg = 0xFFFFFFFF;
+                    ansi_bg = 0xFF000000;
+                    vbe_setcolor_fg(ansi_fg);
+                    vbe_setcolor_bg(ansi_bg);
+                }
+                else if (code >= 30 && code <= 37) {
+                    ansi_fg = ansi_color_table[code - 30];
+                    vbe_setcolor_fg(ansi_fg);
+                }
+                else if (code == 39) {
+                    ansi_fg = 0xFFFFFFFF;
+                    vbe_setcolor_fg(ansi_fg);
+                }
+                else if (code >= 40 && code <= 47) {
+                    ansi_bg = ansi_color_table[code - 40];
+                    vbe_setcolor_bg(ansi_bg);
+                }
+                else if (code == 49) {
+                    ansi_bg = 0xFF000000;
+                    vbe_setcolor_bg(ansi_bg);
+                }
+                else if (code >= 90 && code <= 97) {
+                    ansi_fg = ansi_color_table[8 + (code - 90)];
+                    vbe_setcolor_fg(ansi_fg);
+                }
+                else if (code >= 100 && code <= 107) {
+                    ansi_bg = ansi_color_table[8 + (code - 100)];
+                    vbe_setcolor_bg(ansi_bg);
+                }
+                // 24bit truecolor: 38;2;R;G;B or 48;2;R;G;B
+                else if (code == 38 || code == 48) {
+                    uint8_t is_fg = (code == 38);
+                    if (i + 4 < count && atoi(params[i + 1]) == 2)
+                    {
+                        uint8_t r = (uint8_t)atoi(params[i + 2]);
+                        uint8_t g = (uint8_t)atoi(params[i + 3]);
+                        uint8_t b = (uint8_t)atoi(params[i + 4]);
+                        uint32_t color = 0xFF000000 | (r << 16) | (g << 8) | b;
+                        if (is_fg)
+                            vbe_setcolor_fg(color);
+                        else
+                            vbe_setcolor_bg(color);
+                        i += 4;
+                    }
+                }
+            }
+            break;
+        }
+
+        case 'H': // cursor move (row;col)
+        case 'f': {
+            uint32_t row = (count >= 1) ? atoi(params[0]) : 1;
+            uint32_t col = (count >= 2) ? atoi(params[1]) : 1;
+            if (row < 1) row = 1;
+            if (col < 1) col = 1;
+            if (row > term_max_rows()) row = term_max_rows();
+            if (col > term_max_cols()) col = term_max_cols();
+            vbe_set_cursor(col - 1, row - 1);
+            break;
+        }
+
+        case 'J': { // clear screen
+            int mode = (count > 0) ? atoi(params[0]) : 0;
+            if (mode == 2) // clear all
+                vbe_clear_screen(ansi_bg);
+                vbe_set_cursor(0,0);
+                vbe_flip_all();
+            break;
+        }
+
+        default:
+            // unsupported sequence
+            break;
     }
 }

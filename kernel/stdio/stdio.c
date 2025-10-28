@@ -107,7 +107,7 @@ void printf_internal(const char* p, void** arg_ptr) {
                 case 's':
                     char* str_arg = (char*)*arg_ptr++;
                     serial_puts(COM1_BASE, str_arg);
-                    vbe_terminal_puts(str_arg);
+                    vbe_terminal_puts(str_arg, 0);
                     break;
 
                 case 'c':
@@ -118,7 +118,7 @@ void printf_internal(const char* p, void** arg_ptr) {
                 case 'p': {
                     void* ptr = *arg_ptr++;
                     uintptr_t addr = (uintptr_t)ptr;
-                    vbe_terminal_puts("0x");
+                    vbe_terminal_puts("0x", 0);
                     serial_puts(COM1_BASE, "0x");
 
                     utoa_hex(addr, buffer);
@@ -130,7 +130,7 @@ void printf_internal(const char* p, void** arg_ptr) {
                         width--;
                     }
 
-                    vbe_terminal_puts(buffer);
+                    vbe_terminal_puts(buffer, 0);
                     serial_puts(COM1_BASE, buffer);
                     break;
                 }
@@ -140,7 +140,7 @@ void printf_internal(const char* p, void** arg_ptr) {
                     arg_ptr++;
 
                     ftoa(val, buffer, 6); // 6 decimal places
-                    vbe_terminal_puts(buffer);
+                    vbe_terminal_puts(buffer, 0);
                     serial_puts(COM1_BASE, buffer);
                     break;
                 }
@@ -154,13 +154,13 @@ void printf_internal(const char* p, void** arg_ptr) {
             }
 
             if (*p == 'x' || *p == 'u' || *p == 'd') {
-                vbe_terminal_puts(buffer);
+                vbe_terminal_puts(buffer, 0);
                 serial_puts(COM1_BASE, buffer);
             }
 
         } else {
-            // Output normal character fast
-            vbe_terminal_putchar(*p);
+            char ps[2] = {*p, 0};
+            vbe_terminal_puts(ps, 0);
             serial_putchar(COM1_BASE, *p);
         }
         p++;
@@ -199,44 +199,44 @@ int printfs_masked(enum print_status_types status_type) {
  * @param status_type The status type to write.
  */
 void printfs_write_status(enum print_status_types status_type) {
-    vbe_terminal_puts("[");
+    vbe_terminal_puts("[", 0);
     serial_puts(COM1_BASE, "[");
     switch (status_type) {
         case PRINT_STATUS_DEBUG:
             vbe_setcolor_bg_palette(VBE_COLOR_LIGHT_BLUE);
-            vbe_terminal_puts("DDD");
+            vbe_terminal_puts("DDD", 0);
             serial_puts(COM1_BASE, "DDD");
             break;
         case PRINT_STATUS_INFO:
             vbe_setcolor_bg_palette(VBE_COLOR_BLUE);
-            vbe_terminal_puts("III");
+            vbe_terminal_puts("III", 0);
             serial_puts(COM1_BASE, "III");
             break;
         case PRINT_STATUS_WARNING:
             vbe_setcolor_bg_palette(VBE_COLOR_BROWN);
-            vbe_terminal_puts("WWW");
+            vbe_terminal_puts("WWW", 0);
             serial_puts(COM1_BASE, "WWW");
             break;
         case PRINT_STATUS_ERROR:
             vbe_setcolor_bg_palette(VBE_COLOR_RED);
-            vbe_terminal_puts("EEE");
+            vbe_terminal_puts("EEE", 0);
             serial_puts(COM1_BASE, "EEE");
             break;
         case PRINT_STATUS_FATAL:
             vbe_setcolor_bg_palette(VBE_COLOR_RED);
-            vbe_terminal_puts("!!!");
+            vbe_terminal_puts("!!!", 0);
             serial_puts(COM1_BASE, "!!!");
             break;
         case PRINT_STATUS_SUCCESS:
             vbe_setcolor_bg_palette(VBE_COLOR_GREEN);
             vbe_setcolor_fg_palette(VBE_COLOR_BLACK);
-            vbe_terminal_puts("SSS");
+            vbe_terminal_puts("SSS", 0);
             serial_puts(COM1_BASE, "SSS");
             break;
     }
     vbe_setcolor_bg_palette(VBE_COLOR_BLACK);
     vbe_setcolor_fg_palette(VBE_COLOR_WHITE);
-    vbe_terminal_puts("] ");
+    vbe_terminal_puts("] ", 0);
     serial_puts(COM1_BASE, "] ");
 }
 

@@ -87,7 +87,7 @@ void vbe_puts(const char *str, uint32_t x, uint32_t y, uint32_t color);
 static uint32_t term_max_cols(void);
 static uint32_t term_max_rows(void);
 void vbe_terminal_putchar(char c);
-void vbe_terminal_puts(const char *str);
+void vbe_terminal_puts(const char *str, int len);
 void vbe_terminal_back(void);
 void vbe_setcolor_fg(uint32_t color);
 void vbe_setcolor_bg(uint32_t color);
@@ -108,5 +108,6 @@ void vbe_clear_all_z_layers(void);
 void vbe_z_copy_and_fade(uint32_t src_z, uint32_t dst_z, uint8_t fade_amount);
 vbe_z_layer_t* vbe_create_z_layer(uint8_t z, uint8_t alpha, uint8_t active);
 void vbe_mark_region_dirty(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
+void vbe_handle_ansi_sequence(const char *seq);
 
 #endif
