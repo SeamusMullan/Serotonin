@@ -1,3 +1,11 @@
+/**
+ * @file test.c
+ * @brief Test program for Serotonin OS libc functionality
+ * 
+ * This program tests various libc functions including stdio, malloc/free,
+ * fork/exec, and file I/O operations in the Serotonin OS environment.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
