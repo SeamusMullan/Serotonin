@@ -1,3 +1,12 @@
+/**
+ * @file libgcc_stubs.c
+ * @brief 64-bit division and modulo operations for 32-bit systems
+ * 
+ * Provides software implementations of 64-bit arithmetic operations
+ * that are not natively supported on 32-bit architectures. These
+ * functions are typically required by GCC for 64-bit integer operations.
+ */
+
 // 64-bit division/modulo for 32-bit systems
 typedef unsigned long long u64;
 typedef long long s64;
