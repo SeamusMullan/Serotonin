@@ -4,7 +4,7 @@
 int main()
 {
 	char command[256];
-	const char *prompt = "\n# ";
+	const char *prompt = "# ";
 	const char *read_error = "Error: failed to read input\n";
 	const char *fork_error = "Error: failed to fork process\n";
 	const char *exec_error = "Error: failed to execute command\n";
