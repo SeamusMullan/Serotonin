@@ -16,6 +16,7 @@ done
 # compiler flags
 CFLAGS="-std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse"
 [ "$DEBUG" -eq 1 ] && CFLAGS="$CFLAGS -g"
+[ -n "$TEST_MODE" ] && CFLAGS="$CFLAGS -DKERNEL_TEST_MODE"
 
 cd ../kernel
 
@@ -65,8 +66,15 @@ i686-elf-gcc -c filesystem/tmpfs/tmpfs.c -o filesystem/tmpfs/tmpfs.o $CFLAGS
 i686-elf-gcc -c filesystem/fat32/fat32.c -o filesystem/fat32/fat32.o $CFLAGS
 i686-elf-gcc -c filesystem/user_fs/user_fs.c -o filesystem/user_fs/user_fs.o $CFLAGS
 
+# Conditionally build test objects if TEST_MODE is enabled
+TEST_OBJS=""
+if [ -n "$TEST_MODE" ]; then
+    echo "TEST_MODE enabled - including test objects..."
+    TEST_OBJS="test/ktest.o test/test_main.o test/test_string.o test/test_mem.o test/test_stdlib.o test/test_vfs.o test/test_paging.o test/test_scheduler.o test/test_io.o"
+fi
+
 # da linker
-i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt.o idt.o isr.o fault.o io/irq.o io/pic.o io/keyboard.o vmm/paging_init.o vmm/vmm.o video/vbe/vbe.o video/font.o video/splash.o video/pipes.o filesystem/vfs.o filesystem/tmpfs/tmpfs.o filesystem/ide.o filesystem/fat32/fat32.o schedule/schedule.o schedule/switch_task.o audio/pcspeaker/pcspeaker.o audio/opl2/opl2.o syscall/isr_syscall.o syscall/syscall.o audio/startup/opl2_sound/opl2_startup.o schedule/kernel_yield.o filesystem/user_fs/user_fs.o io/rtc.o io/serial.o 
+i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt.o idt.o isr.o fault.o io/irq.o io/pic.o io/keyboard.o vmm/paging_init.o vmm/vmm.o video/vbe/vbe.o video/font.o video/splash.o video/pipes.o filesystem/vfs.o filesystem/tmpfs/tmpfs.o filesystem/ide.o filesystem/fat32/fat32.o schedule/schedule.o schedule/switch_task.o audio/pcspeaker/pcspeaker.o audio/opl2/opl2.o syscall/isr_syscall.o syscall/syscall.o audio/startup/opl2_sound/opl2_startup.o schedule/kernel_yield.o filesystem/user_fs/user_fs.o io/rtc.o io/serial.o $TEST_OBJS 
 
 cd ../build
 

@@ -149,6 +149,8 @@ void task_lock_release(lock_t *lock);
 process_control_block_t* task_fork(process_control_block_t *parent);
 void preempt_disable();
 void preempt_enable();
+process_control_block_t* get_current_task(void);
+uint32_t get_task_count(void);
 
 static inline const char* to_signal_name(int signal_id) {
     static const char* const signal_names[16] = {
