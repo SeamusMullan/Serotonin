@@ -106,6 +106,12 @@ int open(const char *path, int flags, ...) {
     return do_syscall(SYSTEM_CALL_OPEN, (uintptr_t)path, flags, 0);
 }
 
+/**
+ * @brief Close a file descriptor
+ * 
+ * @param fd File descriptor to close
+ * @return 0 on success, -1 on error (errno set)
+ */
 int close(int fd) {
     return do_syscall(SYSTEM_CALL_CLOSE, fd, 0, 0);
 }
@@ -122,22 +128,53 @@ off_t lseek(int fd, off_t offset, int whence) {
     return do_syscall(SYSTEM_CALL_LSEEK, fd, offset, whence);
 }
 
+/**
+ * @brief Get file status by file descriptor
+ * 
+ * @param fd File descriptor
+ * @param st Pointer to stat structure to fill
+ * @return 0 on success, -1 on error (errno set)
+ */
 int fstat(int fd, struct stat *st) {
     return do_syscall(SYSTEM_CALL_FSTAT, fd, (uintptr_t)st, 0);
 }
 
+/**
+ * @brief Check if file descriptor refers to a terminal
+ * 
+ * @param fd File descriptor
+ * @return 1 if terminal, 0 if not, -1 on error (errno set)
+ */
 int isatty(int fd) {
     return do_syscall(SYSTEM_CALL_TTY, fd, 0, 0);
 }
 
+/**
+ * @brief Get current process ID
+ * 
+ * @return Process ID
+ */
 pid_t getpid(void) {
     return do_syscall(SYSTEM_CALL_GETPID, 0, 0, 0);
 }
 
+/**
+ * @brief Send signal to a process
+ * 
+ * @param pid Process ID to send signal to
+ * @param sig Signal number
+ * @return 0 on success, -1 on error (errno set)
+ */
 int kill(pid_t pid, int sig) {
     return do_syscall(SYSTEM_CALL_KILL, pid, sig, 0);
 }
 
+/**
+ * @brief Change data segment size (heap allocation)
+ * 
+ * @param incr Number of bytes to increment (positive) or decrement (negative)
+ * @return Previous program break on success, (void *)-1 on error
+ */
 void *sbrk(ptrdiff_t incr) {
     int ret = do_syscall(SYSTEM_CALL_SBRK, incr, 0, 0);
     if (ret == -1)
@@ -145,10 +182,22 @@ void *sbrk(ptrdiff_t incr) {
     return (void *)ret;
 }
 
+/**
+ * @brief Create a new process by duplicating the current process
+ * 
+ * @return 0 in child process, child PID in parent process, -1 on error
+ */
 pid_t fork() {
     return do_syscall(SYSTEM_CALL_FORK, 0, 0, 0);
 }
 
+/**
+ * @brief Wait for process to change state
+ * 
+ * @param pid Process ID to wait for
+ * @param status Pointer to store exit status
+ * @return Process ID of terminated child, -1 on error (errno set)
+ */
 int waitpid(pid_t pid, int *status) {
     return do_syscall(SYSTEM_CALL_WAITPID, pid, (uint32_t)status, 0);
 }
@@ -157,4 +206,9 @@ int execve(const char *name, char *const argv[], char *const envp[]) {
     return do_syscall(SYSTEM_CALL_EXECVE, (uint32_t)name, (uint32_t)argv, (uint32_t)envp);
 }
 
+/**
+ * @brief Initialize function (called before main)
+ * 
+ * Empty initialization function for runtime setup.
+ */
 void _init(void) {}
