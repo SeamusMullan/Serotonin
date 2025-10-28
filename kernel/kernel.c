@@ -821,16 +821,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     multitasking_init();
 
-#ifdef KERNEL_TEST_MODE
-    // Run kernel tests before starting multitasking
-    extern void ktest_run_all_suites(void);
-    serial_puts(COM1_BASE, "\n\n===== STARTING KERNEL TEST SUITE =====\n");
-    printfs(PRINT_STATUS_INFO,"===== RUNNING KERNEL TEST SUITE =====\n");
-    ktest_run_all_suites();
-    serial_puts(COM1_BASE, "===== KERNEL TESTS COMPLETED =====\n\n");
-    printfs(PRINT_STATUS_INFO,"===== KERNEL TESTS COMPLETED =====\n");
-#endif
-
     process_control_block_t *idle_task = task_create(kernel_idle_task, "System Idle Task", CPU_KERNEL_MODE, 0);
     enqueue(idle_task);
 
@@ -855,6 +845,17 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     enqueue(init);
     printfs(PRINT_STATUS_INFO,"Entering scheduler\n");
     multitasking_make_ready();
+
+
+    #ifdef KERNEL_TEST_MODE
+        extern void ktest_run_all_suites(void);
+        serial_puts(COM1_BASE, "\n\n===== STARTING KERNEL TEST SUITE =====\n");
+        printfs(PRINT_STATUS_INFO,"===== RUNNING KERNEL TEST SUITE =====\n");
+        ktest_run_all_suites();
+        serial_puts(COM1_BASE, "===== KERNEL TESTS COMPLETED =====\n\n");
+        printfs(PRINT_STATUS_INFO,"===== KERNEL TESTS COMPLETED =====\n");
+    #endif
+
     task_yield(0);
     abort();
 }
