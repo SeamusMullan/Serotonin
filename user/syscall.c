@@ -58,19 +58,50 @@ static inline int do_syscall(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_
     return eax;
 }
 
+/**
+ * @brief Terminate the calling process
+ * 
+ * This function does not return.
+ * 
+ * @param status Exit status code
+ */
 void _exit(int status) {
     do_syscall(SYSTEM_CALL_EXIT, status, 0, 0);
     for (;;);
 }
 
+/**
+ * @brief Write data to a file descriptor
+ * 
+ * @param fd File descriptor
+ * @param buf Buffer containing data to write
+ * @param count Number of bytes to write
+ * @return Number of bytes written on success, -1 on error (errno set)
+ */
 int write(int fd, const void *buf, size_t count) {
     return do_syscall(SYSTEM_CALL_WRITE, fd, (uintptr_t)buf, count);
 }
 
+/**
+ * @brief Read data from a file descriptor
+ * 
+ * @param fd File descriptor
+ * @param buf Buffer to store read data
+ * @param count Maximum number of bytes to read
+ * @return Number of bytes read on success, -1 on error (errno set)
+ */
 int read(int fd, void *buf, size_t count) {
     return do_syscall(SYSTEM_CALL_READ, fd, (uintptr_t)buf, count);
 }
 
+/**
+ * @brief Open a file
+ * 
+ * @param path Path to the file
+ * @param flags Open flags (O_RDONLY, O_WRONLY, O_RDWR, etc.)
+ * @param ... Optional mode argument for file creation
+ * @return File descriptor on success, -1 on error (errno set)
+ */
 int open(const char *path, int flags, ...) {
     return do_syscall(SYSTEM_CALL_OPEN, (uintptr_t)path, flags, 0);
 }
@@ -79,6 +110,14 @@ int close(int fd) {
     return do_syscall(SYSTEM_CALL_CLOSE, fd, 0, 0);
 }
 
+/**
+ * @brief Reposition file offset
+ * 
+ * @param fd File descriptor
+ * @param offset Offset value
+ * @param whence Reference point (SEEK_SET, SEEK_CUR, SEEK_END)
+ * @return New offset on success, -1 on error (errno set)
+ */
 off_t lseek(int fd, off_t offset, int whence) {
     return do_syscall(SYSTEM_CALL_LSEEK, fd, offset, whence);
 }
