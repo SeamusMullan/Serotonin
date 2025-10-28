@@ -202,6 +202,17 @@ int waitpid(pid_t pid, int *status) {
     return do_syscall(SYSTEM_CALL_WAITPID, pid, (uint32_t)status, 0);
 }
 
+/**
+ * @brief Execute a program
+ * 
+ * Replaces the current process image with a new program.
+ * This function only returns on error.
+ * 
+ * @param name Path to the executable
+ * @param argv Argument vector (NULL-terminated)
+ * @param envp Environment variables (NULL-terminated)
+ * @return -1 on error (errno set), does not return on success
+ */
 int execve(const char *name, char *const argv[], char *const envp[]) {
     return do_syscall(SYSTEM_CALL_EXECVE, (uint32_t)name, (uint32_t)argv, (uint32_t)envp);
 }
