@@ -29,6 +29,7 @@ if [ "$IS_WINDOWS" -eq 1 ]; then
     # Replace /c/ with C:/ and convert forward slashes to backslashes
     PROJECT_ROOT_WIN=$(echo "$PROJECT_ROOT" | sed 's|^/c/|C:/|' | sed 's|/|\\|g')
     KERNEL_PATH_WIN=$(echo "$PROJECT_ROOT/kernel" | sed 's|^/c/|C:/|' | sed 's|/|\\|g')
+    USER_PATH_WIN=$(echo "$PROJECT_ROOT/user" | sed 's|^/c/|C:/|' | sed 's|/|\\|g')
     README_PATH_WIN=$(echo "$PROJECT_ROOT/README.md" | sed 's|^/c/|C:/|' | sed 's|/|\\|g')
     DOCS_DIR_WIN="$PROJECT_ROOT_WIN\\docs"
     
@@ -45,6 +46,7 @@ else
     # For non-Windows, use the same paths
     PROJECT_ROOT_WIN="$PROJECT_ROOT"
     KERNEL_PATH_WIN="$PROJECT_ROOT/kernel"
+    USER_PATH_WIN="$PROJECT_ROOT/user"
     README_PATH_WIN="$PROJECT_ROOT/README.md"
     DOCS_DIR_WIN="$DOCS_DIR"
 fi
@@ -205,6 +207,7 @@ WARN_LOGFILE           =
 # Configuration options related to the input files
 #---------------------------------------------------------------------------
 INPUT                  = "$KERNEL_PATH_WIN" \\
+                         "$USER_PATH_WIN" \\
                          "$README_PATH_WIN"
 INPUT_ENCODING         = UTF-8
 FILE_PATTERNS          = *.c \\
@@ -422,8 +425,10 @@ if doxygen "$DOXYFILE"; then
     echo "Documentation statistics:"
     if [ -f "$OUTPUT_DIR/index.html" ]; then
         echo "  - Main page: $OUTPUT_DIR/index.html"
-        FILES=$(find "$PROJECT_ROOT/kernel" -name "*.c" -o -name "*.h" 2>/dev/null | wc -l)
-        echo "  - Files documented: $FILES"
+        KERNEL_FILES=$(find "$PROJECT_ROOT/kernel" -name "*.c" -o -name "*.h" 2>/dev/null | wc -l)
+        USER_FILES=$(find "$PROJECT_ROOT/user" -name "*.c" -o -name "*.h" 2>/dev/null | wc -l)
+        echo "  - Kernel files documented: $KERNEL_FILES"
+        echo "  - User mode files documented: $USER_FILES"
     fi
 else
     echo "Error: Doxygen failed to generate documentation"
