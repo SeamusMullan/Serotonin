@@ -5,28 +5,41 @@
 
 int errno;
 
+/** System call number for process exit */
 enum {
     SYSTEM_CALL_EXIT     = 0,
-    SYSTEM_CALL_WRITE    = 1,
-    SYSTEM_CALL_READ     = 2,
-    SYSTEM_CALL_EXECVE   = 3,
-    SYSTEM_CALL_FORK     = 4,
-    SYSTEM_CALL_GETPID   = 5,
-    SYSTEM_CALL_TTY      = 6,
-    SYSTEM_CALL_OPEN     = 7,
-    SYSTEM_CALL_CLOSE    = 8,
-    SYSTEM_CALL_WAITPID  = 9,
-    SYSTEM_CALL_TOD      = 10,
-    SYSTEM_CALL_SBRK     = 11,
-    SYSTEM_CALL_ENVIRON  = 12,
-    SYSTEM_CALL_LINK     = 13,
-    SYSTEM_CALL_LSEEK    = 14,
-    SYSTEM_CALL_STAT     = 15,
-    SYSTEM_CALL_FSTAT    = 16,
-    SYSTEM_CALL_KILL     = 17
+    SYSTEM_CALL_WRITE    = 1,   /**< Write to file descriptor */
+    SYSTEM_CALL_READ     = 2,   /**< Read from file descriptor */
+    SYSTEM_CALL_EXECVE   = 3,   /**< Execute program */
+    SYSTEM_CALL_FORK     = 4,   /**< Fork process */
+    SYSTEM_CALL_GETPID   = 5,   /**< Get process ID */
+    SYSTEM_CALL_TTY      = 6,   /**< Check if file descriptor is a TTY */
+    SYSTEM_CALL_OPEN     = 7,   /**< Open file */
+    SYSTEM_CALL_CLOSE    = 8,   /**< Close file descriptor */
+    SYSTEM_CALL_WAITPID  = 9,   /**< Wait for process to change state */
+    SYSTEM_CALL_TOD      = 10,  /**< Get time of day */
+    SYSTEM_CALL_SBRK     = 11,  /**< Change data segment size */
+    SYSTEM_CALL_ENVIRON  = 12,  /**< Get environment variables */
+    SYSTEM_CALL_LINK     = 13,  /**< Create hard link */
+    SYSTEM_CALL_LSEEK    = 14,  /**< Reposition file offset */
+    SYSTEM_CALL_STAT     = 15,  /**< Get file status */
+    SYSTEM_CALL_FSTAT    = 16,  /**< Get file status by descriptor */
+    SYSTEM_CALL_KILL     = 17   /**< Send signal to process */
 };
 
 
+/**
+ * @brief Execute a system call via interrupt 0x80
+ * 
+ * Low-level function that performs the actual system call by triggering
+ * interrupt 0x80 with the appropriate register values.
+ * 
+ * @param num System call number
+ * @param arg1 First argument
+ * @param arg2 Second argument
+ * @param arg3 Third argument
+ * @return System call return value, or sets errno and returns error code on failure
+ */
 static inline int do_syscall(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3) {
     register uint32_t eax asm("eax") = num;
     register uint32_t ebx asm("ebx") = arg1;
