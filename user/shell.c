@@ -9,6 +9,7 @@
 
 #include <unistd.h>
 #include <sys/wait.h>
+#include <string.h>
 
 /**
  * @brief Main shell loop
@@ -25,14 +26,14 @@
 int main()
 {
 	char command[256];
-	const char *prompt = "# ";
+	const char *prompt = "serotonin# ";
 	const char *read_error = "Error: failed to read input\n";
 	const char *fork_error = "Error: failed to fork process\n";
 	const char *exec_error = "Error: failed to execute command\n";
 	const char *empty_cmd = "Error: empty command\n";
 	
 	for (;;) {
-		if (write(1, prompt, 2) < 0) {
+		if (write(1, prompt, strlen(prompt)) < 0) {
 			// If we can't write to stdout, we're fuckin cooked
 			_exit(1);
 		}
