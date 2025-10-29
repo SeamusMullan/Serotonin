@@ -72,8 +72,8 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
             break;
         default:
             if (fd >= FD_MAX || current_task->fd_table[fd] == NULL) {
-                handle_illegal_call(arg2, arg3, arg4, ctx->eip);
-                __builtin_unreachable();
+                errno = -EBADF;
+                return;
             }
 
             file_handle_t *handle = current_task->fd_table[fd];
@@ -99,8 +99,8 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
     char* read_ptr = (char*)arg3;
     uint32_t buf_size = arg4;
     if (read_ptr > USER_SPACE_END || fd >= FD_MAX) {
-        handle_illegal_call(arg2, arg3, arg4, ctx->eip);
-        __builtin_unreachable();
+        errno = -EBADF;
+        return;
     }
 
     if (fd == READ_STDIN) {
@@ -114,8 +114,8 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
     }
 
     if (current_task->fd_table[fd] == NULL) {
-        handle_illegal_call(arg2, arg3, arg4, ctx->eip);
-        __builtin_unreachable();
+        errno = -EBADF;
+        return;
     }
 
     file_handle_t *handle = current_task->fd_table[fd];
