@@ -208,9 +208,9 @@ nodeCreated:
 static void sys_close(uint32_t arg2) {
     int fd = arg2;
 
-    if (fd >= FD_MAX) {
-        handle_illegal_call(arg2, 0, 0, 0);
-        __builtin_unreachable();
+    if (fd >= FD_MAX || current_task->fd_table[fd] == NULL) {
+        errno = -EBADF;
+        return;
     }
 
     file_handle_t *handle = current_task->fd_table[fd];
