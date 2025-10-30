@@ -16,6 +16,7 @@ isr_syscall:
     pushl   %es
     pushl   %ds
 
+    # Save FPU if multitasking
     movl    current_task, %edx
     test    %edx, %edx
     jz      1f
@@ -29,6 +30,7 @@ isr_syscall:
     call    system_call
     addl    $4, %esp
 
+    # Restore FPU if multitasking
     movl    current_task, %edx
     test    %edx, %edx
     jz      2f

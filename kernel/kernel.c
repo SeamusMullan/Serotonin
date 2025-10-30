@@ -28,7 +28,7 @@
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 3
-#define KERNEL_VERSION_LOW 0
+#define KERNEL_VERSION_LOW 1
 
 #define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
 #define HEAP_SIZE   (KERNEL_HEAP_SIZE)
@@ -801,9 +801,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
 	printfs(PRINT_STATUS_INFO,"Serotonin Kernel %d.%d.%d | Compile Time: %s %s | %d pages free | Hypervisor:%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__,buddy_free_pages(), kernel_hypervisor_present());
     kernel_print_cpu_features(&processor_features);
-    printfs(PRINT_STATUS_INFO,"Kernel now: 0x%08x, kernel heap: 0x%08x, magic: 0x%08x, multiboot_addr:0x%08x, cpu:%s\n",kernel_current_eip(),HEAP_START,magic,addr,cpu_manufacturer);
     printfs(PRINT_STATUS_INFO,"Booted with command line arguments: %s\n",cmdline);
-    printfs(PRINT_STATUS_INFO,"Running in VESA VBE Graphics Mode: %dx%dx%d, pitch: %d\n",vbe_info.width,vbe_info.height,vbe_info.bpp,vbe_info.pitch);
 
     //ps2_mouse_init();
 

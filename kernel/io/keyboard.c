@@ -3,7 +3,8 @@
 #include "../video/vbe/vbe.h"
 #include "../syscall/syscall.h"
 #include "../schedule/schedule.h"
-#include "../io/io.h"
+#include "io.h"
+#include "serial.h"
 #include <stdint.h>
 
 static const char scancode_map[128] = {
@@ -89,7 +90,8 @@ void handle_scancode(uint8_t scancode) {
         if (c) {
             stdio_buffer[stdin_idx] = (unsigned char)c;
             stdin_idx++;
-            printf("%c", c);
+            vbe_terminal_putchar(c);
+            serial_putchar(COM1_BASE, c);
         }
     }
     vbe_flip();

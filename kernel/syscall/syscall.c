@@ -290,6 +290,7 @@ static void sys_sbrk(uint32_t arg2, processor_context_t *ctx) {
 
     if (new_brk < brk_start || new_brk >= USER_HEAP_MAX) {
         errno = -ENOMEM;
+        return;
     }
 
     if (increment > 0) {
