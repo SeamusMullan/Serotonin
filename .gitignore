@@ -28,3 +28,4 @@ newlib/
 *.snm
 *.vrb
 user/lua/lua-5.4.8.tar.gz
+user/lua/lua-5.4.8/src/liblua.a
