@@ -27,7 +27,7 @@ void irq_handler(int irq, processor_context_t *ctx) {
         timer_ticks++;
         if (multitasking_ready == 0)
             goto end_irq;
-
+        
         if (preempt_count == 0 && current_task->priv == CPU_USER_MODE && current_task->state == PROCESS_STATE_RUNNING) {
             last_quantum_tick++;
             if (last_quantum_tick >= SCHEDULE_QUANTUM) {
