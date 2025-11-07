@@ -60,7 +60,6 @@ void handle_scancode(uint8_t scancode) {
     }
     else if (scancode == 0x1C)
     {
-
         printf("\n");
         uint32_t old_cr3 = read_cr3();
         write_cr3(stdin_lock->owner->address_space->phys_pdir);

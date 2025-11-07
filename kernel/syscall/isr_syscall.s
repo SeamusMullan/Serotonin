@@ -6,8 +6,8 @@
 # System call interrupt handler
 .global isr_syscall
 isr_syscall:
-    cli
     pushfl
+    orl $0x200, (%esp)
     pushal
 
     # Save segment registers
@@ -44,6 +44,6 @@ isr_syscall:
     popl    %fs
     popl    %gs
     popal
+    orl $0x200, (%esp)
     popfl
-    sti
     iret

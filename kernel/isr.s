@@ -307,6 +307,7 @@ irq0:
     popl    %fs
     popl    %gs
     popal
+    orl $0x200, (%esp)
     popfl
 
     iret

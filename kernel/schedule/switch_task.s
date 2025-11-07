@@ -58,7 +58,7 @@ switch_task:
 
     # user mode switch
     cmpb $3, OFF_PRIV(%edx)
-    jz .switch_user_mode
+    jz switch_user_mode
 
     # switch to the new PCB
     movl    %edx, current_task
@@ -87,7 +87,7 @@ switch_task:
     call    kernel_panic
     hlt
 
-.switch_user_mode:
+switch_user_mode:
     # switch to the new PCB
     movl    %edx, current_task
     movl    OFF_CTX(%edx), %ecx
@@ -112,6 +112,7 @@ switch_task:
     # build iret frame
     pushl   OFF_SS(%ecx)
     pushl   OFF_ESP_AT_TRAP(%ecx)
+    orl     $0x200,OFF_STUB_EFLAGS(%ecx)
     pushl   OFF_STUB_EFLAGS(%ecx)
     pushl   OFF_CS(%ecx)
     pushl   OFF_EIP(%ecx)
