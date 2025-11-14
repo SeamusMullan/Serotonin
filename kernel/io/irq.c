@@ -31,6 +31,8 @@ void irq_handler(int irq, processor_context_t *ctx) {
         if (preempt_count == 0 && current_task->priv == CPU_USER_MODE && current_task->state == PROCESS_STATE_RUNNING) {
             last_quantum_tick++;
             if (last_quantum_tick >= SCHEDULE_QUANTUM) {
+                current_task->quanta_used++;
+                current_task->priority = task_priority_decay(current_task);
                 memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
                 last_quantum_tick = 0;
                 task_yield(1);

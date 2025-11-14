@@ -12,6 +12,8 @@
 #define MAX_TASKS              256
 #define PCB_ALIGNMENT          16
 #define MAX_PRIORITY           256
+#define PRIORITY_DECAY_RATE    10
+#define PRIORITY_QUANTA_PUNISH 10
 
 typedef struct fpu_fxsave_area {
     uint8_t bytes[512];
@@ -61,6 +63,8 @@ typedef struct process_control_block {
     int waiting_on;
     int* status_ptr;
     uint8_t exit_status;
+    uint32_t quanta_used;
+    uint8_t original_priority;
 } process_control_block_t;
 
 typedef struct wait_node {
@@ -151,6 +155,7 @@ void preempt_disable();
 void preempt_enable();
 process_control_block_t* get_current_task(void);
 uint32_t get_task_count(void);
+int task_priority_decay(process_control_block_t *task);
 
 static inline const char* to_signal_name(int signal_id) {
     static const char* const signal_names[16] = {

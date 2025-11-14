@@ -266,6 +266,7 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
     pcb->eflags   = (void*)INIT_EFLAGS;
     pcb->rq_next  = NULL;
     pcb->priority = prio;
+    pcb->original_priority = prio;
     strncpy(pcb->name, name, sizeof(pcb->name)-1);
 
     memcpy(&pcb->fpu_fx, &fx_clean, sizeof(fx_clean));
@@ -645,4 +646,20 @@ uint32_t get_task_count(void) {
     }
     
     return count;
+}
+
+int task_priority_decay(process_control_block_t *task) {
+    int prio = task->priority;
+    int orig_prio = task->original_priority;
+    int quanta = task->quanta_used;
+
+    if (quanta < PRIORITY_QUANTA_PUNISH)
+        return prio;
+    if (prio == 0) 
+        return orig_prio;
+
+    task->quanta_used = 0;
+
+    int new_prio = clamp(prio-PRIORITY_DECAY_RATE, 0, MAX_PRIORITY);
+    return new_prio;
 }

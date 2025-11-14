@@ -88,4 +88,6 @@ void abort();
 __attribute__((__noreturn__))
 void exit(int status);
 
+int clamp(int val, int min, int max);
+
 #endif
