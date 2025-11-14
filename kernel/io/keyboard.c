@@ -36,7 +36,7 @@ static uint8_t shift_pressed = 0;
  */
 void handle_scancode(uint8_t scancode) {
     lock_scheduler();
-    preempt_disable();
+    //preempt_disable();
     static uint32_t stdin_idx = 0;
 
     if (!stdin_lock->held)

@@ -7,7 +7,6 @@
 .global isr_syscall
 isr_syscall:
     pushfl
-    orl $0x200, (%esp)
     pushal
 
     # Save segment registers
@@ -44,6 +43,5 @@ isr_syscall:
     popl    %fs
     popl    %gs
     popal
-    orl $0x200, (%esp)
     popfl
     iret
