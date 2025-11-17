@@ -35,7 +35,7 @@ i686-elf-gcc -c audio/startup/opl2_sound/opl2_startup.c -o audio/startup/opl2_so
 i686-elf-gcc -c io/irq.c -o io/irq.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
 i686-elf-gcc -c io/pic.c -o io/pic.o $CFLAGS
 i686-elf-gcc -c io/keyboard.c -o io/keyboard.o $CFLAGS
-i686-elf-gcc -c io/rtc.c -o io/rtc.o $CFLAGS
+i686-elf-gcc -c io/rtc.c -o io/rtc.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
 i686-elf-gcc -c io/serial.c -o io/serial.o $CFLAGS
 
 i686-elf-gcc -c stdlib/stdlib.c -o stdlib/stdlib.o $CFLAGS

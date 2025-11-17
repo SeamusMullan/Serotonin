@@ -226,6 +226,10 @@ int execve(const char *name, char *const argv[], char *const envp[]) {
     return do_syscall(SYSTEM_CALL_EXECVE, (uint32_t)name, (uint32_t)argv, (uint32_t)envp);
 }
 
+int gettimeofday(struct timeval *tv, void *tz) {
+    return do_syscall(SYSTEM_CALL_TOD, (uint32_t)tv, (uint32_t)tz, 0);
+}
+
 /**
  * @brief Initialize function (called before main)
  * 

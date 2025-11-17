@@ -12,19 +12,6 @@
 #include <errno.h>
 
 /**
- * @brief Get current time (stub implementation)
- * 
- * @param tv Pointer to timeval structure (unused)
- * @param tz Pointer to timezone structure (unused)
- * @return -1 (always fails with ENOSYS)
- */
-int gettimeofday(struct timeval *tv, void *tz) {
-    (void)tv; (void)tz;
-    errno = ENOSYS;
-    return -1;
-}
-
-/**
  * @brief Get process times (stub implementation)
  * 
  * @param buf Pointer to tms structure (unused)

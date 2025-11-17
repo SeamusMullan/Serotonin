@@ -8,4 +8,9 @@ struct timespec {
 	long	tv_nsec;	/* and nanoseconds */
 };
 
+struct timeval {
+	time_t		tv_sec;		/* seconds */
+	long	    tv_usec;	/* and microseconds */
+};
+
 #endif

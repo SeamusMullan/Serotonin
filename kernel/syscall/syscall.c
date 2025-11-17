@@ -413,6 +413,13 @@ static void sys_isatty(uint32_t arg2) {
     }
 }
 
+static void sys_gettimeofday(uint32_t arg2) {
+    struct timeval *timestr = (struct timeval*)arg2;
+    timestr->tv_sec = unix_timestamp;
+    timestr->tv_usec = 0;
+    errno = 0;
+}
+
 /**
  * @brief Handle system calls.
  *
@@ -470,6 +477,9 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_TTY:
             sys_isatty(arg2);
+            break;
+        case SYSTEM_CALL_TOD:
+            sys_gettimeofday(arg2);
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);

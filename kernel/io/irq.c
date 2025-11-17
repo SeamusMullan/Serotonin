@@ -11,6 +11,7 @@ volatile uint64_t last_quantum_tick = 0;
 volatile int multitasking_ready = 0;
 volatile int irq_disabled = 1;
 volatile rtc_time_t last_rtc_time;
+volatile uint32_t unix_timestamp = 0;
 
 static uint8_t ps2_mouse_packet[3];
 static int ps2_mouse_packet_index = 0;
@@ -101,37 +102,39 @@ void irq_handler(int irq, processor_context_t *ctx) {
         outb(CMOS_STATUS_REGISTER_A, CMOS_RTC_STATUS_C);
         inb(CMOS_STATUS_REGISTER_B);
 
-        rtc_time_t t;
+        rtc_time_t *t = (rtc_time_t*)kernel_malloc(sizeof(rtc_time_t));
         uint8_t status_b = cmos_read(0x0B);
         uint8_t binary_mode = status_b & 0x04;
         uint8_t hour_24 = status_b & 0x02;
 
-        t.second = cmos_read(CMOS_RTC_SECONDS);
-        t.minute = cmos_read(CMOS_RTC_MINUTES);
-        t.hour   = cmos_read(CMOS_RTC_HOURS);
-        t.day    = cmos_read(CMOS_RTC_DAY);
-        t.month  = cmos_read(CMOS_RTC_MONTH);
-        t.year   = cmos_read(CMOS_RTC_YEAR);
+        t->second = cmos_read(CMOS_RTC_SECONDS);
+        t->minute = cmos_read(CMOS_RTC_MINUTES);
+        t->hour   = cmos_read(CMOS_RTC_HOURS);
+        t->day    = cmos_read(CMOS_RTC_DAY);
+        t->month  = cmos_read(CMOS_RTC_MONTH);
+        t->year   = cmos_read(CMOS_RTC_YEAR);
 
         if (!binary_mode) {
-            t.second = bcd_to_bin(t.second);
-            t.minute = bcd_to_bin(t.minute);
-            t.hour   = bcd_to_bin(t.hour);
-            t.day    = bcd_to_bin(t.day);
-            t.month  = bcd_to_bin(t.month);
-            t.year   = bcd_to_bin(t.year);
+            t->second = bcd_to_bin(t->second);
+            t->minute = bcd_to_bin(t->minute);
+            t->hour   = bcd_to_bin(t->hour);
+            t->day    = bcd_to_bin(t->day);
+            t->month  = bcd_to_bin(t->month);
+            t->year   = bcd_to_bin(t->year);
         }
 
-        t.century = 20; // sure look its fine until 2099
+        t->century = 20; // sure look its fine until 2099
 
         if (!hour_24) {
-            uint8_t pm = t.hour & 0x80;
-            t.hour &= 0x7F;
-            if (pm && t.hour != 12) t.hour += 12;
-            else if (!pm && t.hour == 12) t.hour = 0;
+            uint8_t pm = t->hour & 0x80;
+            t->hour &= 0x7F;
+            if (pm && t->hour != 12) t->hour += 12;
+            else if (!pm && t->hour == 12) t->hour = 0;
         }
 
-        // printf("time: %d:%d:%d %d/%d/%d%d \n", t.hour,t.minute,t.second,t.day,t.month,t.century,t.year);
+        //printf("time: %d:%d:%d %d/%d/%d%d \n", t.hour,t.minute,t.second,t.day,t.month,t.century,t.year);
+        unix_timestamp = rtc_to_unix_timestamp(t);
+        kernel_free(t);
     }
 
 end_irq:

@@ -407,11 +407,42 @@ irq7:
 
 .global irq8
 irq8:
-    pusha
-    pushl $8
-    call irq_handler
-    add $4, %esp
-    popa
+    pushfl
+    pushal
+    cli
+
+    pushl   %gs
+    pushl   %fs
+    pushl   %es
+    pushl   %ds
+
+    movl    current_task, %edx
+    test    %edx, %edx
+    jz      1f
+    fxsave  OFF_K_FPU(%edx)
+
+1:
+
+    movl    %esp, %eax
+    pushl   %eax
+    pushl   $8
+    call    irq_handler
+    addl    $8,   %esp
+
+    movl    current_task, %edx
+    test    %edx, %edx
+    jz      2f
+    fxrstor OFF_K_FPU(%edx)
+
+2:
+
+    popl    %ds
+    popl    %es
+    popl    %fs
+    popl    %gs
+    popal
+    popfl
+
     iret
 
 .global irq9

@@ -75,6 +75,7 @@ extern volatile uint64_t last_quantum_tick;
 extern volatile int multitasking_ready;
 extern volatile int irq_disabled;
 extern volatile rtc_time_t last_rtc_time;
+extern volatile uint32_t unix_timestamp;
 
 /**
  * @brief Output a byte to a port.
@@ -200,5 +201,6 @@ void pic_remap(int offset1, int offset2);
 void handle_scancode(uint8_t scancode);
 void rtc_init(void);
 void ps2_mouse_init(void);
+int rtc_to_unix_timestamp(rtc_time_t *t);
 
 #endif
