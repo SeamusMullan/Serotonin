@@ -435,10 +435,10 @@ void kernel_panic(char* str) {
 
     for (int y = 0; y < SCREEN_HEIGHT; ++y)
         for (int x = 0; x < SCREEN_WIDTH; ++x)
-            vbe_fast_putpixel(x, y, 0xFF880000);
+            vbe_fast_putpixel(x, y, 0xFF5A000F);
 
     vbe_set_cursor(0,0);
-    vbe_setcolor_bg(0xFF880000);
+    vbe_setcolor_bg(0xFF5A000F);
 
     printf(" _   _   _ \n");
     printf("| | | | | |\n");
@@ -448,26 +448,39 @@ void kernel_panic(char* str) {
     printf("|_| |_| |_|\n");
     printf("(_) (_) (_)\n\n");
 
-    printf("The Serotonin kernel has entered into an unrecoverable state and must be restarted manually.\n");
+    printf("Kernel panic: system must be manually restarted. Press and hold the power button until the computer is shut down.\n");
     printf("*** Guru Meditation: %s ***\n\n", str);
+
+    printf("Stack trace:\n");
+
+    uint32_t old_ebp = ebp;
+
+    for (uint32_t i = 0; i < 10; i++) {
+        if (!ebp)
+            break;
+
+        uint32_t *frame = (uint32_t*)ebp;
+        uint32_t ret_addr = frame[1];
+
+        printf("  #%d:0x%08x:0x%08x\n", i, ebp, ret_addr);
+
+        ebp = frame[0];
+
+        if (ebp == 0 || ebp == (uint32_t)frame)
+            break;
+        if (ebp < 0x1000)
+            break;
+    }
+
+    printf("\n");
+
+    ebp = old_ebp;
 
     if (multitasking_ready == 1) {
         const char *mode = (current_task->priv == 0) ? "kernel" : (current_task->priv == 3) ? "user" : "whatthefuck";
         printf("Process: %s (pid=%d)\n",current_task->name,current_task->pid);
         printf("Process was running in %s mode (ring:%d)\n",mode,current_task->priv);
         printf("Last signal: %d, process state: %d\n", current_task->signal, current_task->state);
-
-        uint8_t* ptr = (uint8_t*)current_task->processor_context->eip;
-
-        for (int i = 0; i < 0x8C; i++) {
-            if (i % 20 == 0) {
-                printf("\n0x%08x: ", (unsigned int)(ptr + i));
-            } else if (i % 4 == 0) {
-                printf(" ");
-            }
-            printf("%02x", ptr[i]);
-        }
-        printf("\n");
     } else {
         printf("[multitasking not ready!]\n");
     }
@@ -799,9 +812,9 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     cpu_features_t processor_features = {0};
     kernel_get_cpu_features(&processor_features);
 
-	printfs(PRINT_STATUS_INFO,"Serotonin Kernel %d.%d.%d | Compile Time: %s %s | %d pages free | Hypervisor:%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__,buddy_free_pages(), kernel_hypervisor_present());
+	printfs(PRINT_STATUS_INFO,"Serotonin Kernel %d.%d.%d | Compile Time: %s %s | %d physical pages free | Hypervisor:%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__,buddy_free_pages(), kernel_hypervisor_present());
     kernel_print_cpu_features(&processor_features);
-    printfs(PRINT_STATUS_INFO,"Booted with command line arguments: %s\n",cmdline);
+    printfs(PRINT_STATUS_INFO,"Booted with arguments: %s\n",cmdline);
 
     //ps2_mouse_init();
 
@@ -819,16 +832,10 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     multitasking_init();
 
-    process_control_block_t *idle_task = task_create(kernel_idle_task, "System Idle Task", CPU_KERNEL_MODE, 0);
+    process_control_block_t *idle_task = task_create(kernel_idle_task, "Kernel Idle Task", CPU_KERNEL_MODE, 0);
     enqueue(idle_task);
 
-    // process_control_block_t *cube_task = task_create(cube_demo, "Cube Demo", CPU_KERNEL_MODE, 1);
-    // enqueue(cube_task);
-
-    // process_control_block_t *pipes_task = task_create(pipes_demo, "Pipes Demo", CPU_KERNEL_MODE, 1);
-    // enqueue(pipes_task);
-
-    printfs(PRINT_STATUS_INFO,"Loading init\n");
+    printfs(PRINT_STATUS_INFO,"Loading /bin/init\n");
 
     char* init_loc = "/bin/init";
 
