@@ -663,3 +663,16 @@ int task_priority_decay(process_control_block_t *task) {
     int new_prio = clamp(prio-PRIORITY_DECAY_RATE, 0, MAX_PRIORITY);
     return new_prio;
 }
+
+int task_ipc_signal_raise(process_control_block_t *task, uint8_t signal) {
+    if (signal >= 16) return -1;
+    task->signal = signal;
+    return 0;
+}
+
+int task_ipc_register_signal_handler(process_control_block_t *task, uint8_t signal, uint32_t handler) {
+    if (signal >= 16) return -1;
+    task->signal_handlers[signal] = handler;
+    task->signal_bitmask |= (1u << signal);
+    return 0;
+}

@@ -65,6 +65,8 @@ typedef struct process_control_block {
     uint8_t exit_status;
     uint32_t quanta_used;
     uint8_t original_priority;
+    uint32_t signal_handlers[16];
+    uint32_t signal_bitmask;
 } process_control_block_t;
 
 typedef struct wait_node {
