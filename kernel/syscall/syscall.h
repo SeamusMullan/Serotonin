@@ -37,8 +37,7 @@ enum {
     SYSTEM_CALL_RMDIR    = 20,
     SYSTEM_CALL_CHDIR    = 21,
     SYSTEM_CALL_GETCWD   = 22,
-    SYSTEM_CALL_LINK     = 23,
-    SYSTEM_CALL_UNLINK   = 24
+    SYSTEM_CALL_UNLINK   = 23
 };
 
 /**
@@ -69,7 +68,7 @@ enum {
 enum {
     SIGNAL_SIGNAL = 0,
     SIGNAL_SIGRETURN = 1
-}
+};
 
 void system_call(processor_context_t *ctx);
 extern void isr_syscall(void);
