@@ -67,6 +67,10 @@ typedef struct process_control_block {
     uint8_t original_priority;
     uint32_t signal_handlers[16];
     uint32_t signal_bitmask;
+    uint32_t blocked_signals;
+    processor_context_t *signal_processor_context;
+    __attribute__((aligned(16))) fpu_fxsave_area_t signal_fpu_fx;
+    uint8_t in_signal_handler;
 } process_control_block_t;
 
 typedef struct wait_node {
@@ -158,6 +162,10 @@ void preempt_enable();
 process_control_block_t* get_current_task(void);
 uint32_t get_task_count(void);
 int task_priority_decay(process_control_block_t *task);
+int task_ipc_signal_raise(process_control_block_t *task, uint8_t signal);
+int task_ipc_register_signal_handler(process_control_block_t *task, uint8_t signal, uint32_t handler);
+int task_ipc_deliver_signals(process_control_block_t *task, processor_context_t* ctx) ;
+process_control_block_t *task_lookup_by_pid(uint32_t pid);
 
 static inline const char* to_signal_name(int signal_id) {
     static const char* const signal_names[16] = {

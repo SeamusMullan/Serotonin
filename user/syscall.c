@@ -14,28 +14,34 @@
 
 int errno;
 
-/** System call number for process exit */
 enum {
     SYSTEM_CALL_EXIT     = 0,
-    SYSTEM_CALL_WRITE    = 1,   /**< Write to file descriptor */
-    SYSTEM_CALL_READ     = 2,   /**< Read from file descriptor */
-    SYSTEM_CALL_EXECVE   = 3,   /**< Execute program */
-    SYSTEM_CALL_FORK     = 4,   /**< Fork process */
-    SYSTEM_CALL_GETPID   = 5,   /**< Get process ID */
-    SYSTEM_CALL_TTY      = 6,   /**< Check if file descriptor is a TTY */
-    SYSTEM_CALL_OPEN     = 7,   /**< Open file */
-    SYSTEM_CALL_CLOSE    = 8,   /**< Close file descriptor */
-    SYSTEM_CALL_WAITPID  = 9,   /**< Wait for process to change state */
-    SYSTEM_CALL_TOD      = 10,  /**< Get time of day */
-    SYSTEM_CALL_SBRK     = 11,  /**< Change data segment size */
-    SYSTEM_CALL_ENVIRON  = 12,  /**< Get environment variables */
-    SYSTEM_CALL_LINK     = 13,  /**< Create hard link */
-    SYSTEM_CALL_LSEEK    = 14,  /**< Reposition file offset */
-    SYSTEM_CALL_STAT     = 15,  /**< Get file status */
-    SYSTEM_CALL_FSTAT    = 16,  /**< Get file status by descriptor */
-    SYSTEM_CALL_KILL     = 17   /**< Send signal to process */
+    SYSTEM_CALL_WRITE    = 1,
+    SYSTEM_CALL_READ     = 2,
+    SYSTEM_CALL_EXECVE   = 3,
+    SYSTEM_CALL_FORK     = 4,
+    SYSTEM_CALL_GETPID   = 5,
+    SYSTEM_CALL_TTY      = 6,
+    SYSTEM_CALL_OPEN     = 7,
+    SYSTEM_CALL_CLOSE    = 8,
+    SYSTEM_CALL_WAITPID  = 9,
+    SYSTEM_CALL_TOD      = 10,
+    SYSTEM_CALL_SBRK     = 11,
+    SYSTEM_CALL_ENVIRON  = 12,
+    SYSTEM_CALL_LINK     = 13,
+    SYSTEM_CALL_LSEEK    = 14,
+    SYSTEM_CALL_STAT     = 15,
+    SYSTEM_CALL_FSTAT    = 16,
+    SYSTEM_CALL_KILL     = 17,
+    SYSTEM_CALL_SIGNAL   = 18,
+    SYSTEM_CALL_SIGRET   = 19,
+    SYSTEM_CALL_MKDIR    = 20,
+    SYSTEM_CALL_RMDIR    = 21,
+    SYSTEM_CALL_CHDIR    = 22,
+    SYSTEM_CALL_GETCWD   = 23,
+    SYSTEM_CALL_UNLINK   = 24,
+    SYSTEM_CALL_PAUSE    = 25
 };
-
 
 /**
  * @brief Execute a system call via interrupt 0x80
@@ -228,6 +234,18 @@ int execve(const char *name, char *const argv[], char *const envp[]) {
 
 int gettimeofday(struct timeval *tv, void *tz) {
     return do_syscall(SYSTEM_CALL_TOD, (uint32_t)tv, (uint32_t)tz, 0);
+}
+
+int signal(int sig, void* handler) {
+    return do_syscall(SYSTEM_CALL_SIGNAL, (uint32_t)sig, (uint32_t)handler, 0);
+}
+
+int raise(int sig) {
+    return kill(getpid(), sig);
+}
+
+int pause(void) {
+    return do_syscall(SYSTEM_CALL_PAUSE, 0, 0, 0);
 }
 
 /**

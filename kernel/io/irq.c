@@ -141,4 +141,7 @@ end_irq:
     if (irq >= 8)
         outb(0xA0, 0x20);  // EOI to slave PIC
     outb(0x20, 0x20);      // EOI to master PIC
+    
+    if (multitasking_ready && current_task->priv == CPU_USER_MODE)
+        task_ipc_deliver_signals(current_task, current_task->processor_context);
 }

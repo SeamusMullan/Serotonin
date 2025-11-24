@@ -25,6 +25,7 @@ i686-elf-as boot.s -o boot.o
 i686-elf-as isr.s -o isr.o
 i686-elf-as -c schedule/switch_task.s -o schedule/switch_task.o
 i686-elf-as -c schedule/kernel_yield.s -o schedule/kernel_yield.o
+i686-elf-as -c schedule/signal_trampoline.s -o schedule/signal_trampoline.o
 i686-elf-as -c syscall/isr_syscall.s -o syscall/isr_syscall.o
 
 # da compiler
@@ -74,7 +75,7 @@ if [ -n "$TEST_MODE" ]; then
 fi
 
 # da linker
-i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt.o idt.o isr.o fault.o io/irq.o io/pic.o io/keyboard.o vmm/paging_init.o vmm/vmm.o video/vbe/vbe.o video/font.o video/splash.o video/pipes.o filesystem/vfs.o filesystem/tmpfs/tmpfs.o filesystem/ide.o filesystem/fat32/fat32.o schedule/schedule.o schedule/switch_task.o audio/pcspeaker/pcspeaker.o audio/opl2/opl2.o syscall/isr_syscall.o syscall/syscall.o audio/startup/opl2_sound/opl2_startup.o schedule/kernel_yield.o filesystem/user_fs/user_fs.o io/rtc.o io/serial.o $TEST_OBJS 
+i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt.o idt.o isr.o fault.o io/irq.o io/pic.o io/keyboard.o vmm/paging_init.o vmm/vmm.o video/vbe/vbe.o video/font.o video/splash.o video/pipes.o filesystem/vfs.o filesystem/tmpfs/tmpfs.o filesystem/ide.o filesystem/fat32/fat32.o schedule/schedule.o schedule/switch_task.o audio/pcspeaker/pcspeaker.o audio/opl2/opl2.o syscall/isr_syscall.o syscall/syscall.o audio/startup/opl2_sound/opl2_startup.o schedule/kernel_yield.o schedule/signal_trampoline.o filesystem/user_fs/user_fs.o io/rtc.o io/serial.o $TEST_OBJS 
 
 cd ../build
 

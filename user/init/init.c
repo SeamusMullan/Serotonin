@@ -6,6 +6,7 @@
  * It displays a welcome message and launches the system shell.
  */
 
+#include <signal.h>
 #include <stdio.h>
 #include <unistd.h>
 

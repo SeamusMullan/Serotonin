@@ -55,6 +55,8 @@ static uint32_t heap_end = (uint32_t)(KERNEL_HEAP_VMA + KERNEL_HEAP_SIZE);
 static uint32_t current_heap = (uint32_t)KERNEL_HEAP_VMA;
 static block_header_t *heap_list = NULL;
 static uint8_t debug_mode = 0;
+extern uint8_t signal_trampoline[];
+extern uint8_t signal_trampoline_end[];
 
 #define CHECK_FLAG(flags,bit)   ((flags) & (1 << (bit)))
 
@@ -640,6 +642,7 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
     address_space_t *as = create_address_space();
 
     uint32_t old_cr3 = read_cr3();
+    uint32_t new_cr3 = as->phys_pdir;
     write_cr3(as->phys_pdir);
     lock_scheduler();
 
@@ -680,6 +683,11 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
     
     memset(stack_base, 0, USER_STACK_SIZE);
 
+    uint32_t signal_trampoline_size = (uint32_t)(signal_trampoline_end - signal_trampoline);
+    void* phys_signal_trampoline = alloc_frame();
+    map_page(as, SIGNAL_TRAMPOLINE_ADDR, (uint32_t)phys_signal_trampoline, USER_PAGE_FLAGS, 0);
+    memcpy((void*)SIGNAL_TRAMPOLINE_ADDR, signal_trampoline, signal_trampoline_size);
+
     uint32_t strings_sz = count_total_string_bytes(envp, envc) + count_total_string_bytes(argv, argc);
     uint32_t ptrs_sz =  sizeof(uint32_t) * (1 /*argc*/ + (size_t)argc + 1 /*NULL*/ + (size_t)envc + 1 /*NULL*/);
     uint32_t sp = align_down(stack_top - strings_sz - ptrs_sz, 16);
@@ -713,7 +721,7 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
 
     pcb->esp                            = (void*)sp;
     pcb->processor_context->esp_at_trap = sp;
-    pcb->cr3                            = (void*)as->phys_pdir;
+    pcb->cr3                            = (void*)new_cr3;
     pcb->address_space                  = as;
     pcb->esp_min                        = stack_base;
     pcb->esp_max                        = (void*)stack_top;

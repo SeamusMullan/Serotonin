@@ -104,7 +104,6 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
     }
 
     if (fd == READ_STDIN) {
-        memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
         stdio_lck_t *syscall_stdio = (stdio_lck_t *)kernel_malloc(sizeof(stdio_lck_t));
         syscall_stdio->stdin_ptr = read_ptr;
         syscall_stdio->stdin_buf_size = buf_size;
@@ -135,7 +134,6 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
  * @param ctx The processor context.
  */
 static void sys_fork(processor_context_t *ctx) {
-    memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
     process_control_block_t *pcb = task_fork(current_task);
     enqueue(pcb);
     errno = pcb->pid;
@@ -233,8 +231,8 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
     int envc = 0;
     while (envp_temp && envp_temp[envc]) envc++;
 
-    const char **argv = (const char**)kernel_malloc(sizeof(uint32_t)*argc);
-    const char **envp = (const char**)kernel_malloc(sizeof(uint32_t)*envc);
+    const char **argv = (const char**)kernel_malloc(sizeof(uint32_t)*(argc+1));
+    const char **envp = (const char**)kernel_malloc(sizeof(uint32_t)*(envc+1));
 
     for (int i = 0; i < argc; i++) {
         size_t len = strlen(argv_temp[i]) + 1;
@@ -328,7 +326,6 @@ static void sys_waitpid(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) 
     if (target->state != PROCESS_STATE_TERMINATED) {
         current_task->waiting_on = pid;
         current_task->status_ptr = status_ptr;
-        memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
         task_block();
         __builtin_unreachable();
     }
@@ -420,6 +417,51 @@ static void sys_gettimeofday(uint32_t arg2) {
     errno = 0;
 }
 
+static void sys_kill(uint32_t arg2, uint32_t arg3) {
+    int pid = (int)arg2;
+    int sig = (int)arg3;
+
+    process_control_block_t *task = task_lookup_by_pid(pid);
+    if (!task) {
+        errno = -ESRCH;
+        return;
+    }
+
+    if (sig >= 16) {
+        errno = -EINVAL;
+        return;
+    }
+
+    task_ipc_signal_raise(task, sig);
+    return;
+}
+
+static void sys_signal(uint32_t arg2, uint32_t arg3) {
+    int sig = (int)arg2;
+    uint32_t handler = arg3;
+
+    task_ipc_register_signal_handler(current_task, sig, handler);
+
+    return;
+}
+
+static void sys_sigret(processor_context_t *ctx) {
+    process_control_block_t *task = current_task;
+
+    memcpy(task->processor_context, task->signal_processor_context, sizeof(processor_context_t));
+    memcpy(ctx, task->signal_processor_context, sizeof(processor_context_t));
+    memcpy(&task->fpu_fx, &task->signal_fpu_fx, sizeof(fpu_fxsave_area_t));
+
+    task->in_signal_handler = 0;
+
+    return;
+}
+
+static void sys_pause(void) {
+    task_yield(0);
+    __builtin_unreachable();
+}
+
 /**
  * @brief Handle system calls.
  *
@@ -427,6 +469,8 @@ static void sys_gettimeofday(uint32_t arg2) {
  */
 void system_call(processor_context_t *ctx) {
     preempt_disable();
+
+    memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
 
     errno = 0;
 
@@ -481,12 +525,26 @@ void system_call(processor_context_t *ctx) {
         case SYSTEM_CALL_TOD:
             sys_gettimeofday(arg2);
             break;
+        case SYSTEM_CALL_KILL:
+            sys_kill(arg2, arg3);
+            break;
+        case SYSTEM_CALL_SIGNAL:
+            sys_signal(arg2, arg3);
+            break;
+        case SYSTEM_CALL_SIGRET:
+            sys_sigret(ctx);
+            break;
+        case SYSTEM_CALL_PAUSE:
+            sys_pause();
+            break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);
             __builtin_unreachable();
     }
 
     ctx->eax = errno;
+
+    task_ipc_deliver_signals(current_task, ctx);
 
     printfs(PRINT_STATUS_DEBUG, "[SYSCALL] exiting kernel\n");
 

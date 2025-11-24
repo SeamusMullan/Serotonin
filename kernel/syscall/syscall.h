@@ -33,11 +33,13 @@ enum {
     SYSTEM_CALL_FSTAT    = 16,
     SYSTEM_CALL_KILL     = 17,
     SYSTEM_CALL_SIGNAL   = 18,
-    SYSTEM_CALL_MKDIR    = 19,
-    SYSTEM_CALL_RMDIR    = 20,
-    SYSTEM_CALL_CHDIR    = 21,
-    SYSTEM_CALL_GETCWD   = 22,
-    SYSTEM_CALL_UNLINK   = 23
+    SYSTEM_CALL_SIGRET   = 19,
+    SYSTEM_CALL_MKDIR    = 20,
+    SYSTEM_CALL_RMDIR    = 21,
+    SYSTEM_CALL_CHDIR    = 22,
+    SYSTEM_CALL_GETCWD   = 23,
+    SYSTEM_CALL_UNLINK   = 24,
+    SYSTEM_CALL_PAUSE    = 25
 };
 
 /**
@@ -63,11 +65,6 @@ enum {
     SEEK_SET = 0,
     SEEK_CUR = 1,
     SEEK_END = 2
-};
-
-enum {
-    SIGNAL_SIGNAL = 0,
-    SIGNAL_SIGRETURN = 1
 };
 
 void system_call(processor_context_t *ctx);

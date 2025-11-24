@@ -16,6 +16,7 @@
 
 process_control_block_t *current_task = NULL;
 process_control_block_t *task_list    = NULL;
+process_control_block_t *init_task    = NULL;
 lock_t *stdin_lock;
 static process_control_block_t *runqueue[MAX_TASKS];
 static int rq_head = 0;
@@ -162,7 +163,7 @@ void fpu_get_init_state(void) {
  * @brief Initializes multitasking by creating the initial kernel task.
  */
 void multitasking_init(void) {
-    process_control_block_t *init_task = (process_control_block_t*)kernel_malloc_align(PCB_ALIGNMENT, sizeof(process_control_block_t));
+    init_task = (process_control_block_t*)kernel_malloc_align(PCB_ALIGNMENT, sizeof(process_control_block_t));
     memset(init_task, 0, sizeof(*init_task));
 
     init_task->pid     = next_pid++;
@@ -206,6 +207,7 @@ void task_yield(int irq) {
     process_control_block_t* next = NULL;
     while ((next = dequeue()) != NULL) {
         if (next->state == PROCESS_STATE_READY) {
+            task_ipc_deliver_signals(next, next->processor_context);
             // found someone we can switch into
             next->state = PROCESS_STATE_RUNNING;
             unlock_scheduler();
@@ -256,7 +258,7 @@ void task_exit(uint8_t exit) {
  */
 process_control_block_t* task_create(void (*entry)(void), const char *name, uint8_t priv, uint8_t prio) {
     // alloc and init pcb
-    process_control_block_t *pcb = (process_control_block_t*)kernel_malloc_align(PCB_ALIGNMENT, sizeof(*pcb));
+    process_control_block_t *pcb = (process_control_block_t*)kernel_malloc_align(PCB_ALIGNMENT,sizeof(process_control_block_t));
     memset(pcb, 0, sizeof(*pcb));
     pcb->pid      = next_pid++;
     pcb->cr3      = read_cr3_register();
@@ -270,10 +272,15 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
     strncpy(pcb->name, name, sizeof(pcb->name)-1);
 
     memcpy(&pcb->fpu_fx, &fx_clean, sizeof(fx_clean));
+    memcpy(&pcb->signal_fpu_fx, &fx_clean, sizeof(fx_clean));
 
-    processor_context_t *ctx = (processor_context_t *)kernel_malloc_align(PCB_ALIGNMENT, sizeof(*ctx));
+    processor_context_t *ctx = (processor_context_t *)kernel_malloc_align(PCB_ALIGNMENT, sizeof(processor_context_t));
     memset(ctx, 0, sizeof(*ctx));
     pcb->processor_context = ctx;
+
+    processor_context_t *signal_ctx = (processor_context_t *)kernel_malloc_align(PCB_ALIGNMENT, sizeof(processor_context_t));
+    memset(signal_ctx, 0, sizeof(*signal_ctx));
+    pcb->signal_processor_context = signal_ctx;
 
     // create stack
     uint8_t *stack;
@@ -293,6 +300,7 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
         pcb->processor_context->eip         = (uint32_t)entry;
         pcb->brk_start                      = USER_HEAP_START;
         pcb->brk_end                        = USER_HEAP_START;
+        memcpy(signal_ctx, ctx, sizeof(processor_context_t));
         //memset(stack, 0, USER_STACK_SIZE);
     } else {
         stack = (uint8_t*)alloc_kernel_stack();
@@ -305,7 +313,6 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
     pcb->esp_max = stack;
     pcb->esp_min = stk_top;
     pcb->entry = entry;
-    pcb->next = NULL;
 
     printfs(PRINT_STATUS_DEBUG,"Creating task '%s', esp=%p, esp0=%p\n", name, pcb->esp,pcb->esp0);
 
@@ -665,14 +672,66 @@ int task_priority_decay(process_control_block_t *task) {
 }
 
 int task_ipc_signal_raise(process_control_block_t *task, uint8_t signal) {
-    if (signal >= 16) return -1;
-    task->signal = signal;
+    if (signal >= 16)
+        return -1;
+
+    task->signal_bitmask |= (1u << signal);
     return 0;
 }
 
 int task_ipc_register_signal_handler(process_control_block_t *task, uint8_t signal, uint32_t handler) {
-    if (signal >= 16) return -1;
+    if (signal >= 16)
+        return -1;
+
     task->signal_handlers[signal] = handler;
-    task->signal_bitmask |= (1u << signal);
     return 0;
+}
+
+int task_ipc_deliver_signals(process_control_block_t *task, processor_context_t* ctx) {
+    if (task->priv != CPU_USER_MODE)
+        return -1;
+    if (task->in_signal_handler)
+        return -1;
+
+    uint32_t pending = task->signal_bitmask;
+    uint32_t masked = task->blocked_signals;
+    uint32_t deliverable = pending & ~masked;
+
+    if (!deliverable)
+        return -1;
+
+    int sig = __builtin_ctz(deliverable);
+    task->signal_bitmask &= ~(1u << sig);
+
+    memcpy(task->signal_processor_context, ctx, sizeof(processor_context_t));
+    memcpy(&task->signal_fpu_fx, &task->fpu_fx, sizeof(fx_clean));
+
+    uint32_t handler = task->signal_handlers[sig];
+
+    if (handler == 0) {
+        task_exit(sig);
+        return -1;
+    }
+
+    uint32_t *user_sp = (uint32_t *)ctx->esp_at_trap;
+    user_sp -= 2;
+
+    user_sp[0] = SIGNAL_TRAMPOLINE_ADDR;
+    user_sp[1] = sig;
+    ctx->esp_at_trap = (uint32_t)user_sp;
+    ctx->eip = handler;
+
+    task->in_signal_handler = 1;
+
+    return 0;
+}
+
+process_control_block_t *task_lookup_by_pid(uint32_t pid) {
+    process_control_block_t *task = task_list;
+    while (task) {
+        if (pid == task->pid) {
+            return task;
+        }
+        task = task->next;
+    }
 }
