@@ -7,7 +7,7 @@ void handler(int sig) {
 }
 
 int main() {
-    printf("[receiver] PID = %d\n", getpid());
+    printf("[receiver] PID = %d, handler:%p\n", getpid(), handler);
     signal(1, handler);
 
     while (1) {

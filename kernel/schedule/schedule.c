@@ -713,6 +713,9 @@ int task_ipc_deliver_signals(process_control_block_t *task, processor_context_t*
         return -1;
     }
 
+    uint32_t old_cr3 = read_cr3();
+    write_cr3((uint32_t)task->cr3);
+
     uint32_t *user_sp = (uint32_t *)ctx->esp_at_trap;
     user_sp -= 2;
 
@@ -722,6 +725,8 @@ int task_ipc_deliver_signals(process_control_block_t *task, processor_context_t*
     ctx->eip = handler;
 
     task->in_signal_handler = 1;
+
+    write_cr3(old_cr3);
 
     return 0;
 }
