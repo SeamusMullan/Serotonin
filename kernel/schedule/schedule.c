@@ -207,7 +207,11 @@ void task_yield(int irq) {
     process_control_block_t* next = NULL;
     while ((next = dequeue()) != NULL) {
         if (next->state == PROCESS_STATE_READY) {
-            task_ipc_deliver_signals(next, next->processor_context);
+            lock_scheduler();
+            if (next->priv == CPU_USER_MODE) {
+                switch_address_space(next->address_space);
+                task_ipc_deliver_signals(next, next->processor_context);
+            }
             // found someone we can switch into
             next->state = PROCESS_STATE_RUNNING;
             unlock_scheduler();
@@ -713,9 +717,6 @@ int task_ipc_deliver_signals(process_control_block_t *task, processor_context_t*
         return -1;
     }
 
-    uint32_t old_cr3 = read_cr3();
-    write_cr3((uint32_t)task->cr3);
-
     uint32_t *user_sp = (uint32_t *)ctx->esp_at_trap;
     user_sp -= 2;
 
@@ -725,8 +726,6 @@ int task_ipc_deliver_signals(process_control_block_t *task, processor_context_t*
     ctx->eip = handler;
 
     task->in_signal_handler = 1;
-
-    write_cr3(old_cr3);
 
     return 0;
 }
