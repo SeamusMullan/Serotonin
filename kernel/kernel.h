@@ -5,6 +5,8 @@
 #include "schedule/schedule.h"
 #include "string.h"
 
+#define KERNEL_ESP 0xF03FFFFF
+
 #define BIT(n) (1u << (n))
 
 /* ELF identification indexes */

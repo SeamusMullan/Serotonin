@@ -5,7 +5,6 @@
 .type   switch_task_iret, @function
 .extern current_task
 .extern kernel_panic
-.extern sys_tss
 
 # PCB offsets
 .equ    OFF_ESP,      4
@@ -50,11 +49,6 @@ switch_task:
     movl    4(%esp), %edx
     testl   %edx, %edx
     jz      .fail
-
-    # store ESP0 into the PCB and TSS
-    movl    current_task, %ecx
-    movl    OFF_ESP0(%ecx), %ebx
-    movl    %ebx, sys_tss+4 # sys_tss.esp0
 
     # user mode switch
     cmpb $3, OFF_PRIV(%edx)

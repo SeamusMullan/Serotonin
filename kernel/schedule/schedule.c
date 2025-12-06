@@ -675,6 +675,17 @@ int task_priority_decay(process_control_block_t *task) {
     return new_prio;
 }
 
+process_control_block_t *task_lookup_by_pid(uint32_t pid) {
+    process_control_block_t *task = task_list;
+    while (task) {
+        if (pid == task->pid) {
+            return task;
+        }
+        task = task->next;
+    }
+    return NULL;
+}
+
 int task_ipc_signal_raise(process_control_block_t *task, uint8_t signal) {
     if (signal >= 16)
         return -1;
@@ -728,14 +739,4 @@ int task_ipc_deliver_signals(process_control_block_t *task, processor_context_t*
     task->in_signal_handler = 1;
 
     return 0;
-}
-
-process_control_block_t *task_lookup_by_pid(uint32_t pid) {
-    process_control_block_t *task = task_list;
-    while (task) {
-        if (pid == task->pid) {
-            return task;
-        }
-        task = task->next;
-    }
 }

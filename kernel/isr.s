@@ -282,6 +282,12 @@ irq0:
     pushl   %es
     pushl   %ds
 
+    movw $0x10, %ax
+    movw %ax, %ds
+    movw %ax, %es
+    movw %ax, %fs
+    movw %ax, %gs
+
     movl    current_task, %edx
     test    %edx, %edx
     jz      1f
@@ -321,6 +327,12 @@ irq1:
     pushl   %fs
     pushl   %es
     pushl   %ds
+
+    movw $0x10, %ax
+    movw %ax, %ds
+    movw %ax, %es
+    movw %ax, %fs
+    movw %ax, %gs
 
     movl    current_task, %edx
     test    %edx, %edx
@@ -415,6 +427,12 @@ irq8:
     pushl   %fs
     pushl   %es
     pushl   %ds
+
+    movw $0x10, %ax
+    movw %ax, %ds
+    movw %ax, %es
+    movw %ax, %fs
+    movw %ax, %gs
 
     movl    current_task, %edx
     test    %edx, %edx

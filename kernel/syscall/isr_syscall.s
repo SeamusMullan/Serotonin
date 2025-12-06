@@ -15,6 +15,12 @@ isr_syscall:
     pushl   %es
     pushl   %ds
 
+    movw $0x10, %ax
+    movw %ax, %ds
+    movw %ax, %es
+    movw %ax, %fs
+    movw %ax, %gs
+
     # Save FPU if multitasking
     movl    current_task, %edx
     test    %edx, %edx
