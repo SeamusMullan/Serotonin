@@ -59,6 +59,21 @@ typedef struct range64 {
     uint64_t start, end;
 } range64_t;
 
+typedef struct shm_object {
+    uint32_t size;
+    uint32_t npages;
+    uint32_t *phys_pages;
+    uint32_t refcount;
+    uint32_t kernel_addr;
+} shm_object_t;
+
+typedef struct shmem_map {
+    uint32_t start;
+    uint32_t size;
+    shm_object_t *shm;
+    struct shmem_map *next;
+} shmem_map_t;
+
 /**
  * @brief Address space structure
  * 
@@ -66,6 +81,7 @@ typedef struct range64 {
  */
 typedef struct address_space {
     uint32_t phys_pdir; // phys_pdiddy
+    shmem_map_t *shmem_list;
 } address_space_t;
 
 extern buddy_state_t g_buddy;

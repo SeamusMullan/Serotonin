@@ -975,3 +975,65 @@ void switch_address_space(address_space_t *as) {
     if ((read_cr3() & PAGE_MASK) != new_cr3)
         write_cr3(new_cr3);
 }
+
+shm_object_t* shm_create(uint32_t size) {
+    size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    uint32_t npages = size / PAGE_SIZE;
+
+    shm_object_t *shm = kernel_malloc(sizeof(shm_object_t));
+    shm->size = size;
+    shm->npages = npages;
+    shm->refcount = 1;
+    shm->kernel_addr = 0;
+
+    shm->phys_pages = kernel_malloc(sizeof(uint32_t) * npages);
+
+    for (uint32_t i = 0; i < npages; i++) {
+        uint32_t frame = (uint32_t)alloc_frame();
+        shm->phys_pages[i] = frame;
+    }
+
+    return shm;
+}
+
+static uint32_t shm_find_free_region(address_space_t *as, uint32_t size) {
+    uint32_t base = SHMEM_START;
+    size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+
+    shmem_map_t *m = as->shmem_list;
+
+    while (m) {
+        if (base + size <= m->start)
+            return base;
+        base = (m->start + m->size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+        m = m->next;
+    }
+
+    if (base + size <= SHMEM_END)
+        return base;
+
+    return 0;
+}
+
+uint32_t shm_map(process_control_block_t* pcb, shm_object_t *shm) {
+    address_space_t *as = pcb->address_space;
+
+    uint32_t va = shm_find_free_region(as, shm->size);
+    if (!va) kernel_panic("shm_map: no free space");
+
+    for (uint32_t i = 0; i < shm->npages; i++) {
+        map_page(as, va + i * PAGE_SIZE, shm->phys_pages[i], USER_PAGE_FLAGS, 1);
+    }
+
+    shmem_map_t *m = kernel_malloc(sizeof(shmem_map_t));
+    m->start = va;
+    m->size = shm->size;
+    m->shm = shm;
+
+    m->next = as->shmem_list;
+    as->shmem_list = m;
+
+    shm->refcount++;
+
+    return va;
+}
