@@ -29,6 +29,7 @@
  * each with its own free list and page descriptors.
  */
 buddy_state_t g_buddy = {0};
+shm_object_t* shm_table[MAX_SHM_OBJECTS] = {0};
 uint32_t kmap_pt_phys = 0;
 
 /**
@@ -916,6 +917,7 @@ address_space_t *create_address_space(void) {
     kunmap();
 
     as->phys_pdir = pd_phys;
+    as->shmem_list = NULL;
     return as;
 }
 
@@ -1036,4 +1038,12 @@ uint32_t shm_map(process_control_block_t* pcb, shm_object_t *shm) {
     shm->refcount++;
 
     return va;
+}
+
+int shm_alloc_id(void) {
+    for (int i = 0; i < MAX_SHM_OBJECTS; i++) {
+        if (shm_table[i] == NULL)
+            return i;
+    }
+    return -1;
 }

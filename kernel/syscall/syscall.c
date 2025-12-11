@@ -462,6 +462,38 @@ static void sys_pause(void) {
     __builtin_unreachable();
 }
 
+static void sys_shm_create(uint32_t arg2) {
+    uint32_t size = arg2;
+    int shm_id = shm_alloc_id();
+    if (shm_id < 0) {
+        errno = -ENOMEM;
+        return;
+    }
+
+    shm_object_t *shm = shm_create(size);
+    shm_table[shm_id] = shm;
+
+    errno = shm_id;
+}
+
+static void sys_shm_map(uint32_t arg2) {
+    int shm_id = (int)arg2;
+    if (shm_id < 0 || shm_id >= MAX_SHM_OBJECTS || shm_table[shm_id] == NULL) {
+        errno = -EINVAL;
+        return;
+    }
+
+    shm_object_t *shm = shm_table[shm_id];
+    uint32_t va = shm_map(current_task, shm);
+
+    errno = va;
+}
+
+static void sys_shm_unmap(uint32_t arg2) {
+    //shm_unmap(current_task, arg2);
+    errno = -ENOSYS;
+}
+
 /**
  * @brief Handle system calls.
  *
@@ -536,6 +568,15 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_PAUSE:
             sys_pause();
+            break;
+        case SYSTEM_CALL_SHM_CREATE:
+            sys_shm_create(arg2);
+            break;
+        case SYSTEM_CALL_SHM_MAP:
+            sys_shm_map(arg2);
+            break;
+        case SYSTEM_CALL_SHM_UNMAP:
+            sys_shm_unmap(arg2);
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);

@@ -15,32 +15,35 @@
 int errno;
 
 enum {
-    SYSTEM_CALL_EXIT     = 0,
-    SYSTEM_CALL_WRITE    = 1,
-    SYSTEM_CALL_READ     = 2,
-    SYSTEM_CALL_EXECVE   = 3,
-    SYSTEM_CALL_FORK     = 4,
-    SYSTEM_CALL_GETPID   = 5,
-    SYSTEM_CALL_TTY      = 6,
-    SYSTEM_CALL_OPEN     = 7,
-    SYSTEM_CALL_CLOSE    = 8,
-    SYSTEM_CALL_WAITPID  = 9,
-    SYSTEM_CALL_TOD      = 10,
-    SYSTEM_CALL_SBRK     = 11,
-    SYSTEM_CALL_ENVIRON  = 12,
-    SYSTEM_CALL_LINK     = 13,
-    SYSTEM_CALL_LSEEK    = 14,
-    SYSTEM_CALL_STAT     = 15,
-    SYSTEM_CALL_FSTAT    = 16,
-    SYSTEM_CALL_KILL     = 17,
-    SYSTEM_CALL_SIGNAL   = 18,
-    SYSTEM_CALL_SIGRET   = 19,
-    SYSTEM_CALL_MKDIR    = 20,
-    SYSTEM_CALL_RMDIR    = 21,
-    SYSTEM_CALL_CHDIR    = 22,
-    SYSTEM_CALL_GETCWD   = 23,
-    SYSTEM_CALL_UNLINK   = 24,
-    SYSTEM_CALL_PAUSE    = 25
+    SYSTEM_CALL_EXIT       = 0,
+    SYSTEM_CALL_WRITE      = 1,
+    SYSTEM_CALL_READ       = 2,
+    SYSTEM_CALL_EXECVE     = 3,
+    SYSTEM_CALL_FORK       = 4,
+    SYSTEM_CALL_GETPID     = 5,
+    SYSTEM_CALL_TTY        = 6,
+    SYSTEM_CALL_OPEN       = 7,
+    SYSTEM_CALL_CLOSE      = 8,
+    SYSTEM_CALL_WAITPID    = 9,
+    SYSTEM_CALL_TOD        = 10,
+    SYSTEM_CALL_SBRK       = 11,
+    SYSTEM_CALL_ENVIRON    = 12,
+    SYSTEM_CALL_LINK       = 13,
+    SYSTEM_CALL_LSEEK      = 14,
+    SYSTEM_CALL_STAT       = 15,
+    SYSTEM_CALL_FSTAT      = 16,
+    SYSTEM_CALL_KILL       = 17,
+    SYSTEM_CALL_SIGNAL     = 18,
+    SYSTEM_CALL_SIGRET     = 19,
+    SYSTEM_CALL_MKDIR      = 20,
+    SYSTEM_CALL_RMDIR      = 21,
+    SYSTEM_CALL_CHDIR      = 22,
+    SYSTEM_CALL_GETCWD     = 23,
+    SYSTEM_CALL_UNLINK     = 24,
+    SYSTEM_CALL_PAUSE      = 25,
+    SYSTEM_CALL_SHM_CREATE = 26,
+    SYSTEM_CALL_SHM_MAP    = 27,
+    SYSTEM_CALL_SHM_UNMAP  = 28
 };
 
 /**
@@ -246,6 +249,18 @@ int raise(int sig) {
 
 int pause(void) {
     return do_syscall(SYSTEM_CALL_PAUSE, 0, 0, 0);
+}
+
+int shm_create(size_t size) {
+    return do_syscall(SYSTEM_CALL_SHM_CREATE, (uint32_t)size, 0, 0);
+}
+
+void *shm_map(int shm_id) {
+    return (void*)do_syscall(SYSTEM_CALL_SHM_MAP, (uint32_t)shm_id, 0, 0);
+}
+
+int shm_unmap(void* addr) {
+    return do_syscall(SYSTEM_CALL_SHM_UNMAP, (uint32_t)addr, 0, 0);
 }
 
 /**
