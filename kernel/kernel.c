@@ -765,7 +765,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     struct idt_ptr idtp_read;
     asm volatile ("sidt %0" : "=m"(idtp_read));
     serial_puts(COM1_BASE,"init_high: irqs ready\n");
-    enable_interrupts();
 
     vbe_init(mbi);
     vbe_palette_init();
@@ -774,6 +773,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     //create_color_render(275);
 
     serial_puts(COM1_BASE,"init_high: framebuffer ready, early init complete\n");
+
+    enable_interrupts();
 
     printfs_set_mask(
         (1 << PRINT_STATUS_WARNING) |

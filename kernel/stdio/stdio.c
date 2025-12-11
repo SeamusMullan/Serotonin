@@ -165,8 +165,6 @@ void printf_internal(const char* p, void** arg_ptr) {
         }
         p++;
     }
-
-    vbe_flip();
 }
 
 /**

@@ -61,7 +61,6 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
                 serial_putchar(COM1_BASE, write_ptr[i]);
             }
             errno = buf_size;
-            vbe_flip();
             break;
         case WRITE_STDERR:
             for (uint32_t i = 0; i < buf_size; i++) {

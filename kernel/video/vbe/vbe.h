@@ -5,6 +5,8 @@
 #include "../../multiboot.h"
 #include "../font.h"
 
+#define VBE_TICKS_PER_FRAME 17
+
 #define VBE_FONT_WIDTH  8
 #define VBE_FONT_HEIGHT 20
 #define VBE_NUM_Z_LAYERS 16

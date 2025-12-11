@@ -12,6 +12,7 @@ volatile int multitasking_ready = 0;
 volatile int irq_disabled = 1;
 volatile rtc_time_t last_rtc_time;
 volatile uint32_t unix_timestamp = 0;
+volatile uint32_t vbe_ticks = 0;
 
 static uint8_t ps2_mouse_packet[3];
 static int ps2_mouse_packet_index = 0;
@@ -26,6 +27,13 @@ static int mouse_y = 0;
 void irq_handler(int irq, processor_context_t *ctx) {
     if (irq == IRQ_PIT) {
         timer_ticks++;
+        vbe_ticks++;
+
+        if (vbe_ticks >= VBE_TICKS_PER_FRAME) {
+            vbe_ticks = 0;
+            vbe_flip();
+        }
+
         if (multitasking_ready == 0)
             goto end_irq;
         

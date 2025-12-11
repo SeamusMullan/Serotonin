@@ -93,7 +93,6 @@ void handle_scancode(uint8_t scancode) {
             serial_putchar(COM1_BASE, c);
         }
     }
-    vbe_flip();
     preempt_enable();
     unlock_scheduler();
 }

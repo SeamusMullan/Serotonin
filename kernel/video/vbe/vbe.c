@@ -158,11 +158,11 @@ void vbe_init(multiboot_info_t *mbi)
     }
 
     memset(vbe_info.backbuffer, 0, fb_size_bytes);
-    vbe_create_z_layer(0,0,1);
-    vbe_create_z_layer(1,0,1);
 
-    vbe_clear_z_layer(0, 0x00000000);
-    vbe_clear_z_layer(1, 0x00000000);
+    for (int i = 0; i < VBE_NUM_Z_LAYERS; i++) {
+        vbe_create_z_layer(i, 0, 0);
+        vbe_clear_all_z_layers();
+    }
 
     // create dirty bounding box
     dbb = (dirty_bb_t*)kernel_malloc(sizeof(dirty_bb_t));
@@ -1081,7 +1081,6 @@ void vbe_handle_ansi_sequence(const char *seq) {
             if (mode == 2) // clear all
                 vbe_clear_screen(ansi_bg);
                 vbe_set_cursor(0,0);
-                vbe_flip_all();
             break;
         }
 
