@@ -201,7 +201,8 @@ void task_yield(int irq) {
             task_exit(EXIT_SIGSEGV);
         }
         current_task->state = PROCESS_STATE_READY;
-        enqueue(current_task);
+        if (!current_task->no_requeue)
+            enqueue(current_task);
     }
 
     process_control_block_t* next = NULL;

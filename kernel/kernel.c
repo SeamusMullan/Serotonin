@@ -841,14 +841,17 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     multitasking_init();
 
-    process_control_block_t *idle_task = task_create(kernel_idle_task, "Kernel Idle Task", CPU_KERNEL_MODE, 0);
+    process_control_block_t *idle_task = task_create(kernel_idle_task, "kernel: idle", CPU_KERNEL_MODE, 0);
     enqueue(idle_task);
+
+    vbe_worker_task = task_create(vbe_worker, "kernel: compositor", CPU_KERNEL_MODE, 255);
+    vbe_worker_task->no_requeue = 1;
 
     printfs(PRINT_STATUS_INFO,"Loading /bin/init\n");
 
     char* init_loc = "/bin/init";
 
-    process_control_block_t *init = task_create(NULL, init_loc, CPU_USER_MODE, 255);
+    process_control_block_t *init = task_create(NULL, init_loc, CPU_USER_MODE, 254);
     const char *argv[1] = {"/bin/init"}; int argc = 1;
     const char *envp[1] = {"PATH=/"}; int envc = 1;
     int init_status = kernel_load_elf(init, init_loc, init_loc, argv, argc, envp, envc);
@@ -869,6 +872,10 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         serial_puts(COM1_BASE, "===== KERNEL TESTS COMPLETED =====\n\n");
         printfs(PRINT_STATUS_INFO,"===== KERNEL TESTS COMPLETED =====\n");
     #endif
+
+    vbe_clear_screen(0);
+    vbe_set_cursor(0,0);
+    vbe_flip_all();
 
     task_yield(0);
     abort();

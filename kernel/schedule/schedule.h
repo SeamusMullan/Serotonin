@@ -71,6 +71,7 @@ typedef struct process_control_block {
     processor_context_t *signal_processor_context;
     __attribute__((aligned(16))) fpu_fxsave_area_t signal_fpu_fx;
     uint8_t in_signal_handler;
+    uint8_t no_requeue;
 } process_control_block_t;
 
 typedef struct wait_node {

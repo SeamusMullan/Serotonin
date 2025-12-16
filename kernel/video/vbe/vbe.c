@@ -4,8 +4,9 @@
 */
 
 #include "vbe.h"
-#include "../../kernel.h"        // kernel_malloc(), kernel_panic()
-#include "../../stdlib/stdlib.h" // for memcpy
+#include "../../kernel.h"
+#include "../../stdlib/stdlib.h"
+#include "../../schedule/schedule.h"
 #include <stdint.h>
 #include <stddef.h>
 #include "../../multiboot.h"
@@ -27,6 +28,7 @@ vbe_mode_info_t vbe_info;
 uint32_t fb_size_bytes;
 uint32_t vbe_palette[256];
 uint8_t init_z = 0;
+process_control_block_t *vbe_worker_task;
 
 static const uint16_t k255w[8] __attribute__((aligned(16))) = {0x00FF, 0x00FF, 0x00FF, 0x00FF, 0x00FF, 0x00FF, 0x00FF, 0x00FF};
 static const uint16_t k257w[8] __attribute__((aligned(16))) = {0x0101, 0x0101, 0x0101, 0x0101, 0x0101, 0x0101, 0x0101, 0x0101};
@@ -1087,5 +1089,12 @@ void vbe_handle_ansi_sequence(const char *seq) {
         default:
             // unsupported sequence
             break;
+    }
+}
+
+void vbe_worker(void) {
+    while (1) {
+        vbe_flip();
+        kernel_yield();
     }
 }

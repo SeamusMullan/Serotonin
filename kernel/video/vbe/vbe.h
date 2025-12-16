@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "../../multiboot.h"
+#include "../../schedule/schedule.h"
 #include "../font.h"
 
 #define VBE_TICKS_PER_FRAME 17
@@ -45,6 +46,7 @@ typedef enum {
 } vbe_color_t;
 
 extern uint32_t vbe_colors[16];
+extern process_control_block_t *vbe_worker_task;
 
 static uint32_t term_color = 0xFFFFFF;
 
@@ -111,5 +113,6 @@ void vbe_z_copy_and_fade(uint32_t src_z, uint32_t dst_z, uint8_t fade_amount);
 vbe_z_layer_t* vbe_create_z_layer(uint8_t z, uint8_t alpha, uint8_t active);
 void vbe_mark_region_dirty(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
 void vbe_handle_ansi_sequence(const char *seq);
+void vbe_worker(void);
 
 #endif

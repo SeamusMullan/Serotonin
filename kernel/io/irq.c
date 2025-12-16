@@ -29,14 +29,14 @@ void irq_handler(int irq, processor_context_t *ctx) {
         timer_ticks++;
         vbe_ticks++;
 
-        if (vbe_ticks >= VBE_TICKS_PER_FRAME) {
-            vbe_ticks = 0;
-            vbe_flip();
-        }
-
         if (multitasking_ready == 0)
             goto end_irq;
         
+        if (vbe_ticks >= VBE_TICKS_PER_FRAME) {
+            vbe_ticks = 0;
+            enqueue(vbe_worker_task);
+        }
+
         if (preempt_count == 0 && current_task->priv == CPU_USER_MODE && current_task->state == PROCESS_STATE_RUNNING) {
             last_quantum_tick++;
             if (last_quantum_tick >= SCHEDULE_QUANTUM) {
