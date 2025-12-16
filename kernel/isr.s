@@ -276,17 +276,12 @@ isr31:
 irq0:
     pushfl
     pushal
+    cli
 
     pushl   %gs
     pushl   %fs
     pushl   %es
     pushl   %ds
-
-    movw $0x10, %ax
-    movw %ax, %ds
-    movw %ax, %es
-    movw %ax, %fs
-    movw %ax, %gs
 
     movl    current_task, %edx
     test    %edx, %edx
@@ -313,7 +308,7 @@ irq0:
     popl    %fs
     popl    %gs
     popal
-    orl $0x200, (%esp)
+    #orl $0x200, (%esp)
     popfl
 
     iret
