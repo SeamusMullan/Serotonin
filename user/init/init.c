@@ -23,6 +23,7 @@
  */
 int main(int argc, char **argv, char **envp) {
     printf("Welcome to \033[38;2;122;152;255mSerotonin\033[39m\033[49m from init!\n");
+
     printf("Loading shell\n");
 
     execve("/bin/sh", argv, envp);

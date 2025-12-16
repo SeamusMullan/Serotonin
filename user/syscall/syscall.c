@@ -11,70 +11,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include "syscall_table.h"
+#include "lib5ht/lib5ht.h"
 
 int errno;
-
-enum {
-    SYSTEM_CALL_EXIT       = 0,
-    SYSTEM_CALL_WRITE      = 1,
-    SYSTEM_CALL_READ       = 2,
-    SYSTEM_CALL_EXECVE     = 3,
-    SYSTEM_CALL_FORK       = 4,
-    SYSTEM_CALL_GETPID     = 5,
-    SYSTEM_CALL_TTY        = 6,
-    SYSTEM_CALL_OPEN       = 7,
-    SYSTEM_CALL_CLOSE      = 8,
-    SYSTEM_CALL_WAITPID    = 9,
-    SYSTEM_CALL_TOD        = 10,
-    SYSTEM_CALL_SBRK       = 11,
-    SYSTEM_CALL_ENVIRON    = 12,
-    SYSTEM_CALL_LINK       = 13,
-    SYSTEM_CALL_LSEEK      = 14,
-    SYSTEM_CALL_STAT       = 15,
-    SYSTEM_CALL_FSTAT      = 16,
-    SYSTEM_CALL_KILL       = 17,
-    SYSTEM_CALL_SIGNAL     = 18,
-    SYSTEM_CALL_SIGRET     = 19,
-    SYSTEM_CALL_MKDIR      = 20,
-    SYSTEM_CALL_RMDIR      = 21,
-    SYSTEM_CALL_CHDIR      = 22,
-    SYSTEM_CALL_GETCWD     = 23,
-    SYSTEM_CALL_UNLINK     = 24,
-    SYSTEM_CALL_PAUSE      = 25,
-    SYSTEM_CALL_SHM_CREATE = 26,
-    SYSTEM_CALL_SHM_MAP    = 27,
-    SYSTEM_CALL_SHM_UNMAP  = 28
-};
-
-/**
- * @brief Execute a system call via interrupt 0x80
- * 
- * Low-level function that performs the actual system call by triggering
- * interrupt 0x80 with the appropriate register values.
- * 
- * @param num System call number
- * @param arg1 First argument
- * @param arg2 Second argument
- * @param arg3 Third argument
- * @return System call return value, or sets errno and returns error code on failure
- */
-static inline int do_syscall(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3) {
-    register uint32_t eax asm("eax") = num;
-    register uint32_t ebx asm("ebx") = arg1;
-    register uint32_t ecx asm("ecx") = arg2;
-    register uint32_t edx asm("edx") = arg3;
-
-    asm volatile("int $0x80"
-                 : "+a"(eax)
-                 : "b"(ebx), "c"(ecx), "d"(edx)
-                 : "memory");
-
-    if ((int)eax < 0) {
-        errno = -(int)eax;
-        return errno;
-    }
-    return eax;
-}
 
 /**
  * @brief Terminate the calling process

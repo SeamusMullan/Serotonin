@@ -14,6 +14,7 @@
 #include "sys/types.h"
 #include "sys/timespec.h"
 #include "sys/file.h"
+#include "sys/lib5ht.h"
 #include <stdint.h>
 
 
@@ -493,6 +494,32 @@ static void sys_shm_unmap(uint32_t arg2) {
     errno = -ENOSYS;
 }
 
+static void sys_5ht_list_proc(uint32_t arg2, uint32_t arg3) {
+    proc_5ht_t *buf = (proc_5ht_t*)arg2;
+    int count = 0;
+    size_t max = (size_t)arg3;
+
+    proc_5ht_t k_buf;
+
+    process_control_block_t *task = task_list;
+    while (task) {
+        if (count >= max)
+            break;
+        k_buf.pid = task->pid;
+        k_buf.priv = task->priv;
+        k_buf.priority = task->priority;
+        strncpy(k_buf.name, task->name, 32);
+        k_buf.name[31] = '\0';
+        
+        memcpy(&buf[count], &k_buf, sizeof(k_buf));
+
+        count++;
+        task = task->next;
+    }
+
+    errno = count;
+}
+
 /**
  * @brief Handle system calls.
  *
@@ -576,6 +603,9 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_SHM_UNMAP:
             sys_shm_unmap(arg2);
+            break;
+        case SYSTEM_CALL_5HT_LIST_PROC:
+            sys_5ht_list_proc(arg2, arg3);
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);
