@@ -873,10 +873,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         printfs(PRINT_STATUS_INFO,"===== KERNEL TESTS COMPLETED =====\n");
     #endif
 
-    vbe_clear_screen(0);
-    vbe_set_cursor(0,0);
-    vbe_flip_all();
-
     task_yield(0);
     abort();
 }
