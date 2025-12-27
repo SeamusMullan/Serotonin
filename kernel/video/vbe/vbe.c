@@ -553,26 +553,21 @@ void vbe_flip_all(void)
  * @param y Y-coordinate of the glyph's top-left corner.
  * @param color The foreground color to draw the glyph.
  */
-void vbe_drawglyph(FontGlyph *glyph, uint32_t x, uint32_t y, uint32_t color)
-{
+void vbe_drawglyph(FontGlyph *glyph, uint32_t x, uint32_t y, uint32_t color) {
     if (!glyph)
         return;
 
     uint32_t stride = vbe_info.pitch / sizeof(uint32_t);
     uint32_t *dst_buf = vbe_z_layers[0]->bufptr;
 
-    for (uint32_t row = 0; row < VBE_FONT_HEIGHT; row++)
-    {
+    for (uint32_t row = 0; row < VBE_FONT_HEIGHT; row++) {
         uint8_t bits = glyph->data[row];
-        uint32_t dst_index = (y + row) * stride + x;
-        uint32_t *dst = dst_buf + dst_index;
+        uint32_t *dst = dst_buf + (y + row) * stride + x;
 
-        for (uint32_t bit = 0; bit < VBE_FONT_WIDTH; bit++)
-        {
-            if (bits & (1 << (7 - bit)))
-            {
-                dst[bit] = color;
-                vbe_mark_pixel_dirty(x + bit, y + row);
+        for (uint32_t col = 0; col < VBE_FONT_WIDTH; col++) {
+            if (bits & (uint8_t)(1u << (7u - col))) {
+                dst[col] = color;
+                vbe_mark_pixel_dirty(x + col, y + row);
             }
         }
     }
