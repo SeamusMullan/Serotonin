@@ -499,7 +499,7 @@ static void sys_5ht_list_proc(uint32_t arg2, uint32_t arg3) {
     int count = 0;
     size_t max = (size_t)arg3;
 
-    proc_5ht_t k_buf;
+    proc_5ht_t k_buf = {0};
 
     process_control_block_t *task = task_list;
     while (task) {

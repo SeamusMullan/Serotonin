@@ -234,20 +234,25 @@ void task_exit(uint8_t exit) {
     current_task->state = PROCESS_STATE_TERMINATED;
     current_task->signal = exit;
 
-    process_control_block_t *waiter = task_list;
-    while (waiter) {
-        if (waiter->waiting_on == (int)current_task->pid) {
-            waiter->waiting_on = -1;
-            switch_address_space(waiter->address_space);
-            memset(waiter->status_ptr, exit, sizeof(uint8_t));
-            waiter->state = PROCESS_STATE_READY;
-            waiter->processor_context->eax = exit;
-            enqueue(waiter);
+    process_control_block_t *task = task_list;
+    process_control_block_t *prev_task = NULL;
+    while (task) {
+        if (task->waiting_on == (int)current_task->pid) {
+            task->waiting_on = -1;
+            switch_address_space(task->address_space);
+            memset(task->status_ptr, exit, sizeof(uint8_t));
+            task->state = PROCESS_STATE_READY;
+            task->processor_context->eax = exit;
+            enqueue(task);
             break;
+        } else if (task == current_task) {
+            prev_task->next = task->next;
         }
-        waiter = waiter->next;
+        prev_task = task;
+        task = task->next;
     }
-
+    task->next = NULL;
+    
     kernel_free_align(current_task->processor_context);
     kernel_free_align(current_task);
 
