@@ -9,6 +9,9 @@
 static vfs_node_t *tmpfs_mount(const char *device);
 static int tmpfs_read(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer);
 static int tmpfs_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer);
+static int tmpfs_truncate(vfs_node_t *node, uint32_t size);
+static int tmpfs_unlink(vfs_node_t *parent, const char *name);
+static int tmpfs_rmdir(vfs_node_t *parent, const char *name);
 static int tmpfs_open(vfs_node_t *node);
 static int tmpfs_close(vfs_node_t *node);
 static vfs_node_t *tmpfs_readdir(vfs_node_t *node, uint32_t index);
@@ -20,6 +23,9 @@ vfs_node_t *tmpfs_create_dir(vfs_node_t *parent, const char *name);
 static vfs_ops_t tmpfs_ops = {
     .read    = tmpfs_read,
     .write   = tmpfs_write,
+    .truncate = tmpfs_truncate,
+    .unlink = tmpfs_unlink,
+    .rmdir = tmpfs_rmdir,
     .open    = tmpfs_open,
     .close   = tmpfs_close,
     .readdir = tmpfs_readdir,
@@ -143,6 +149,139 @@ static int tmpfs_write(vfs_node_t *node, uint32_t offset, uint32_t size, const c
 
     memcpy(file->data + offset, buffer, size);
     return size;
+}
+
+/**
+ * @brief Truncates a file in the tmpfs filesystem.
+ *
+ * @param node The VFS node representing the file to truncate.
+ * @param size The new size of the file.
+ * @return int 0 on success, -1 on failure.
+ */
+static int tmpfs_truncate(vfs_node_t *node, uint32_t size) {
+    if (!(node->flags & VFS_FLAG_FILE)) return -1;
+
+    tmpfs_file_t *file = (tmpfs_file_t *) node->fs_data;
+    if (!file) return -1;
+
+    if (size == file->size) {
+        node->size = size;
+        return 0;
+    }
+
+    if (size == 0) {
+        if (file->data) {
+            kernel_free(file->data);
+            file->data = NULL;
+        }
+        file->size = 0;
+        node->size = 0;
+        return 0;
+    }
+
+    char *new_data = kernel_malloc(size);
+    if (!new_data) return -1;
+    memset(new_data, 0, size);
+
+    if (file->data) {
+        uint32_t copy = (file->size < size) ? file->size : size;
+        memcpy(new_data, file->data, copy);
+        kernel_free(file->data);
+    }
+
+    file->data = new_data;
+    file->size = size;
+    node->size = size;
+    return 0;
+}
+
+/**
+ * @brief Unlinks a file from a tmpfs directory.
+ *
+ * @param parent The VFS node representing the parent directory.
+ * @param name The name of the file to unlink.
+ * @return int 0 on success, -1 on failure.
+ */
+static int tmpfs_unlink(vfs_node_t *parent, const char *name) {
+    if (!(parent->flags & VFS_FLAG_DIRECTORY)) return -1;
+
+    tmpfs_dir_t *dir = (tmpfs_dir_t *) parent->fs_data;
+    tmpfs_dir_entry_t *prev = NULL;
+    tmpfs_dir_entry_t *entry = dir->entries;
+
+    while (entry) {
+        if (strcmp(entry->node->name, name) == 0) {
+            vfs_node_t *node = entry->node;
+            if (node->flags & VFS_FLAG_DIRECTORY) return -1;
+            if (node->refcount > 1) return -1;
+
+            tmpfs_file_t *file = (tmpfs_file_t *) node->fs_data;
+            if (file) {
+                if (file->data) {
+                    kernel_free(file->data);
+                }
+                kernel_free(file);
+            }
+
+            if (prev) {
+                prev->next = entry->next;
+            } else {
+                dir->entries = entry->next;
+            }
+            kernel_free(entry);
+            kernel_free(node);
+            return 0;
+        }
+
+        prev = entry;
+        entry = entry->next;
+    }
+
+    return -1;
+}
+
+/**
+ * @brief Removes an empty directory from a tmpfs directory.
+ *
+ * @param parent The VFS node representing the parent directory.
+ * @param name The name of the directory to remove.
+ * @return int 0 on success, -1 on failure.
+ */
+static int tmpfs_rmdir(vfs_node_t *parent, const char *name) {
+    if (!(parent->flags & VFS_FLAG_DIRECTORY)) return -1;
+
+    tmpfs_dir_t *dir = (tmpfs_dir_t *) parent->fs_data;
+    tmpfs_dir_entry_t *prev = NULL;
+    tmpfs_dir_entry_t *entry = dir->entries;
+
+    while (entry) {
+        if (strcmp(entry->node->name, name) == 0) {
+            vfs_node_t *node = entry->node;
+            if (!(node->flags & VFS_FLAG_DIRECTORY)) return -1;
+            if (node->refcount > 1) return -1;
+
+            tmpfs_dir_t *child_dir = (tmpfs_dir_t *) node->fs_data;
+            if (child_dir && child_dir->entries) return -1;
+
+            if (child_dir) {
+                kernel_free(child_dir);
+            }
+
+            if (prev) {
+                prev->next = entry->next;
+            } else {
+                dir->entries = entry->next;
+            }
+            kernel_free(entry);
+            kernel_free(node);
+            return 0;
+        }
+
+        prev = entry;
+        entry = entry->next;
+    }
+
+    return -1;
 }
 
 /**

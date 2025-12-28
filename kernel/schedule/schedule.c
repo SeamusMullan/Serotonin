@@ -215,7 +215,6 @@ void task_yield(int irq) {
             }
             // found someone we can switch into
             next->state = PROCESS_STATE_RUNNING;
-            unlock_scheduler();
             preempt_enable();
 
             // if nothing is pending, switch
@@ -252,7 +251,7 @@ void task_exit(uint8_t exit) {
         task = task->next;
     }
     task->next = NULL;
-    
+
     kernel_free_align(current_task->processor_context);
     kernel_free_align(current_task);
 
@@ -280,6 +279,7 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
     pcb->priority = prio;
     pcb->original_priority = prio;
     strncpy(pcb->name, name, sizeof(pcb->name)-1);
+    strcpy(pcb->cwd, "/");
 
     memcpy(&pcb->fpu_fx, &fx_clean, sizeof(fx_clean));
     memcpy(&pcb->signal_fpu_fx, &fx_clean, sizeof(fx_clean));
@@ -302,11 +302,11 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
         pcb->processor_context->es          = USER_MODE_SEGMENT;
         pcb->processor_context->fs          = USER_MODE_SEGMENT;
         pcb->processor_context->gs          = USER_MODE_SEGMENT;
-        pcb->processor_context->ss          = USER_MODE_SEGMENT; 
+        pcb->processor_context->ss          = USER_MODE_SEGMENT;
         //pcb->processor_context->esp_at_trap = (uint32_t)stk_top;
         pcb->processor_context->stub_eflags = INIT_EFLAGS;
         pcb->processor_context->eflags      = INIT_EFLAGS;
-        pcb->processor_context->cs          = USER_MODE_CODE_SEGMENT; 
+        pcb->processor_context->cs          = USER_MODE_CODE_SEGMENT;
         pcb->processor_context->eip         = (uint32_t)entry;
         pcb->brk_start                      = USER_HEAP_START;
         pcb->brk_end                        = USER_HEAP_START;
@@ -533,7 +533,7 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
         memset(dst, 0, PAGE_SIZE);
         kunmap();
     }
-    
+
     for (uint32_t offset = 0; offset < USER_STACK_SIZE; offset += PAGE_SIZE) {
         uint32_t p_va = p_stack_base + offset;
         uint32_t c_va = c_stack_base + offset;
@@ -617,7 +617,7 @@ process_control_block_t *dequeue_waiter_semaphore(lock_semaphore_t *semaphore) {
 
 void task_semaphore_acquire(lock_semaphore_t *semaphore) {
     lock_scheduler();
-    
+
     if (semaphore->current_count < semaphore->max_count) {
         semaphore->current_count++;
     } else {
@@ -656,12 +656,12 @@ process_control_block_t* get_current_task(void) {
 uint32_t get_task_count(void) {
     uint32_t count = 0;
     process_control_block_t *task = task_list;
-    
+
     while (task != NULL) {
         count++;
         task = task->next;
     }
-    
+
     return count;
 }
 
@@ -672,7 +672,7 @@ int task_priority_decay(process_control_block_t *task) {
 
     if (quanta < PRIORITY_QUANTA_PUNISH)
         return prio;
-    if (prio == 0) 
+    if (prio == 0)
         return orig_prio;
 
     task->quanta_used = 0;

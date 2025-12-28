@@ -44,6 +44,9 @@ typedef struct vfs_node {
 typedef struct vfs_ops {
     int (*read)(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer);
     int (*write)(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer);
+    int (*truncate)(vfs_node_t *node, uint32_t size);
+    int (*unlink)(vfs_node_t *parent, const char *name);
+    int (*rmdir)(vfs_node_t *parent, const char *name);
     int (*open)(vfs_node_t *node);
     int (*close)(vfs_node_t *node);
     struct vfs_node *(*readdir)(vfs_node_t *node, uint32_t index);
@@ -69,6 +72,9 @@ int vfs_mount(const char *device, const char *mountpoint, const char *fs_type);
 vfs_node_t *vfs_open(const char *path);
 int vfs_read(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer);
 int vfs_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer);
+int vfs_truncate(vfs_node_t *node, uint32_t size);
+int vfs_unlink(const char *path);
+int vfs_rmdir(const char *path);
 void vfs_close(vfs_node_t *node);
 void vfs_list_dir(const char *path);
 vfs_node_t *vfs_create(const char *path);

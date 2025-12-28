@@ -23,13 +23,14 @@ i686-elf-gcc -c syscall/lib5ht/lib5ht.c -o syscall/lib5ht/lib5ht.o $CFLAGS
 i686-elf-gcc -c shell.c -o shell.o $CFLAGS
 i686-elf-gcc -c receiver.c -o receiver.o $CFLAGS
 i686-elf-gcc -c sender.c -o sender.o $CFLAGS
+i686-elf-gcc -c fs_syscall_test.c -o fs_syscall_test.o $CFLAGS
 i686-elf-gcc -c listproc/listproc.c -o listproc/listproc.o $CFLAGS
-i686-elf-gcc -c games/sponk/sponk.c -o games/sponk/sponk.o $CFLAGS
 i686-elf-gcc -c games/sponk/sponk.c -o games/sponk/sponk.o $CFLAGS
 
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o init/init.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o init.elf
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o listproc/listproc.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o listproc.elf
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o shell.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o sh.elf
+i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o fs_syscall_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o fs_syscall_test.elf
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o games/sponk/sponk.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o sponk.elf
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o receiver.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o receiver.elf
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o sender.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o sender.elf
@@ -64,4 +65,4 @@ i686-elf-gcc -c libgcc_stubs.c -o libgcc_stubs.o $CFLAGS
 # Link without -lgcc
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o lua/lua-5.4.8/src/lua.o lua/lua-5.4.8/src/liblua.a syscall.o lua_stubs.o libgcc_stubs.o -Wl,--start-group -lc -lm -Wl,--end-group -o lua.elf
 
-echo "Lua build complete: lua.elf" 
+echo "Lua build complete: lua.elf"

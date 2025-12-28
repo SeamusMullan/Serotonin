@@ -76,15 +76,37 @@ vfs_node_t *vfs_resolve_path(const char *path) {
     temp[sizeof(temp)-1] = '\0'; // Safety null-termination
 
     vfs_node_t *current = vfs_root;
+    vfs_node_t *stack[64];
+    size_t depth = 0;
+    stack[depth++] = current;
     char *token = strtok(temp, "/");
 
     while (token != NULL && current != NULL) {
+        if (strcmp(token, ".") == 0) {
+            token = strtok(NULL, "/");
+            continue;
+        }
+        if (strcmp(token, "..") == 0) {
+            if (depth > 1) {
+                depth--;
+                current = stack[depth - 1];
+            }
+            token = strtok(NULL, "/");
+            continue;
+        }
+
         if (!(current->flags & VFS_FLAG_DIRECTORY)) {
             return NULL; // Can't descend into non-directory
         }
 
         if (current->ops && current->ops->finddir) {
             current = current->ops->finddir(current, token);
+            if (!current) {
+                return NULL;
+            }
+            if (depth < (sizeof(stack) / sizeof(stack[0]))) {
+                stack[depth++] = current;
+            }
         } else {
             return NULL;
         }
@@ -142,6 +164,18 @@ int vfs_read(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer) {
 int vfs_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer) {
     if (!node || !node->ops || !node->ops->write) return -1;
     return node->ops->write(node, offset, size, buffer);
+}
+
+/**
+ * @brief Truncates a VFS node to a specific size.
+ *
+ * @param node Pointer to the VFS node to truncate.
+ * @param size The new size of the node.
+ * @return 0 on success, -1 on failure.
+ */
+int vfs_truncate(vfs_node_t *node, uint32_t size) {
+    if (!node || !node->ops || !node->ops->truncate) return -1;
+    return node->ops->truncate(node, size);
 }
 
 /**
@@ -217,6 +251,56 @@ static void split_path(const char *path, char *parent, char *name) {
         strcpy(parent, tmp);
         strcpy(name, slash+1);
     }
+}
+
+/**
+ * @brief Removes a directory at the specified path.
+ *
+ * @param path The absolute path to remove.
+ * @return 0 on success, -1 on failure.
+ */
+int vfs_rmdir(const char *path) {
+    if (!path || path[0] != '/') return -1;
+
+    char parent_path[256], name[256];
+    split_path(path, parent_path, name);
+
+    vfs_node_t *parent = vfs_open(parent_path);
+    if (!parent) return -1;
+
+    if (!parent->ops || !parent->ops->rmdir) {
+        vfs_close(parent);
+        return -1;
+    }
+
+    int result = parent->ops->rmdir(parent, name);
+    vfs_close(parent);
+    return result;
+}
+
+/**
+ * @brief Unlinks a file at the specified path.
+ *
+ * @param path The absolute path to unlink.
+ * @return 0 on success, -1 on failure.
+ */
+int vfs_unlink(const char *path) {
+    if (!path || path[0] != '/') return -1;
+
+    char parent_path[256], name[256];
+    split_path(path, parent_path, name);
+
+    vfs_node_t *parent = vfs_open(parent_path);
+    if (!parent) return -1;
+
+    if (!parent->ops || !parent->ops->unlink) {
+        vfs_close(parent);
+        return -1;
+    }
+
+    int result = parent->ops->unlink(parent, name);
+    vfs_close(parent);
+    return result;
 }
 
 /**

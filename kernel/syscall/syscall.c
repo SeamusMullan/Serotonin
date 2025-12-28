@@ -21,6 +21,49 @@
 static uint32_t next_fd = FIRST_FD;
 static int errno = 0;
 
+static int dir_has_entries(vfs_node_t *node) {
+    if (!node || !node->ops || !node->ops->readdir) return 0;
+
+    for (uint32_t i = 0; ; i++) {
+        vfs_node_t *child = node->ops->readdir(node, i);
+        if (!child) break;
+
+        if (strcmp(child->name, ".") != 0 && strcmp(child->name, "..") != 0) {
+            vfs_close(child);
+            return 1;
+        }
+
+        vfs_close(child);
+    }
+
+    return 0;
+}
+
+static int build_abs_path(const char *path, char *out, size_t out_size) {
+    if (!path || !out || out_size == 0) return -1;
+
+    if (path[0] == '/') {
+        size_t len = strlen(path);
+        if (len >= out_size) return -1;
+        strcpy(out, path);
+        return 0;
+    }
+
+    const char *cwd = current_task->cwd;
+    size_t cwd_len = strlen(cwd);
+    size_t path_len = strlen(path);
+    size_t extra = (cwd_len > 1) ? 1 : 0;
+
+    if (cwd_len + extra + path_len + 1 > out_size) return -1;
+
+    strcpy(out, cwd);
+    if (extra) {
+        strcat(out, "/");
+    }
+    strcat(out, path);
+    return 0;
+}
+
 /**
  * @brief Handle illegal system calls.
  *
@@ -77,8 +120,21 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
             }
 
             file_handle_t *handle = current_task->fd_table[fd];
+            int access = handle->flags & 0x3;
+            if (access == O_RDONLY) {
+                errno = -EBADF;
+                return;
+            }
+
+            if (handle->flags & O_APPEND) {
+                handle->offset = handle->node->size;
+            }
 
             int written = vfs_write(handle->node, handle->offset, buf_size, write_ptr);
+            if (written < 0) {
+                errno = -EIO;
+                return;
+            }
 
             handle->offset += written;
             errno = written;
@@ -118,12 +174,24 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
     }
 
     file_handle_t *handle = current_task->fd_table[fd];
+    int access = handle->flags & 0x3;
+    if (access == O_WRONLY) {
+        errno = -EBADF;
+        return;
+    }
 
     char* read_buf = kernel_malloc(buf_size);
 
-    int read_bytes = vfs_read(handle->node, 0, buf_size, read_buf);
+    int read_bytes = vfs_read(handle->node, handle->offset, buf_size, read_buf);
+    if (read_bytes < 0) {
+        kernel_free(read_buf);
+        errno = -EIO;
+        return;
+    }
 
-    memcpy(read_ptr, read_buf, buf_size);
+    memcpy(read_ptr, read_buf, read_bytes);
+    handle->offset += read_bytes;
+    errno = read_bytes;
 
     kernel_free(read_buf);
 }
@@ -161,18 +229,37 @@ static void sys_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
     char *path = (char*)arg2;
     int flags = (int)arg3;
     int mode = (int)arg4;
+    char abs_path[256];
 
-    vfs_node_t *node = vfs_open(path);
+    if (build_abs_path(path, abs_path, sizeof(abs_path)) != 0) {
+        errno = -ENAMETOOLONG;
+        return;
+    }
+
+    vfs_node_t *node = vfs_open(abs_path);
     if (!node) {
         if (flags & O_CREAT) {
-            node = vfs_create(path);
+            node = vfs_create(abs_path);
             goto nodeCreated;
         }
         errno = -ENOENT;
         return;
     }
+    if ((flags & O_CREAT) && (flags & O_EXCL)) {
+        vfs_close(node);
+        errno = -EEXIST;
+        return;
+    }
 
 nodeCreated:
+
+    if ((flags & O_TRUNC) && ((flags & 0x3) != O_RDONLY) && (node->flags & VFS_FLAG_FILE)) {
+        if (vfs_truncate(node, 0) != 0) {
+            vfs_close(node);
+            errno = -ENOSYS;
+            return;
+        }
+    }
 
     file_handle_t *handle = kernel_malloc(sizeof(file_handle_t));
     if (!handle) {
@@ -183,7 +270,7 @@ nodeCreated:
 
     handle->node = node;
     handle->flags = flags;
-    handle->offset = 0;
+    handle->offset = (flags & O_APPEND) ? node->size : 0;
     handle->refcount = 1;
 
     int fd = alloc_fd(current_task, handle);
@@ -220,9 +307,15 @@ static void sys_close(uint32_t arg2) {
 }
 
 static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
-    size_t path_size = strlen((char*)arg2)+1;
+    char abs_path[256];
+    if (build_abs_path((char*)arg2, abs_path, sizeof(abs_path)) != 0) {
+        errno = -ENAMETOOLONG;
+        return;
+    }
+
+    size_t path_size = strlen(abs_path) + 1;
     char *path = (char*)kernel_malloc(path_size);
-    strncpy(path, (char*)arg2, path_size);
+    strncpy(path, abs_path, path_size);
     const char **argv_temp = (const char**)arg3;
     const char **envp_temp = (const char**)arg4;
 
@@ -256,10 +349,10 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
     ctx->es          = USER_MODE_SEGMENT;
     ctx->fs          = USER_MODE_SEGMENT;
     ctx->gs          = USER_MODE_SEGMENT;
-    ctx->ss          = USER_MODE_SEGMENT; 
+    ctx->ss          = USER_MODE_SEGMENT;
     ctx->stub_eflags = INIT_EFLAGS;
     ctx->eflags      = INIT_EFLAGS;
-    ctx->cs          = USER_MODE_CODE_SEGMENT; 
+    ctx->cs          = USER_MODE_CODE_SEGMENT;
     current_task->brk_start   = USER_HEAP_START;
     current_task->brk_end     = USER_HEAP_START;
 
@@ -346,18 +439,29 @@ static void sys_lseek(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
 
     file_handle_t *handle = current_task->fd_table[fd];
 
-    int new_offset;
+    int64_t new_offset;
     switch (whence) {
         case SEEK_SET:
             new_offset = offset;
+            break;
+        case SEEK_CUR:
+            new_offset = (int64_t)handle->offset + offset;
+            break;
+        case SEEK_END:
+            new_offset = (int64_t)handle->node->size + offset;
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);
             __builtin_unreachable();
     }
 
-    handle->offset = new_offset;
-    errno = new_offset;
+    if (new_offset < 0) {
+        errno = -EINVAL;
+        return;
+    }
+
+    handle->offset = (uint32_t)new_offset;
+    errno = handle->offset;
 }
 
 static void sys_fstat(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) {
@@ -494,6 +598,190 @@ static void sys_shm_unmap(uint32_t arg2) {
     errno = -ENOSYS;
 }
 
+static void sys_mkdir(uint32_t arg2) {
+    char *path = (char*)arg2;
+    char abs_path[256];
+
+    if (build_abs_path(path, abs_path, sizeof(abs_path)) != 0) {
+        errno = -ENAMETOOLONG;
+        return;
+    }
+
+    if (vfs_resolve_path(abs_path)) {
+        errno = -EEXIST;
+        return;
+    }
+
+    if (vfs_mkdir(abs_path) != 0) {
+        errno = -EIO;
+        return;
+    }
+
+    errno = 0;
+}
+
+static void sys_unlink(uint32_t arg2) {
+    char *path = (char*)arg2;
+    char abs_path[256];
+
+    if (build_abs_path(path, abs_path, sizeof(abs_path)) != 0) {
+        errno = -ENAMETOOLONG;
+        return;
+    }
+
+    vfs_node_t *node = vfs_resolve_path(abs_path);
+    if (!node) {
+        errno = -ENOENT;
+        return;
+    }
+    if (node->flags & VFS_FLAG_DIRECTORY) {
+        errno = -EISDIR;
+        return;
+    }
+
+    if (vfs_unlink(abs_path) != 0) {
+        errno = -EIO;
+        return;
+    }
+
+    errno = 0;
+}
+
+static void sys_rmdir(uint32_t arg2) {
+    char *path = (char*)arg2;
+    char abs_path[256];
+
+    if (build_abs_path(path, abs_path, sizeof(abs_path)) != 0) {
+        errno = -ENAMETOOLONG;
+        return;
+    }
+
+    vfs_node_t *node = vfs_resolve_path(abs_path);
+    if (!node) {
+        errno = -ENOENT;
+        return;
+    }
+    if (!(node->flags & VFS_FLAG_DIRECTORY)) {
+        errno = -ENOTDIR;
+        return;
+    }
+
+    if (!node->ops || !node->ops->rmdir) {
+        errno = -ENOSYS;
+        return;
+    }
+
+    if (dir_has_entries(node)) {
+        errno = -ENOTEMPTY;
+        return;
+    }
+
+    if (vfs_rmdir(abs_path) != 0) {
+        errno = -EIO;
+        return;
+    }
+
+    errno = 0;
+}
+
+static void sys_chdir(uint32_t arg2) {
+    char *path = (char*)arg2;
+    char abs_path[256];
+
+    if (build_abs_path(path, abs_path, sizeof(abs_path)) != 0) {
+        errno = -ENAMETOOLONG;
+        return;
+    }
+
+    vfs_node_t *node = vfs_resolve_path(abs_path);
+    if (!node) {
+        errno = -ENOENT;
+        return;
+    }
+    if (!(node->flags & VFS_FLAG_DIRECTORY)) {
+        errno = -ENOTDIR;
+        return;
+    }
+
+    char temp[256];
+    strncpy(temp, abs_path, sizeof(temp));
+    temp[sizeof(temp) - 1] = '\0';
+
+    char *segments[64];
+    size_t seg_count = 0;
+    char *p = temp;
+    while (*p) {
+        while (*p == '/') {
+            p++;
+        }
+        if (!*p) break;
+
+        char *start = p;
+        while (*p && *p != '/') {
+            p++;
+        }
+        if (*p) {
+            *p = '\0';
+            p++;
+        }
+
+        if (strcmp(start, ".") == 0) {
+            continue;
+        }
+        if (strcmp(start, "..") == 0) {
+            if (seg_count > 0) {
+                seg_count--;
+            }
+            continue;
+        }
+        segments[seg_count++] = start;
+    }
+
+    char *dst = current_task->cwd;
+    size_t remaining = sizeof(current_task->cwd);
+    if (seg_count == 0) {
+        if (remaining < 2) {
+            errno = -ENAMETOOLONG;
+            return;
+        }
+        *dst++ = '/';
+        *dst = '\0';
+    } else {
+        for (size_t i = 0; i < seg_count; i++) {
+            size_t len = strlen(segments[i]);
+            if (remaining < len + 2) {
+                errno = -ENAMETOOLONG;
+                return;
+            }
+            *dst++ = '/';
+            memcpy(dst, segments[i], len);
+            dst += len;
+            remaining -= len + 1;
+        }
+        *dst = '\0';
+    }
+
+    errno = 0;
+}
+
+static void sys_getcwd(uint32_t arg2, uint32_t arg3) {
+    char *buffer = (char*)arg2;
+    size_t size = (size_t)arg3;
+    size_t len = strlen(current_task->cwd) + 1;
+
+    if (!buffer || size == 0) {
+        errno = -EINVAL;
+        return;
+    }
+    if (len > size) {
+        errno = -ERANGE;
+        return;
+    }
+
+    memcpy(buffer, current_task->cwd, len);
+    errno = 0;
+}
+
 static void sys_5ht_list_proc(uint32_t arg2, uint32_t arg3) {
     proc_5ht_t *buf = (proc_5ht_t*)arg2;
     int count = 0;
@@ -510,7 +798,7 @@ static void sys_5ht_list_proc(uint32_t arg2, uint32_t arg3) {
         k_buf.priority = task->priority;
         strncpy(k_buf.name, task->name, 32);
         k_buf.name[31] = '\0';
-        
+
         memcpy(&buf[count], &k_buf, sizeof(k_buf));
 
         count++;
@@ -562,7 +850,7 @@ void system_call(processor_context_t *ctx) {
         case SYSTEM_CALL_OPEN:
             sys_open(arg2, arg3, arg4, ctx);
             break;
-        case SYSTEM_CALL_CLOSE: 
+        case SYSTEM_CALL_CLOSE:
             sys_close(arg2);
             break;
         case SYSTEM_CALL_SBRK:
@@ -603,6 +891,21 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_SHM_UNMAP:
             sys_shm_unmap(arg2);
+            break;
+        case SYSTEM_CALL_MKDIR:
+            sys_mkdir(arg2);
+            break;
+        case SYSTEM_CALL_RMDIR:
+            sys_rmdir(arg2);
+            break;
+        case SYSTEM_CALL_CHDIR:
+            sys_chdir(arg2);
+            break;
+        case SYSTEM_CALL_GETCWD:
+            sys_getcwd(arg2, arg3);
+            break;
+        case SYSTEM_CALL_UNLINK:
+            sys_unlink(arg2);
             break;
         case SYSTEM_CALL_5HT_LIST_PROC:
             sys_5ht_list_proc(arg2, arg3);

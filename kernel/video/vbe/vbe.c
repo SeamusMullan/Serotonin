@@ -859,6 +859,7 @@ void vbe_clear_screen(uint32_t color)
 {
     uint32_t *back_buf = vbe_z_layers[0]->bufptr;
     memset(back_buf, color, fb_size_bytes);
+    vbe_mark_region_dirty(0,0,SCREEN_WIDTH,SCREEN_WIDTH);
 }
 
 void vbe_z_putpixel(uint32_t z, uint32_t x, uint32_t y, uint32_t color)

@@ -203,6 +203,31 @@ int shm_unmap(void* addr) {
     return do_syscall(SYSTEM_CALL_SHM_UNMAP, (uint32_t)addr, 0, 0);
 }
 
+int mkdir(const char *path, mode_t mode) {
+    (void)mode;
+    return do_syscall(SYSTEM_CALL_MKDIR, (uint32_t)path, 0, 0);
+}
+
+int rmdir(const char *path) {
+    return do_syscall(SYSTEM_CALL_RMDIR, (uint32_t)path, 0, 0);
+}
+
+int chdir(const char *path) {
+    return do_syscall(SYSTEM_CALL_CHDIR, (uint32_t)path, 0, 0);
+}
+
+char *getcwd(char *buf, size_t size) {
+    int ret = do_syscall(SYSTEM_CALL_GETCWD, (uint32_t)buf, (uint32_t)size, 0);
+    if (ret != 0) {
+        return NULL;
+    }
+    return buf;
+}
+
+int unlink(const char *path) {
+    return do_syscall(SYSTEM_CALL_UNLINK, (uint32_t)path, 0, 0);
+}
+
 /**
  * @brief Initialize function (called before main)
  * 
