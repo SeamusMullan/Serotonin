@@ -2,6 +2,7 @@
 #define _KERNEL_VMM
 
 #include <stdint.h>
+#include <stddef.h>
 #include "paging_init.h"
 #include "../multiboot.h"
 
@@ -110,6 +111,9 @@ vmm_page_table_t *ensure_pt(address_space_t *as, uint32_t pde_index, uint32_t pd
 
 void *kmap(uint32_t phys);
 void kunmap(void);
+
+int copy_to_user(address_space_t *as, uint32_t dst, const void *src, size_t len);
+int copy_from_user(address_space_t *as, void *dst, uint32_t src, size_t len);
 
 shm_object_t* shm_create(uint32_t size);
 uint32_t shm_map(process_control_block_t* pcb, shm_object_t *shm);

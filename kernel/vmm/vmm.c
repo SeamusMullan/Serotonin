@@ -20,6 +20,8 @@
 #include "../stdlib/stdlib.h"
 #include "../multiboot.h"
 #include "../kernel.h"
+#include "../string.h"
+#include "../io/io.h"
 
 
 /**
@@ -862,6 +864,86 @@ uint32_t get_mapping(address_space_t *as, uint32_t vaddr) {
     kunmap();
 
     return (pte & PAGE_PRESENT) ? (pte & PAGE_MASK) : 0;
+}
+
+int copy_to_user(address_space_t *as, uint32_t dst, const void *src, size_t len) {
+    if (!as || !src) {
+        return -1;
+    }
+    if (len == 0) {
+        return 0;
+    }
+    if (dst < USER_SPACE_START || dst > USER_SPACE_END) {
+        return -1;
+    }
+    if (dst + len - 1 < dst || dst + len - 1 > USER_SPACE_END) {
+        return -1;
+    }
+    const uint8_t *src_bytes = (const uint8_t *)src;
+
+    while (len) {
+        uint32_t va = dst & PAGE_MASK;
+        uint32_t off = dst & (PAGE_SIZE - 1);
+        uint32_t phys = get_mapping(as, va);
+        if (!phys)
+            return -1;
+
+        size_t chunk = PAGE_SIZE - off;
+        if (chunk > len)
+            chunk = len;
+
+        clear_interrupts();
+        uint8_t *dst_k = (uint8_t *)kmap(phys);
+        memcpy(dst_k + off, src_bytes, chunk);
+        kunmap();
+        enable_interrupts();
+
+        dst += (uint32_t)chunk;
+        src_bytes += chunk;
+        len -= chunk;
+    }
+
+    return 0;
+}
+
+int copy_from_user(address_space_t *as, void *dst, uint32_t src, size_t len) {
+    if (!as || !dst) {
+        return -1;
+    }
+    if (len == 0) {
+        return 0;
+    }
+    if (src < USER_SPACE_START || src > USER_SPACE_END) {
+        return -1;
+    }
+    if (src + len - 1 < src || src + len - 1 > USER_SPACE_END) {
+        return -1;
+    }
+    uint8_t *dst_bytes = (uint8_t *)dst;
+
+    while (len) {
+        uint32_t va = src & PAGE_MASK;
+        uint32_t off = src & (PAGE_SIZE - 1);
+        uint32_t phys = get_mapping(as, va);
+        if (!phys)
+            return -1;
+
+        size_t chunk = PAGE_SIZE - off;
+        if (chunk > len)
+            chunk = len;
+
+        clear_interrupts();
+        uint8_t *src_k = (uint8_t *)kmap(phys);
+        memcpy(dst_bytes, src_k + off, chunk);
+        kunmap();
+        enable_interrupts();
+
+        src += (uint32_t)chunk;
+        dst_bytes += chunk;
+        len -= chunk;
+    }
+
+    return 0;
 }
 
 /**

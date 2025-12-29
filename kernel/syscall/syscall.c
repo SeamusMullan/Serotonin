@@ -21,6 +21,24 @@
 static uint32_t next_fd = FIRST_FD;
 static int errno = 0;
 
+static void fill_stat_from_node(vfs_node_t *node, struct stat *k_statbuf) {
+    memset(k_statbuf, 0, sizeof(*k_statbuf));
+
+    if (node->flags & VFS_FLAG_DIRECTORY) {
+        k_statbuf->st_mode = S_IFDIR | 0755;
+    } else if (node->flags & VFS_FLAG_SYMLINK) {
+        k_statbuf->st_mode = S_IFLNK | 0777;
+    } else {
+        k_statbuf->st_mode = S_IFREG | 0644;
+    }
+
+    k_statbuf->st_dev = (dev_t)(uintptr_t)node->fs;
+    k_statbuf->st_ino = node->inode;
+    k_statbuf->st_size = node->size;
+    k_statbuf->st_blksize = 4096;
+    k_statbuf->st_blocks = (node->size + 511) / 512;
+}
+
 static int dir_has_entries(vfs_node_t *node) {
     if (!node || !node->ops || !node->ops->readdir) return 0;
 
@@ -100,18 +118,36 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
 
     switch (arg2) {
         case WRITE_STDOUT:
-            vbe_terminal_puts(write_ptr, buf_size);
-            for (uint32_t i = 0; i < buf_size; i++) {
-                serial_putchar(COM1_BASE, write_ptr[i]);
+            if (buf_size) {
+                char *kbuf = (char*)kernel_malloc(buf_size);
+                if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
+                    kernel_free(kbuf);
+                    errno = -EFAULT;
+                    return;
+                }
+                vbe_terminal_puts(kbuf, buf_size);
+                for (uint32_t i = 0; i < buf_size; i++) {
+                    serial_putchar(COM1_BASE, kbuf[i]);
+                }
+                kernel_free(kbuf);
             }
-            errno = buf_size;
+            errno = (int)buf_size;
             break;
         case WRITE_STDERR:
-            for (uint32_t i = 0; i < buf_size; i++) {
-                vbe_terminal_putchar(write_ptr[i]);
-                serial_putchar(COM1_BASE, write_ptr[i]);
+            if (buf_size) {
+                char *kbuf = (char*)kernel_malloc(buf_size);
+                if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
+                    kernel_free(kbuf);
+                    errno = -EFAULT;
+                    return;
+                }
+                for (uint32_t i = 0; i < buf_size; i++) {
+                    vbe_terminal_putchar(kbuf[i]);
+                    serial_putchar(COM1_BASE, kbuf[i]);
+                }
+                kernel_free(kbuf);
             }
-            errno = buf_size;
+            errno = (int)buf_size;
             break;
         default:
             if (fd >= FD_MAX || current_task->fd_table[fd] == NULL) {
@@ -130,7 +166,15 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
                 handle->offset = handle->node->size;
             }
 
-            int written = vfs_write(handle->node, handle->offset, buf_size, write_ptr);
+            char *kbuf = (char*)kernel_malloc(buf_size);
+            if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
+                kernel_free(kbuf);
+                errno = -EFAULT;
+                return;
+            }
+
+            int written = vfs_write(handle->node, handle->offset, buf_size, kbuf);
+            kernel_free(kbuf);
             if (written < 0) {
                 errno = -EIO;
                 return;
@@ -154,18 +198,28 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
     uint32_t fd = arg2;
     char* read_ptr = (char*)arg3;
     uint32_t buf_size = arg4;
-    if (read_ptr > USER_SPACE_END || fd >= FD_MAX) {
+    if (read_ptr < (char*)USER_SPACE_START || read_ptr > (char*)USER_SPACE_END || fd >= FD_MAX) {
         errno = -EBADF;
         return;
     }
 
     if (fd == READ_STDIN) {
+        if (!read_ptr || buf_size == 0) {
+            errno = -EINVAL;
+            return;
+        }
+        uint32_t start = (uint32_t)read_ptr;
+        uint32_t end = start + buf_size - 1;
+        if (end < start || start < USER_SPACE_START || end > USER_SPACE_END) {
+            errno = -EFAULT;
+            return;
+        }
         stdio_lck_t *syscall_stdio = (stdio_lck_t *)kernel_malloc(sizeof(stdio_lck_t));
         syscall_stdio->stdin_ptr = read_ptr;
         syscall_stdio->stdin_buf_size = buf_size;
         current_task->lck_ptr = (void*)syscall_stdio;
         task_lock_acquire(stdin_lock);
-        __builtin_unreachable();
+        return;
     }
 
     if (current_task->fd_table[fd] == NULL) {
@@ -189,7 +243,11 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
         return;
     }
 
-    memcpy(read_ptr, read_buf, read_bytes);
+    if (copy_to_user(current_task->address_space, (uint32_t)read_ptr, read_buf, (size_t)read_bytes) != 0) {
+        kernel_free(read_buf);
+        errno = -EFAULT;
+        return;
+    }
     handle->offset += read_bytes;
     errno = read_bytes;
 
@@ -299,11 +357,8 @@ static void sys_close(uint32_t arg2) {
     }
 
     file_handle_t *handle = current_task->fd_table[fd];
-    close_fd(current_task, fd);
-
     vfs_close(handle->node);
-
-    kernel_free(handle);
+    close_fd(current_task, fd);
 }
 
 static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
@@ -413,17 +468,20 @@ static void sys_waitpid(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) 
 
     if (!target) {
         errno = -ESRCH;
+        unlock_scheduler();
         return;
     }
 
     if (target->state != PROCESS_STATE_TERMINATED) {
         current_task->waiting_on = pid;
         current_task->status_ptr = status_ptr;
+        unlock_scheduler();
         task_block();
-        __builtin_unreachable();
+        return;
     }
 
     unlock_scheduler();
+    errno = 0;
     return;
 }
 
@@ -474,33 +532,44 @@ static void sys_fstat(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) {
     }
 
     struct stat *k_statbuf = (struct stat*)kernel_malloc_align(sizeof(struct stat), 16);
-    memset(k_statbuf, 0, sizeof(struct stat));
 
     if (fd < 3) {
+        memset(k_statbuf, 0, sizeof(struct stat));
         k_statbuf->st_mode = S_IFCHR;
         k_statbuf->st_blksize = 1024;
     } else {
         file_handle_t *handle = current_task->fd_table[fd];
         vfs_node_t *node = handle->node;
-
-        k_statbuf->st_dev = (dev_t)(uintptr_t)node->fs;
-        k_statbuf->st_ino = node->inode;
-
-        if (node->flags & VFS_FLAG_DIRECTORY) {
-            k_statbuf->st_mode = S_IFDIR | 0755;
-        } else if (node->flags & VFS_FLAG_SYMLINK) {
-            k_statbuf->st_mode = S_IFLNK | 0777;
-        } else {
-            k_statbuf->st_mode = S_IFREG | 0644;
-        }
-
-        k_statbuf->st_size = node->size;
-        k_statbuf->st_blksize = 4096; // some reasonable value lol
-        k_statbuf->st_blocks = (node->size + 511) / 512;
+        fill_stat_from_node(node, k_statbuf);
     }
 
     memcpy(statbuf, k_statbuf, sizeof(struct stat));
     kernel_free(k_statbuf);
+
+    errno = 0;
+}
+
+static void sys_stat(uint32_t arg2, uint32_t arg3) {
+    char *path = (char*)arg2;
+    struct stat *statbuf = (struct stat*)arg3;
+    char abs_path[256];
+
+    if (build_abs_path(path, abs_path, sizeof(abs_path)) != 0) {
+        errno = -ENAMETOOLONG;
+        return;
+    }
+
+    vfs_node_t *node = vfs_open(abs_path);
+    if (!node) {
+        errno = -ENOENT;
+        return;
+    }
+
+    struct stat *k_statbuf = (struct stat*)kernel_malloc_align(sizeof(struct stat), 16);
+    fill_stat_from_node(node, k_statbuf);
+    memcpy(statbuf, k_statbuf, sizeof(struct stat));
+    kernel_free(k_statbuf);
+    vfs_close(node);
 
     errno = 0;
 }
@@ -563,7 +632,7 @@ static void sys_sigret(processor_context_t *ctx) {
 
 static void sys_pause(void) {
     task_yield(0);
-    __builtin_unreachable();
+    return;
 }
 
 static void sys_shm_create(uint32_t arg2) {
@@ -778,8 +847,77 @@ static void sys_getcwd(uint32_t arg2, uint32_t arg3) {
         return;
     }
 
-    memcpy(buffer, current_task->cwd, len);
+    if (copy_to_user(current_task->address_space, (uint32_t)buffer, current_task->cwd, len) != 0) {
+        errno = -EFAULT;
+        return;
+    }
     errno = 0;
+}
+
+static void sys_listdir(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+    char *path = (char*)arg2;
+    char *buf = (char*)arg3;
+    size_t size = (size_t)arg4;
+    char abs_path[256];
+
+    if (!buf || size == 0) {
+        errno = -EINVAL;
+        return;
+    }
+
+    if (build_abs_path(path, abs_path, sizeof(abs_path)) != 0) {
+        errno = -ENAMETOOLONG;
+        return;
+    }
+
+    vfs_node_t *node = vfs_resolve_path(abs_path);
+    if (!node) {
+        errno = -ENOENT;
+        return;
+    }
+    if (!(node->flags & VFS_FLAG_DIRECTORY)) {
+        errno = -ENOTDIR;
+        return;
+    }
+    if (!node->ops || !node->ops->readdir) {
+        errno = -ENOSYS;
+        return;
+    }
+
+    size_t off = 0;
+    for (uint32_t i = 0; ; i++) {
+        vfs_node_t *child = node->ops->readdir(node, i);
+        if (!child) break;
+
+        size_t len = strlen(child->name);
+        if (off + len + 1 >= size) {
+            vfs_close(child);
+            errno = off;
+            return;
+        }
+
+        if (copy_to_user(current_task->address_space, (uint32_t)(buf + off), child->name, len) != 0) {
+            vfs_close(child);
+            errno = -EFAULT;
+            return;
+        }
+        off += len;
+        if (copy_to_user(current_task->address_space, (uint32_t)(buf + off), "\n", 1) != 0) {
+            vfs_close(child);
+            errno = -EFAULT;
+            return;
+        }
+        off += 1;
+        vfs_close(child);
+    }
+
+    if (off < size) {
+        if (copy_to_user(current_task->address_space, (uint32_t)(buf + off), "\0", 1) != 0) {
+            errno = -EFAULT;
+            return;
+        }
+    }
+    errno = off;
 }
 
 static void sys_5ht_list_proc(uint32_t arg2, uint32_t arg3) {
@@ -799,7 +937,10 @@ static void sys_5ht_list_proc(uint32_t arg2, uint32_t arg3) {
         strncpy(k_buf.name, task->name, 32);
         k_buf.name[31] = '\0';
 
-        memcpy(&buf[count], &k_buf, sizeof(k_buf));
+        if (copy_to_user(current_task->address_space, (uint32_t)(&buf[count]), &k_buf, sizeof(k_buf)) != 0) {
+            errno = -EFAULT;
+            return;
+        }
 
         count++;
         task = task->next;
@@ -865,6 +1006,9 @@ void system_call(processor_context_t *ctx) {
         case SYSTEM_CALL_FSTAT:
             sys_fstat(arg2, arg3, ctx);
             break;
+        case SYSTEM_CALL_STAT:
+            sys_stat(arg2, arg3);
+            break;
         case SYSTEM_CALL_TTY:
             sys_isatty(arg2);
             break;
@@ -906,6 +1050,9 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_UNLINK:
             sys_unlink(arg2);
+            break;
+        case SYSTEM_CALL_LISTDIR:
+            sys_listdir(arg2, arg3, arg4);
             break;
         case SYSTEM_CALL_5HT_LIST_PROC:
             sys_5ht_list_proc(arg2, arg3);

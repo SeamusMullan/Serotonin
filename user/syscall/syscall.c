@@ -97,6 +97,10 @@ int fstat(int fd, struct stat *st) {
     return do_syscall(SYSTEM_CALL_FSTAT, fd, (uintptr_t)st, 0);
 }
 
+int stat(const char *path, struct stat *st) {
+    return do_syscall(SYSTEM_CALL_STAT, (uintptr_t)path, (uintptr_t)st, 0);
+}
+
 /**
  * @brief Check if file descriptor refers to a terminal
  * 
@@ -226,6 +230,10 @@ char *getcwd(char *buf, size_t size) {
 
 int unlink(const char *path) {
     return do_syscall(SYSTEM_CALL_UNLINK, (uint32_t)path, 0, 0);
+}
+
+int listdir(const char *path, char *buf, size_t size) {
+    return do_syscall(SYSTEM_CALL_LISTDIR, (uint32_t)path, (uint32_t)buf, (uint32_t)size);
 }
 
 /**
