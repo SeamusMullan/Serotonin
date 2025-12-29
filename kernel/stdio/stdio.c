@@ -7,8 +7,43 @@
 #include "../video/vbe/vbe.h"
 #include "../schedule/schedule.h"
 #include "../io/serial.h"
+#include "../vmm/vmm.h"
+#include "../vmm/paging_init.h"
+#include "../io/io.h"
 
 static uint32_t printfs_status_mask = 0xFFFFFFFF; 
+
+static int copy_user_string(char *dst, size_t dst_size, const char *src) {
+    if (!dst || dst_size == 0 || !src || !current_task || !current_task->address_space) {
+        return -1;
+    }
+    if ((uintptr_t)src < USER_SPACE_START || (uintptr_t)src > USER_SPACE_END) {
+        return -1;
+    }
+
+    size_t off = 0;
+    while (off + 1 < dst_size) {
+        uint32_t va = (uint32_t)(uintptr_t)(src + off);
+        uint32_t phys = get_mapping(current_task->address_space, va);
+        if (!phys) {
+            return -1;
+        }
+
+        clear_interrupts();
+        uint8_t *mapped = (uint8_t *)kmap(phys);
+        uint8_t c = mapped[va & (PAGE_SIZE - 1)];
+        kunmap();
+        enable_interrupts();
+
+        dst[off++] = (char)c;
+        if (c == '\0') {
+            return 0;
+        }
+    }
+
+    dst[dst_size - 1] = '\0';
+    return 0;
+}
 
 /**
  * @brief Internal printf function.
@@ -106,8 +141,21 @@ void printf_internal(const char* p, void** arg_ptr) {
 
                 case 's':
                     char* str_arg = (char*)*arg_ptr++;
-                    serial_puts(COM1_BASE, str_arg);
-                    vbe_terminal_puts(str_arg, 0);
+                    if (current_task && current_task->priv == CPU_USER_MODE &&
+                        (uintptr_t)str_arg <= USER_SPACE_END) {
+                        char tmp[256];
+                        if (copy_user_string(tmp, sizeof(tmp), str_arg) != 0) {
+                            const char *bad = "<badptr>";
+                            serial_puts(COM1_BASE, bad);
+                            vbe_terminal_puts(bad, 0);
+                        } else {
+                            serial_puts(COM1_BASE, tmp);
+                            vbe_terminal_puts(tmp, 0);
+                        }
+                    } else {
+                        serial_puts(COM1_BASE, str_arg);
+                        vbe_terminal_puts(str_arg, 0);
+                    }
                     break;
 
                 case 'c':
