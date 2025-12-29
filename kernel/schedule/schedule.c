@@ -13,6 +13,7 @@
 #include "../io/io.h"
 #include "../video/vbe/vbe.h"
 #include "../gdt.h"
+#include "../syscall/sys/errno.h"
 
 process_control_block_t *current_task = NULL;
 process_control_block_t *task_list    = NULL;
@@ -31,6 +32,32 @@ volatile uint32_t preempt_count = 0;
 volatile uint32_t lock_count = 0;
 volatile uint8_t pending_schedule = 0;
 static __attribute__((aligned(16))) fpu_fxsave_area_t fx_clean;
+static process_control_block_t *zombie_list = NULL;
+
+static void reap_zombies(void) {
+    process_control_block_t *task = zombie_list;
+    process_control_block_t *prev = NULL;
+
+    while (task) {
+        if (task == current_task) {
+            prev = task;
+            task = task->next;
+            continue;
+        }
+
+        process_control_block_t *next = task->next;
+        if (prev) {
+            prev->next = next;
+        } else {
+            zombie_list = next;
+        }
+
+        kernel_free_align(task->processor_context);
+        kernel_free_align(task->signal_processor_context);
+        kernel_free_align(task);
+        task = next;
+    }
+}
 
 static inline void bm_set(uint8_t p) {
     uint8_t word = p >> 5; // div by 32, select which prio_bitmap word
@@ -194,6 +221,7 @@ void multitasking_make_ready(void) {
  */
 void task_yield(int irq) {
     lock_scheduler();
+    reap_zombies();
 
     if (current_task->state == PROCESS_STATE_RUNNING) {
         if ((unsigned int)current_task->esp < (unsigned int)current_task->esp_min && current_task->priv == CPU_USER_MODE) {
@@ -238,22 +266,36 @@ void task_exit(uint8_t exit) {
     while (task) {
         if (task->waiting_on == (int)current_task->pid) {
             task->waiting_on = -1;
-            switch_address_space(task->address_space);
-            memset(task->status_ptr, exit, sizeof(uint8_t));
+            int write_rc = 0;
+            if (task->status_ptr) {
+                uint32_t va = (uint32_t)task->status_ptr;
+                uint32_t phys = get_mapping(task->address_space, va);
+                if (phys) {
+                    uint8_t *dst = (uint8_t*)kmap(phys);
+                    dst[va & (PAGE_SIZE - 1)] = exit;
+                    kunmap();
+                } else {
+                    write_rc = -EFAULT;
+                }
+            } else {
+                write_rc = -EFAULT;
+            }
             task->state = PROCESS_STATE_READY;
-            task->processor_context->eax = exit;
+            task->processor_context->eax = write_rc ? write_rc : exit;
             enqueue(task);
-            break;
-        } else if (task == current_task) {
-            prev_task->next = task->next;
+        }
+        if (task == current_task) {
+            if (prev_task) {
+                prev_task->next = task->next;
+            } else {
+                task_list = task->next;
+            }
         }
         prev_task = task;
         task = task->next;
     }
-    task->next = NULL;
-
-    kernel_free_align(current_task->processor_context);
-    kernel_free_align(current_task);
+    current_task->next = zombie_list;
+    zombie_list = current_task;
 
     task_yield(0);  // pick the next runnable task
     kernel_panic("task_exit: nothing to switch to");
@@ -397,7 +439,7 @@ void task_set_state(process_control_block_t *pcb, int state) {
 void task_block(void) {
     current_task->state = PROCESS_STATE_BLOCKED;
     task_yield(1);
-    __builtin_unreachable();
+    return;
 }
 
 /**
