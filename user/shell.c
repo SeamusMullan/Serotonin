@@ -1,7 +1,7 @@
 /**
  * @file shell.c
  * @brief Simple command-line shell for Serotonin OS
- * 
+ *
  * Provides a basic interactive shell that reads commands from stdin,
  * forks child processes to execute them, and waits for completion.
  * The shell runs in a loop until EOF (Ctrl+D) is received.
@@ -14,14 +14,14 @@
 
 /**
  * @brief Main shell loop
- * 
+ *
  * Implements a read-eval-execute loop that:
  * 1. Displays a prompt
  * 2. Reads user input
  * 3. Forks a child process
  * 4. Executes the command in the child
  * 5. Waits for the child to complete
- * 
+ *
  * @return 0 on normal exit, 1 on error
  */
 int main(int argc, char **argv, char **envp)
@@ -32,39 +32,48 @@ int main(int argc, char **argv, char **envp)
 	const char *fork_error = "Error: failed to fork process\n";
 	const char *exec_error = "Error: failed to execute command\n";
 	const char *empty_cmd = "Error: empty command\n";
-	
+
 	for (;;) {
-		if (write(1, prompt, strlen(prompt)) < 0) {
-			// If we can't write to stdout, we're fuckin cooked
-			_exit(1);
-		}
-		
-		int count = read(0, command, sizeof(command) - 1);
-		
+    	char cwd[256];
+    	if (getcwd(cwd, sizeof(cwd))) {
+    		if (write(1, cwd, strlen(cwd)) < 0 ||
+    		    write(1, " # ", 3) < 0) {
+    			// If we can't write to stdout, we're fuckin cooked
+    			_exit(1);
+    		}
+    	} else {
+    		if (write(1, prompt, strlen(prompt)) < 0) {
+    			// If we can't write to stdout, we're fuckin cooked
+    			_exit(1);
+    		}
+    	}
+
+    	int count = read(0, command, sizeof(command) - 1);
+
 		if (count < 0) {
 			write(2, read_error, 28);
 			continue;
 		}
-		
+
 		// Handle EOF (Ctrl+D)
 		if (count == 0) {
 			break;
 		}
-		
+
 		// Null-terminate the command
 		command[count] = '\0';
-		
+
 		// Remove trailing newline if present
 		if (count > 0 && command[count - 1] == '\n') {
 			command[count - 1] = '\0';
 			count--;
 		}
-		
+
 		// Skip empty commands
 		if (count == 0 || command[0] == '\0') {
 			continue;
 		}
-		
+
 		// Check for buffer overflow (command too long)
 		if (count >= (int)(sizeof(command) - 1)) {
 			write(2, "Error: command too long\n", 24);
@@ -129,18 +138,72 @@ int main(int argc, char **argv, char **envp)
         }
 
         args[arg_count] = NULL;
-		
+
+		if (arg_count == 0) {
+			continue;
+		}
+
+		if (strcmp(args[0], "cd") == 0) {
+			const char *target = (arg_count > 1) ? args[1] : "/";
+			if (chdir(target) != 0) {
+				printf("cd: failed to change directory\n");
+			}
+			continue;
+		}
+
 		// Fork the process
 		pid_t fork_result = fork();
-		
+
 		if (fork_result < 0) {
 			// Fork failed
 			write(2, fork_error, 28);
 			continue;
 		} else if (fork_result == 0) {
 			// Child process: execute the command
-			execve(command, args, envp);
-			
+			if (strchr(args[0], '/')) {
+				execve(args[0], args, envp);
+			} else {
+				const char *path_env = NULL;
+				for (char **e = envp; e && *e; e++) {
+					if (strncmp(*e, "PATH=", 5) == 0) {
+						path_env = *e + 5;
+						break;
+					}
+				}
+				if (!path_env || path_env[0] == '\0') {
+					path_env = "/bin";
+				}
+
+				char candidate[256];
+				const char *p = path_env;
+				while (*p) {
+					const char *start = p;
+					while (*p && *p != ':') {
+						p++;
+					}
+					size_t dir_len = (size_t)(p - start);
+					size_t cmd_len = strlen(args[0]);
+					if (dir_len + 1 + cmd_len + 1 < sizeof(candidate)) {
+						memcpy(candidate, start, dir_len);
+						if (dir_len > 0 && candidate[dir_len - 1] != '/') {
+							candidate[dir_len] = '/';
+							memcpy(candidate + dir_len + 1, args[0], cmd_len);
+							candidate[dir_len + 1 + cmd_len] = '\0';
+						} else {
+							memcpy(candidate + dir_len, args[0], cmd_len);
+							candidate[dir_len + cmd_len] = '\0';
+						}
+						execve(candidate, args, envp);
+					}
+
+					if (*p == ':') {
+						p++;
+					}
+				}
+
+				execve(args[0], args, envp);
+			}
+
 			// If execve returns, it failed
 			write(2, exec_error, 30);
 			_exit(1);
@@ -149,7 +212,7 @@ int main(int argc, char **argv, char **envp)
 			int status;
 			if (!background) {
 				pid_t wait_result = waitpid(fork_result, &status, 0);
-				
+
 				if (wait_result < 0) {
 					write(2, "Error: failed to wait for child process\n", 41);
 				}
