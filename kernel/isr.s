@@ -53,8 +53,8 @@ isr5:
 .global isr6
 isr6:
     cli
-    pushl $6
-    call fault_handler
+    pushl %esp
+    call invalid_opcode_handler
     add $4, %esp
     iret
 
@@ -127,7 +127,7 @@ isr14:
     pusha
     pushl %ds
 
-    mov 36(%esp), %eax
+    mov %esp, %eax
     push %eax
     call page_fault_handler
 

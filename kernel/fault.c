@@ -4,17 +4,63 @@
 #include "fault.h"
 #include "schedule/schedule.h"
 #include "io/io.h"
+#include "vmm/vmm.h"
+#include "vmm/paging_init.h"
+
+extern char __kernel_virtual_base[];
+extern char __kernel_end[];
+
+static void dump_user_bytes(uint32_t eip) {
+    if (!current_task || !current_task->address_space) return;
+    if (eip < USER_SPACE_START || eip >= USER_SPACE_END) return;
+
+    uint32_t phys = get_mapping(current_task->address_space, eip);
+    if (!phys) {
+        printfs(PRINT_STATUS_ERROR,"EIP bytes: <unmapped>\n");
+        return;
+    }
+
+    uint32_t offset = eip & (PAGE_SIZE - 1);
+    uint8_t *page = (uint8_t*)kmap(phys);
+    uint8_t *ptr = page + offset;
+    uint32_t remaining = PAGE_SIZE - offset;
+    uint32_t count = (remaining < 8) ? remaining : 8;
+
+    printfs(PRINT_STATUS_ERROR,"EIP bytes:");
+    for (uint32_t i = 0; i < count; i++) {
+        printfs(PRINT_STATUS_ERROR," %02x", ptr[i]);
+    }
+    printfs(PRINT_STATUS_ERROR,"\n");
+
+    kunmap();
+}
+
+static void dump_kernel_bytes(uint32_t eip) {
+    uint32_t kernel_base = (uint32_t)__kernel_virtual_base;
+    uint32_t kernel_end = (uint32_t)__kernel_end;
+    if (eip < kernel_base || eip >= kernel_end) {
+        printfs(PRINT_STATUS_ERROR,"EIP bytes: <kernel address out of range>\n");
+        return;
+    }
+
+    uint8_t *ptr = (uint8_t*)eip;
+    printfs(PRINT_STATUS_ERROR,"EIP bytes:");
+    for (uint32_t i = 0; i < 8; i++) {
+        printfs(PRINT_STATUS_ERROR," %02x", ptr[i]);
+    }
+    printfs(PRINT_STATUS_ERROR,"\n");
+}
 
 /**
  * @brief Handle CPU exceptions.
- * 
+ *
  * @param vector The interrupt vector number.
  */
 void fault_handler(int vector) {
     printfs(PRINT_STATUS_DEBUG,"INT #%d RAISED\n", vector);
 
     switch ((isr_vector_t)vector) {
-        case ISR_DIVIDE_ERROR: 
+        case ISR_DIVIDE_ERROR:
             kernel_panic("unhandled exception - divide by zero (#DE)");
             break;
         case ISR_DEBUG:
@@ -32,8 +78,8 @@ void fault_handler(int vector) {
         case ISR_BOUND_RANGE_EXCEEDED:
             kernel_panic("unhandled exception - bound range exceeded (#BR)");
             break;
-        case ISR_INVALID_OPCODE: 
-            kernel_panic("unhandled exception - invalid opcode (#UD)"); 
+        case ISR_INVALID_OPCODE:
+            kernel_panic("unhandled exception - invalid opcode (#UD)");
             break;
         case ISR_DEVICE_NOT_AVAILABLE:
             kernel_panic("unhandled exception - device not available (#NM)");
@@ -53,11 +99,11 @@ void fault_handler(int vector) {
         case ISR_STACK_SEG_FAULT:
             kernel_panic("unhandled exception - stack segment fault (#SS)");
             break;
-        case ISR_GENERAL_PROTECTION: 
-            kernel_panic("unhandled exception - general protection fault (#GP)"); 
+        case ISR_GENERAL_PROTECTION:
+            kernel_panic("unhandled exception - general protection fault (#GP)");
             break;
-        case ISR_PAGE_FAULT: 
-            kernel_panic("unhandled exception - page fault (#PF)"); 
+        case ISR_PAGE_FAULT:
+            kernel_panic("unhandled exception - page fault (#PF)");
             break;
         case ISR_FPU_ERROR:
             kernel_panic("unhandled exception - x87 floating point error (#MF)");
@@ -90,19 +136,23 @@ void fault_handler(int vector) {
             kernel_panic("exception - reserved/unknown CPU exception");
             break;
 
-        default: 
-            kernel_panic("exception - unknown interrupt vector"); 
+        default:
+            kernel_panic("exception - unknown interrupt vector");
             break;
     }
 }
 
 /**
  * @brief Handle page faults.
- * 
- * 
+ *
+ *
  * @param error_code The error code associated with the page fault.
  */
-void page_fault_handler(uint32_t error_code) {
+void page_fault_handler(uint32_t *stack) {
+    uint32_t error_code = stack ? stack[9] : 0;
+    uint32_t fault_eip = stack ? stack[10] : 0;
+    uint32_t fault_cs = stack ? stack[11] : 0;
+    uint32_t fault_eflags = stack ? stack[12] : 0;
     uint32_t faulting_address;
     // Read CR2 to get faulting address
     asm volatile ("mov %%cr2, %0" : "=r"(faulting_address));
@@ -130,19 +180,23 @@ void page_fault_handler(uint32_t error_code) {
            user ? "user" : "kernel",
            (error_code & (1<<5)) ? ", reserved violation of PAT bits" : "");
 
-    if (multitasking_ready == 1) {
+    if (multitasking_ready == 1 && user) {
         printfs(PRINT_STATUS_ERROR,"Process \"%s\" (pid=%d) has attempted an illegal operation on memory and will be terminated.\n", current_task->name,current_task->pid);
         printfs(PRINT_STATUS_ERROR,"Register dump:\n");
         printfs(PRINT_STATUS_ERROR,"EAX: 0x%08x EBX: 0x%08x ECX: 0x%08x EDX: 0x%08x\n", current_task->processor_context->eax, current_task->processor_context->ebx, current_task->processor_context->ecx, current_task->processor_context->edx);
         printfs(PRINT_STATUS_ERROR,"ESI: 0x%08x EDI: 0x%08x EBP: 0x%08x ESP: 0x%08x\n", current_task->processor_context->esi, current_task->processor_context->edi, current_task->processor_context->ebp, current_task->processor_context->esp_at_trap);
-        printfs(PRINT_STATUS_ERROR,"EIP: 0x%08x EFLAGS: 0x%08x\n", current_task->processor_context->eip, current_task->processor_context->eflags);
+        printfs(PRINT_STATUS_ERROR,"EIP: 0x%08x CS: 0x%08x EFLAGS: 0x%08x\n", fault_eip, fault_cs, fault_eflags);
         printfs(PRINT_STATUS_ERROR,"CS: 0x%08x DS: 0x%08x ES: 0x%08x FS: 0x%08x GS: 0x%08x SS: 0x%08x\n",
                 current_task->processor_context->cs, current_task->processor_context->ds, current_task->processor_context->es,
                 current_task->processor_context->fs, current_task->processor_context->gs, current_task->processor_context->ss);
+        dump_user_bytes(fault_eip);
         task_exit(EXIT_SIGSEGV);
         return;
     }
 
+    printfs(PRINT_STATUS_ERROR,"Kernel mode page fault at EIP=0x%08x CS=0x%08x EFLAGS=0x%08x\n",
+            fault_eip, fault_cs, fault_eflags);
+    dump_kernel_bytes(fault_eip);
     kernel_panic("unhandled exception - page fault (#PF)");
 }
 
@@ -189,4 +243,35 @@ void div_zero_fault_handler(void) {
     }
 
     kernel_panic("unhandled exception - divide by zero (#DE)");
+}
+
+void invalid_opcode_handler(uint32_t *stack) {
+    uint32_t eip = stack ? stack[0] : 0;
+    uint32_t cs = stack ? stack[1] : 0;
+    uint32_t eflags = stack ? stack[2] : 0;
+    int from_user = (cs & 0x3) == 0x3;
+
+    if (from_user && multitasking_ready == 1) {
+        printfs(PRINT_STATUS_ERROR,"Process \"%s\" (pid=%d) has attempted to execute an illegal instruction and will be terminated.\n",
+                current_task->name, current_task->pid);
+        printfs(PRINT_STATUS_ERROR,"Register dump:\n");
+        printfs(PRINT_STATUS_ERROR,"EAX: 0x%08x EBX: 0x%08x ECX: 0x%08x EDX: 0x%08x\n",
+                current_task->processor_context->eax, current_task->processor_context->ebx,
+                current_task->processor_context->ecx, current_task->processor_context->edx);
+        printfs(PRINT_STATUS_ERROR,"ESI: 0x%08x EDI: 0x%08x EBP: 0x%08x ESP: 0x%08x\n",
+                current_task->processor_context->esi, current_task->processor_context->edi,
+                current_task->processor_context->ebp, current_task->processor_context->esp_at_trap);
+        printfs(PRINT_STATUS_ERROR,"Faulting EIP: 0x%08x EFLAGS: 0x%08x\n", eip, eflags);
+        printfs(PRINT_STATUS_ERROR,"CS: 0x%08x DS: 0x%08x ES: 0x%08x FS: 0x%08x GS: 0x%08x SS: 0x%08x\n",
+                current_task->processor_context->cs, current_task->processor_context->ds, current_task->processor_context->es,
+                current_task->processor_context->fs, current_task->processor_context->gs, current_task->processor_context->ss);
+        dump_user_bytes(eip);
+        task_exit(EXIT_SIGILL);
+        return;
+    }
+
+    printfs(PRINT_STATUS_ERROR,"Invalid opcode in kernel mode, EIP=0x%08x CS=0x%08x EFLAGS=0x%08x\n",
+            eip, cs, eflags);
+    dump_kernel_bytes(eip);
+    kernel_panic("unhandled exception - invalid opcode (#UD)");
 }
