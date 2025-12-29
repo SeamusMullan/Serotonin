@@ -680,7 +680,7 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
         if (!frame_stk) kernel_panic("kernel_load_elf: out of memory mapping user stack");
         map_page(as, va_stk, frame_stk, USER_PAGE_FLAGS, 0);
     }
-    
+
     memset(stack_base, 0, USER_STACK_SIZE);
 
     uint32_t signal_trampoline_size = (uint32_t)(signal_trampoline_end - signal_trampoline);
@@ -705,7 +705,7 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
     }
     argv_user_array[argc] = 0;
 
-    uint32_t *envp_user_array = argv_user_array + argc + 1; 
+    uint32_t *envp_user_array = argv_user_array + argc + 1;
     for (int i = 0; i < envc; i++) {
         size_t len = strlen(envp[i]) + 1;
         memcpy((void*)cur_str, envp[i], len);
@@ -789,7 +789,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     }
 
     strncpy(cmdline_buf, cmdline, sizeof(cmdline_buf));
-    cmdline_buf[sizeof(cmdline_buf) - 1] = '\0'; 
+    cmdline_buf[sizeof(cmdline_buf) - 1] = '\0';
 
     for (char* token = strtok(cmdline_buf, " "); token != NULL; token = strtok(NULL, " ")) {
         // yanderedev, should use a struct table in the future, but for now, we only have two args.
@@ -853,7 +853,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     process_control_block_t *init = task_create(NULL, init_loc, CPU_USER_MODE, 254);
     const char *argv[1] = {"/bin/init"}; int argc = 1;
-    const char *envp[1] = {"PATH=/"}; int envc = 1;
+    const char *envp[1] = {"PATH=/bin"}; int envc = 1;
     int init_status = kernel_load_elf(init, init_loc, init_loc, argv, argc, envp, envc);
     if (!init_status) {
         kernel_panic("unable to load init process!");
@@ -902,9 +902,9 @@ __attribute__((target("no-sse"))) __attribute__((section(".identity"))) void ker
     uint32_t kernel_phys_start = (uint32_t)__kernel_load_base;
     uint32_t kernel_phys_end   = (uint32_t)__kernel_end - (uint32_t)__kernel_virtual_base + (uint32_t)__kernel_load_base;
     buddy_init(mbi, kernel_phys_start, kernel_phys_end, (uint32_t)mbi->framebuffer_addr, (uint32_t)(mbi->framebuffer_height) * (uint32_t)(mbi->framebuffer_pitch));
-    
+
     serial_puts(COM1_BASE, "init: physical memory manager initialized\n");
-    
+
     vmm_init();
 
     serial_puts(COM1_BASE, "init: virtual memory manager initialized\n");
