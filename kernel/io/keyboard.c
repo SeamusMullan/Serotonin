@@ -2,7 +2,9 @@
 #include "../stdlib/stdlib.h"
 #include "../video/vbe/vbe.h"
 #include "../syscall/syscall.h"
+#include "../syscall/sys/errno.h"
 #include "../schedule/schedule.h"
+#include "../vmm/vmm.h"
 #include "io.h"
 #include "serial.h"
 #include <stdint.h>
@@ -39,18 +41,24 @@ void handle_scancode(uint8_t scancode) {
     //preempt_disable();
     static uint32_t stdin_idx = 0;
 
-    if (!stdin_lock->held)
+    if (!stdin_lock->held || !stdin_lock->owner) {
+        unlock_scheduler();
         return;
+    }
 
     stdio_lck_t *task_stdio = (stdio_lck_t*)stdin_lock->owner->lck_ptr;
     uint32_t stdio_buf_size = task_stdio->stdin_buf_size;
     void* stdin_ptr = task_stdio->stdin_ptr;
 
-    if (stdin_idx >= STDIO_INPUT_BUFFER || stdin_idx >= stdio_buf_size)
+    if (stdin_idx >= STDIO_INPUT_BUFFER || stdin_idx >= stdio_buf_size) {
+        unlock_scheduler();
         return;
+    }
 
-    if (scancode > 255)
+    if (scancode > 255) {
+        unlock_scheduler();
         return;
+    }
 
     if (scancode & 0x80) {
         uint8_t released = scancode & 0x7F;
@@ -61,16 +69,15 @@ void handle_scancode(uint8_t scancode) {
     else if (scancode == 0x1C)
     {
         printf("\n");
-        uint32_t old_cr3 = read_cr3();
-        write_cr3(stdin_lock->owner->address_space->phys_pdir);
 
         stdio_buffer[stdin_idx] = '\n';
         stdin_idx++;
-        memcpy(stdin_ptr,stdio_buffer,stdin_idx);
-        stdin_lock->owner->processor_context->eax = stdin_idx;
+        if (copy_to_user(stdin_lock->owner->address_space, (uint32_t)stdin_ptr, stdio_buffer, stdin_idx) != 0) {
+            stdin_lock->owner->processor_context->eax = -EFAULT;
+        } else {
+            stdin_lock->owner->processor_context->eax = stdin_idx;
+        }
         stdin_idx = 0;
-
-        write_cr3(old_cr3);
 
         task_lock_release(stdin_lock);
     }
