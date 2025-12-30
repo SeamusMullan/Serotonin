@@ -6,7 +6,11 @@ OS_TYPE="$(uname)"
 
 # compiler flags
 CFLAGS="-m32 -std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse"
-CXXFLAGS="-m32 -std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse -fno-exceptions -fno-rtti -fno-threadsafe-statics"
+CXXFLAGS="-m32 -std=c++11 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse -fno-exceptions -fno-rtti -fno-threadsafe-statics"
+
+# STLport configuration
+STLPORT_DIR="$DIR/../user/cxx/STLport-5.2.1/stlport"
+STLPORT_FLAGS="-I$STLPORT_DIR -D__SEROTONIN__"
 
 cd ../user
 
@@ -40,6 +44,12 @@ i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/c
 i686-elf-g++ -c cxx_test.cpp -o cxx_test.o $CXXFLAGS
 i686-elf-g++ -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o cxx_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o cxxtest.elf
 
+# Build STL test program (uses STLport containers)
+echo "Building STL test..."
+i686-elf-g++ -c stl_test.cpp -o stl_test.o $CXXFLAGS $STLPORT_FLAGS
+i686-elf-g++ -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o stl_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o stltest.elf
+echo "STL test build complete: stltest.elf"
+
 # Build Lua
 echo "Building Lua..."
 cd lua/lua-5.4.8/src
@@ -68,3 +78,7 @@ i686-elf-gcc -c libgcc_stubs.c -o libgcc_stubs.o $CFLAGS
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o lua/lua-5.4.8/src/lua.o lua/lua-5.4.8/src/liblua.a syscall.o lua_stubs.o libgcc_stubs.o -Wl,--start-group -lc -lm -Wl,--end-group -o lua.elf
 
 echo "Lua build complete: lua.elf"
+
+echo ""
+echo "=== Build complete ==="
+echo "STLport containers are available (header-only mode)"

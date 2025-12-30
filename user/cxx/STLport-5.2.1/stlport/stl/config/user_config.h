@@ -40,6 +40,56 @@
 #define _STLP_NO_IOSTREAMS 1
 */
 
+/*==========================================================
+ * Serotonin OS bare-metal configuration
+ *==========================================================*/
+#if defined(__SEROTONIN__)
+
+/*
+ * CONTAINERS-ONLY MODE: Disable iostreams for simplicity.
+ * This makes STLport mostly header-only and avoids complex dependencies.
+ * You get: vector, map, set, list, string, algorithm, etc.
+ * You don't get: cout, cin, fstream, sstream
+ */
+#define _STLP_NO_IOSTREAMS 1
+
+/* No threading support in bare-metal environment */
+#define _STLP_NO_THREADS 1
+
+/* Use malloc-based allocator for simplicity */
+#define _STLP_USE_MALLOC 1
+
+/* Disable exceptions (we compile with -fno-exceptions) */
+#define _STLP_DONT_USE_EXCEPTIONS 1
+
+/*
+ * CRITICAL: We only have C headers from newlib, not C++ headers like <ctime>.
+ * This tells STLport to use old-style C headers (<time.h>) instead of new
+ * C++ headers (<ctime>). Must be defined here before _system.h/_gcc.h.
+ */
+#define _STLP_HAS_NO_NEW_C_HEADERS 1
+
+/* C library types are in global namespace */
+#define _STLP_VENDOR_GLOBAL_CSTD 1
+
+/*
+ * No native C++ runtime headers (we don't have libstdc++).
+ * We provide our own operator new/delete via cxx_new_delete.cpp.
+ */
+#define _STLP_NO_NEW_HEADER 1
+#define _STLP_NO_NEW_NEW_HEADER 1
+
+/* No native bad_alloc - STLport will provide its own */
+#define _STLP_NO_BAD_ALLOC 1
+
+/* No native exception header */
+#define _STLP_NO_EXCEPTION_HEADER 1
+
+/* No wide character support initially (can be enabled if newlib supports it) */
+/* #define _STLP_NO_WCHAR_T 1 */
+
+#endif /* __SEROTONIN__ */
+
 /*
  * Set _STLP_DEBUG to turn the "Debug Mode" on.
  * That gets you checked iterators/ranges in the manner
