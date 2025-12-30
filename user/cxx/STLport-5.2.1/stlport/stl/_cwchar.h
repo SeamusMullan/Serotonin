@@ -22,7 +22,10 @@
 #  endif
 #else
 #  if defined (__GNUC__)
-#    if defined (_STLP_HAS_INCLUDE_NEXT)
+#    if defined (_STLP_HAS_NO_NEW_C_HEADERS)
+/* Serotonin/bare-metal: use C header instead of C++ header */
+#      include <stddef.h>
+#    elif defined (_STLP_HAS_INCLUDE_NEXT)
 #      include_next <cstddef>
 #    else
 #      include _STLP_NATIVE_CPP_C_HEADER(cstddef)

@@ -158,6 +158,12 @@
 #  endif
 
 #  include <stl/config/_windows.h>
+#elif defined (__SEROTONIN__) || defined (__elf__) && defined (__i386__)
+/* Serotonin OS - bare-metal i386 with newlib */
+#  include <stl/config/_serotonin.h>
+#  if defined (__GNUC__)
+#    include <stl/config/_gcc.h>
+#  endif
 #else
 #  error Unknown platform !!
 #endif
