@@ -46,12 +46,10 @@
 #if defined(__SEROTONIN__)
 
 /*
- * CONTAINERS-ONLY MODE: Disable iostreams for simplicity.
- * This makes STLport mostly header-only and avoids complex dependencies.
- * You get: vector, map, set, list, string, algorithm, etc.
- * You don't get: cout, cin, fstream, sstream
+ * FULL MODE: Enable iostreams for cout/cin/fstream support.
+ * Requires building libstlport.a from source files.
  */
-#define _STLP_NO_IOSTREAMS 1
+/* #define _STLP_NO_IOSTREAMS 1 */
 
 /* No threading support in bare-metal environment */
 #define _STLP_NO_THREADS 1
@@ -85,8 +83,18 @@
 /* No native exception header */
 #define _STLP_NO_EXCEPTION_HEADER 1
 
+/* No uncaught_exception support in bare-metal */
+#define _STLP_NO_UNCAUGHT_EXCEPT_SUPPORT 1
+#define _STLP_NO_UNEXPECTED_EXCEPT_SUPPORT 1
+
+/* Use stdio-based file I/O */
+#define _STLP_USE_STDIO_IO 1
+
 /* No wide character support initially (can be enabled if newlib supports it) */
 /* #define _STLP_NO_WCHAR_T 1 */
+
+/* No native typeinfo header (no RTTI support in freestanding) */
+#define _STLP_NO_TYPEINFO 1
 
 #endif /* __SEROTONIN__ */
 

@@ -28,6 +28,10 @@
 #endif
 
 #include <cstdio>
+#if defined(__SEROTONIN__)
+/* For Serotonin: fileno is a POSIX extension, declare explicitly */
+extern "C" int fileno(FILE *);
+#endif
 #if !defined(__ISCPP__)
 extern "C" {
 #  include <sys/stat.h>
@@ -80,6 +84,14 @@ extern "C" {
 #  ifndef O_ACCMODE
 #    define O_ACCMODE (O_RDONLY|O_WRONLY|O_RDWR)
 #  endif
+#endif
+
+/* Serotonin bare-metal: provide POSIX compat defines */
+#if defined(__SEROTONIN__)
+#  define S_IREAD        S_IRUSR
+#  define S_IWRITE       S_IWUSR
+#  define _S_IWRITE      S_IWUSR
+#  define _S_IREAD       S_IRUSR
 #endif
 
 const _STLP_fd INVALID_STLP_FD = -1;
