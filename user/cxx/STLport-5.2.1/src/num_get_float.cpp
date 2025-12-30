@@ -23,12 +23,13 @@
 #include <istream>
 
 #if (defined (__GNUC__) && !defined (__sun) && !defined (__hpux)) || \
-    defined (__DMC__)
+    defined (__DMC__) || defined (__SEROTONIN__)
 #  include <stdint.h>
 #endif
 
 #if defined (__linux__) || defined (__MINGW32__) || defined (__CYGWIN__) || \
-    defined (__BORLANDC__) || defined (__DMC__) || defined (__HP_aCC)
+    defined (__BORLANDC__) || defined (__DMC__) || defined (__HP_aCC) || \
+    defined (__SEROTONIN__)
 
 #  if defined (__BORLANDC__)
 typedef unsigned int uint32_t;
@@ -104,7 +105,8 @@ typedef unsigned long uint32;
 typedef unsigned __int64 uint64;
 #  define ULL(x) x##Ui64
 #elif defined (__unix) || defined (__MINGW32__) || \
-      (defined (__DMC__) && (__LONGLONG)) || defined (__WATCOMC__)
+      (defined (__DMC__) && (__LONGLONG)) || defined (__WATCOMC__) || \
+      defined (__SEROTONIN__)
 typedef uint32_t uint32;
 typedef uint64_t uint64;
 #  define ULL(x) x##ULL
@@ -476,7 +478,8 @@ static double _Stl_atod(char *buffer, ptrdiff_t ndigit, int dexp) {
 #endif
 
 #if defined (__linux__) || defined (__MINGW32__) || defined (__CYGWIN__) || \
-    defined (__BORLANDC__) || defined (__DMC__) || defined (__HP_aCC)
+    defined (__BORLANDC__) || defined (__DMC__) || defined (__HP_aCC) || \
+    defined (__SEROTONIN__)
 
 template <class D, class IEEE, int M, int BIAS>
 D _Stl_atodT(char *buffer, ptrdiff_t ndigit, int dexp)
@@ -742,7 +745,8 @@ static double _Stl_string_to_double(const char *s) {
 #endif
 
 #if defined (__linux__) || defined (__MINGW32__) || defined (__CYGWIN__) || \
-    defined (__BORLANDC__) || defined (__DMC__) || defined (__HP_aCC)
+    defined (__BORLANDC__) || defined (__DMC__) || defined (__HP_aCC) || \
+    defined (__SEROTONIN__)
 
 template <class D, class IEEE, int M, int BIAS>
 D _Stl_string_to_doubleT(const char *s)
@@ -865,7 +869,8 @@ __string_to_float(const __iostring& v, double& val)
 void _STLP_CALL
 __string_to_float(const __iostring& v, long double& val) {
 #if !defined (__linux__) && !defined (__MINGW32__) && !defined (__CYGWIN__) && \
-    !defined (__BORLANDC__) && !defined (__DMC__) && !defined (__HP_aCC)
+    !defined (__BORLANDC__) && !defined (__DMC__) && !defined (__HP_aCC) && \
+    !defined (__SEROTONIN__)
   //The following function is valid only if long double is an alias for double.
   _STLP_STATIC_ASSERT( sizeof(long double) <= sizeof(double) )
   val = _Stl_string_to_double(v.c_str());

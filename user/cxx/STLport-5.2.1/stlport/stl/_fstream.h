@@ -95,7 +95,7 @@ public:
   // Returns true if we're in binary mode or if we're using an OS or file
   // system where there is no distinction between text and binary mode.
   bool _M_in_binary_mode() const {
-#if defined (_STLP_UNIX) || defined (_STLP_MAC) || defined(__BEOS__) || defined (__amigaos__)
+#if defined (_STLP_UNIX) || defined (_STLP_MAC) || defined(__BEOS__) || defined (__amigaos__) || defined (__SEROTONIN__)
     return true;
 #elif defined (_STLP_WIN32) || defined (_STLP_VM)
     return (_M_openmode & ios_base::binary) != 0;

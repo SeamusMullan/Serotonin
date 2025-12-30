@@ -177,8 +177,11 @@ typedef unsigned int wint_t;
 #  define _STLP_DEF_CONST_PLCT_NEW_BUG 1
 #endif
 
-#undef _STLP_NO_UNCAUGHT_EXCEPT_SUPPORT
-#undef _STLP_NO_UNEXPECTED_EXCEPT_SUPPORT
+/* For bare-metal systems like Serotonin, keep the no-exception-support defines */
+#if !defined(__SEROTONIN__)
+#  undef _STLP_NO_UNCAUGHT_EXCEPT_SUPPORT
+#  undef _STLP_NO_UNEXPECTED_EXCEPT_SUPPORT
+#endif
 
 /* strict ANSI prohibits "long long" ( gcc) */
 #if defined ( __STRICT_ANSI__ )

@@ -4,8 +4,12 @@
 
 set -e
 
-# Source directory
+# Find the Serotonin root directory (should be 3 levels up from STLport-5.2.1)
 STLPORT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SEROTONIN_ROOT="$(cd "$STLPORT_DIR/../../.." && pwd)"
+
+# Add cross-compiler to PATH
+export PATH="$SEROTONIN_ROOT/build-tools/bin/bin:$PATH"
 SRC_DIR="$STLPORT_DIR/src"
 STLPORT_INCLUDE="$STLPORT_DIR/stlport"
 
@@ -19,8 +23,8 @@ CC="${CC:-i686-elf-gcc}"
 AR="${AR:-i686-elf-ar}"
 RANLIB="${RANLIB:-i686-elf-ranlib}"
 
-# Compiler flags
-COMMON_FLAGS="-m32 -ffreestanding -O2 -Wall -D__SEROTONIN__ -I$STLPORT_INCLUDE"
+# Compiler flags - need to include src directory for internal headers
+COMMON_FLAGS="-m32 -ffreestanding -O2 -Wall -D__SEROTONIN__ -I$STLPORT_INCLUDE -I$SRC_DIR"
 CXXFLAGS="${CXXFLAGS:--std=c++11 -fno-exceptions -fno-rtti -fno-threadsafe-statics}"
 CFLAGS="${CFLAGS:--std=gnu99}"
 
@@ -58,7 +62,7 @@ CXX_SOURCES="
     allocators.cpp
 "
 
-# C source files
+# C source files - use dummy locale for bare-metal
 C_SOURCES="
     c_locale.c
     cxa.c
@@ -73,22 +77,39 @@ echo "  CC: $CC"
 echo "  CXXFLAGS: $COMMON_FLAGS $CXXFLAGS"
 echo ""
 
+# Track failed compilations
+FAILED=""
+
 # Compile C++ sources
 OBJ_FILES=""
 for src in $CXX_SOURCES; do
     obj="$OBJ_DIR/${src%.cpp}.o"
     echo "Compiling $src..."
-    $CXX $COMMON_FLAGS $CXXFLAGS -c "$SRC_DIR/$src" -o "$obj"
-    OBJ_FILES="$OBJ_FILES $obj"
+    if $CXX $COMMON_FLAGS $CXXFLAGS -c "$SRC_DIR/$src" -o "$obj" 2>&1; then
+        OBJ_FILES="$OBJ_FILES $obj"
+    else
+        echo "  FAILED: $src"
+        FAILED="$FAILED $src"
+    fi
 done
 
 # Compile C sources
 for src in $C_SOURCES; do
     obj="$OBJ_DIR/${src%.c}.o"
     echo "Compiling $src..."
-    $CC $COMMON_FLAGS $CFLAGS -c "$SRC_DIR/$src" -o "$obj"
-    OBJ_FILES="$OBJ_FILES $obj"
+    if $CC $COMMON_FLAGS $CFLAGS -c "$SRC_DIR/$src" -o "$obj" 2>&1; then
+        OBJ_FILES="$OBJ_FILES $obj"
+    else
+        echo "  FAILED: $src"
+        FAILED="$FAILED $src"
+    fi
 done
+
+if [ -n "$FAILED" ]; then
+    echo ""
+    echo "WARNING: Some files failed to compile:$FAILED"
+    echo ""
+fi
 
 # Create static library
 echo ""

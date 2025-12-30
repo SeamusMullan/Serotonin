@@ -44,11 +44,25 @@ i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/c
 i686-elf-g++ -c cxx_test.cpp -o cxx_test.o $CXXFLAGS
 i686-elf-g++ -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o cxx_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o cxxtest.elf
 
+# Build STLport stubs (provides range error functions for bare-metal)
+echo "Building STLport stubs..."
+i686-elf-g++ -c cxx/stlport_stubs.cpp -o cxx/stlport_stubs.o $CXXFLAGS $STLPORT_FLAGS
+
+# STLport library location
+STLPORT_LIB="$DIR/../user/cxx/STLport-5.2.1/build-output"
+
 # Build STL test program (uses STLport containers)
 echo "Building STL test..."
 i686-elf-g++ -c stl_test.cpp -o stl_test.o $CXXFLAGS $STLPORT_FLAGS
-i686-elf-g++ -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o stl_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o stltest.elf
+i686-elf-g++ -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o cxx/stlport_stubs.o crt0.o stl_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o stltest.elf
 echo "STL test build complete: stltest.elf"
+
+# Build iostream test program (uses STLport with full iostream)
+# Note: don't link stlport_stubs.o when using libstlport.a (it provides those functions)
+echo "Building iostream test..."
+i686-elf-g++ -c iostream_test.cpp -o iostream_test.o $CXXFLAGS $STLPORT_FLAGS
+i686-elf-g++ -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o iostream_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -L$STLPORT_LIB -lstlport -Wl,--start-group -lc -lm -Wl,--end-group -o iostr.elf
+echo "iostream test build complete: iostreamtest.elf"
 
 # Build Lua
 echo "Building Lua..."

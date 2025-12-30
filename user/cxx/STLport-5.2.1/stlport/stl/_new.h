@@ -85,6 +85,14 @@ _STLP_END_NAMESPACE
 
 #endif /* _STLP_USE_EXCEPTIONS && (_STLP_NO_BAD_ALLOC || _STLP_NEW_DONT_THROW_BAD_ALLOC) */
 
+/* For bare-metal without exceptions, still need nothrow_t defined */
+#if !defined (_STLP_USE_EXCEPTIONS) && defined (_STLP_NO_BAD_ALLOC)
+_STLP_BEGIN_NAMESPACE
+struct nothrow_t {};
+#  define nothrow nothrow_t()
+_STLP_END_NAMESPACE
+#endif /* !_STLP_USE_EXCEPTIONS && _STLP_NO_BAD_ALLOC */
+
 #if defined (_STLP_USE_OWN_NAMESPACE)
 
 _STLP_BEGIN_NAMESPACE
@@ -113,6 +121,9 @@ _STLP_END_NAMESPACE
 #    ifndef _STLP_INTERNAL_CSTDIO
 #      include <stl/_cstdio.h>
 #    endif
+#    ifndef _STLP_INTERNAL_CSTDLIB
+#      include <stl/_cstdlib.h>
+#    endif
 #    define _STLP_THROW_BAD_ALLOC puts("out of memory\n"); exit(1)
 #  else
 #    define _STLP_THROW_BAD_ALLOC _STLP_THROW(_STLP_STD::bad_alloc())
@@ -123,6 +134,15 @@ _STLP_END_NAMESPACE
 #  define _STLP_CHECK_NULL_ALLOC(__x) void* __y = __x; if (__y == 0) { _STLP_THROW_BAD_ALLOC; } return __y
 #else
 #  define _STLP_CHECK_NULL_ALLOC(__x) return __x
+#endif
+
+/* Placement new operators - for bare-metal without native <new> header */
+#if defined (_STLP_NO_NEW_NEW_HEADER) && !defined (_STLP_PLACEMENT_NEW_DEFINED)
+#  define _STLP_PLACEMENT_NEW_DEFINED
+inline void* operator new(size_t, void* __p) _STLP_NOTHROW_INHERENTLY { return __p; }
+inline void* operator new[](size_t, void* __p) _STLP_NOTHROW_INHERENTLY { return __p; }
+inline void operator delete(void*, void*) _STLP_NOTHROW_INHERENTLY {}
+inline void operator delete[](void*, void*) _STLP_NOTHROW_INHERENTLY {}
 #endif
 
 _STLP_BEGIN_NAMESPACE
