@@ -1,0 +1,3 @@
+Source STLPort from the following
+
+https://sourceforge.net/projects/stlport/
