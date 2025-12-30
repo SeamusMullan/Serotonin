@@ -6,16 +6,7 @@ IMG_NAME="serotonin.img"
 IMG_SIZE_MB=512
 MOUNT_POINT="/mnt/img"
 SRC_DIR="../user"
-FILE_LIST="${SRC_DIR}/filelist.txt"   # contains lines like: "test.elf bin/init"
 LOOPDEV=""
-
-# === SANITY CHECKS ===
-if [[ ! -f "$FILE_LIST" ]]; then
-    echo "[!] Missing file list: $FILE_LIST"
-    echo "    Each line should be: <source> <destination>"
-    echo "    Example: test.elf bin/init"
-    exit 1
-fi
 
 echo "[*] Creating ${IMG_SIZE_MB}MB image: ${IMG_NAME}"
 
@@ -43,23 +34,16 @@ echo "[*] Mounting image at ${MOUNT_POINT}..."
 sudo mkdir -p "$MOUNT_POINT"
 sudo mount "${LOOPDEV}p1" "$MOUNT_POINT"
 
-# === COPY FILES FROM FILELIST ===
-echo "[*] Copying files according to ${FILE_LIST} ..."
-while read -r src dst; do
-    [[ -z "${src:-}" || -z "${dst:-}" ]] && continue  # skip blanks
-
-    src_path="${SRC_DIR}/${src}"
-    dest_path="${MOUNT_POINT}/${dst}"
-    dest_dir="$(dirname "$dest_path")"
-
-    if [[ -f "$src_path" ]]; then
-        echo "   → ${src} -> ${dst}"
-        sudo mkdir -p "$dest_dir"
-        sudo cp "$src_path" "$dest_path"
-    else
-        echo "   [!] Missing: $src"
-    fi
-done < "$FILE_LIST"
+# === COPY ALL .elf FILES TO /bin ===
+echo "[*] Copying all .elf files to /bin ..."
+sudo mkdir -p "${MOUNT_POINT}/bin"
+for elf_file in "${SRC_DIR}"/*.elf; do
+    [[ -f "$elf_file" ]] || continue
+    basename="${elf_file##*/}"
+    dest_name="${basename%.elf}"
+    echo "   → ${basename} -> /bin/${dest_name}"
+    sudo cp "$elf_file" "${MOUNT_POINT}/bin/${dest_name}"
+done
 
 # === CLEAN UP ===
 echo "[*] Unmounting and detaching..."
