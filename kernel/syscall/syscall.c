@@ -531,7 +531,7 @@ static void sys_fstat(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) {
         return;
     }
 
-    struct stat *k_statbuf = (struct stat*)kernel_malloc_align(sizeof(struct stat), 16);
+    struct stat *k_statbuf = (struct stat*)kernel_malloc_align(16, sizeof(struct stat));
 
     if (fd < 3) {
         memset(k_statbuf, 0, sizeof(struct stat));
@@ -544,7 +544,7 @@ static void sys_fstat(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) {
     }
 
     memcpy(statbuf, k_statbuf, sizeof(struct stat));
-    kernel_free(k_statbuf);
+    kernel_free_align(k_statbuf);
 
     errno = 0;
 }
@@ -565,10 +565,10 @@ static void sys_stat(uint32_t arg2, uint32_t arg3) {
         return;
     }
 
-    struct stat *k_statbuf = (struct stat*)kernel_malloc_align(sizeof(struct stat), 16);
+    struct stat *k_statbuf = (struct stat*)kernel_malloc_align(16, sizeof(struct stat));
     fill_stat_from_node(node, k_statbuf);
     memcpy(statbuf, k_statbuf, sizeof(struct stat));
-    kernel_free(k_statbuf);
+    kernel_free_align(k_statbuf);
     vfs_close(node);
 
     errno = 0;

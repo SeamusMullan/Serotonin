@@ -224,10 +224,6 @@ void task_yield(int irq) {
     reap_zombies();
 
     if (current_task->state == PROCESS_STATE_RUNNING) {
-        if ((unsigned int)current_task->esp < (unsigned int)current_task->esp_min && current_task->priv == CPU_USER_MODE) {
-            printfs(PRINT_STATUS_ERROR, "Stack overflow detected in task '%s' (attempted esp=%p, esp_max=%p)\n", current_task->name, current_task->esp,current_task->esp_max);
-            task_exit(EXIT_SIGSEGV);
-        }
         current_task->state = PROCESS_STATE_READY;
         if (!current_task->no_requeue)
             enqueue(current_task);
@@ -533,6 +529,14 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     memset(ctx, 0, sizeof(*ctx));
     pcb->processor_context = ctx;
     memcpy(pcb->processor_context, parent->processor_context, sizeof(processor_context_t));
+    processor_context_t *signal_ctx = (processor_context_t *)kernel_malloc_align(PCB_ALIGNMENT, sizeof(*signal_ctx));
+    memset(signal_ctx, 0, sizeof(*signal_ctx));
+    pcb->signal_processor_context = signal_ctx;
+    if (parent->signal_processor_context) {
+        memcpy(pcb->signal_processor_context, parent->signal_processor_context, sizeof(processor_context_t));
+    } else {
+        memcpy(pcb->signal_processor_context, pcb->processor_context, sizeof(processor_context_t));
+    }
     pcb->state = PROCESS_STATE_READY;
     pcb->pid   = next_pid++;
 

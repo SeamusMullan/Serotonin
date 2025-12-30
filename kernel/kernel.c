@@ -32,6 +32,9 @@
 
 #define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
 #define HEAP_SIZE   (KERNEL_HEAP_SIZE)
+#define HEAP_MAGIC  0x48454150U
+#define HEAP_GUARD  0xDEADC0DEU
+#define HEAP_GUARD_SIZE 4U
 
 extern char __kernel_start[];
 extern char __kernel_end[];
@@ -45,8 +48,10 @@ extern char __kernel_virtual_base[];
  *
  */
 typedef struct block_header {
+    uint32_t magic;
     uint32_t size;
     uint8_t free;
+    uint8_t guard;
     struct block_header *next;
 } block_header_t;
 
@@ -67,6 +72,65 @@ extern uint8_t signal_trampoline_end[];
  */
 uint32_t align(uint32_t size) {
     return (size + BLOCK_ALIGN - 1) & ~(BLOCK_ALIGN - 1);
+}
+
+static inline uint32_t kernel_heap_guard_size(void) {
+    return debug_mode ? HEAP_GUARD_SIZE : 0;
+}
+
+static inline void kernel_heap_set_guard(block_header_t *block) {
+    if (!block->guard) return;
+    uint32_t *guard = (uint32_t *)((uint8_t *)(block + 1) + block->size);
+    *guard = HEAP_GUARD;
+}
+
+static inline void kernel_heap_init_guard(block_header_t *block) {
+    block->guard = debug_mode ? 1 : 0;
+    kernel_heap_set_guard(block);
+}
+
+static void kernel_heap_check_block(const block_header_t *block, const char *where) {
+    uintptr_t block_addr = (uintptr_t)block;
+    uintptr_t heap_start_addr = (uintptr_t)heap_start;
+    uintptr_t heap_end_addr = (uintptr_t)heap_end;
+    if (block_addr < heap_start_addr || block_addr + sizeof(*block) > heap_end_addr) {
+        printfs(PRINT_STATUS_FATAL,
+            "heap check failed at %s: block=0x%08x heap=[0x%08x..0x%08x)\n",
+            where, (unsigned int)block_addr, (unsigned int)heap_start_addr, (unsigned int)heap_end_addr);
+        kernel_panic("heap block out of range");
+    }
+    uint32_t guard_size = block->guard ? HEAP_GUARD_SIZE : 0;
+    if (block->magic != HEAP_MAGIC) {
+        printfs(PRINT_STATUS_FATAL,
+            "heap check failed at %s: block=0x%08x magic=0x%08x\n",
+            where, (unsigned int)block_addr, (unsigned int)block->magic);
+        kernel_panic("heap block corrupted");
+    }
+    if (block->size > HEAP_SIZE ||
+        block_addr + sizeof(*block) + block->size + guard_size > heap_end_addr) {
+        printfs(PRINT_STATUS_FATAL,
+            "heap check failed at %s: block=0x%08x size=0x%08x\n",
+            where, (unsigned int)block_addr, (unsigned int)block->size);
+        kernel_panic("heap block size corrupted");
+    }
+    if (block->guard) {
+        const uint32_t *guard = (const uint32_t *)((const uint8_t *)(block + 1) + block->size);
+        if (*guard != HEAP_GUARD) {
+            printfs(PRINT_STATUS_FATAL,
+                "heap check failed at %s: block=0x%08x guard=0x%08x size=0x%08x\n",
+                where, (unsigned int)block_addr, (unsigned int)(*guard), (unsigned int)block->size);
+            kernel_panic("heap block overflow");
+        }
+    }
+    if (block->next) {
+        uintptr_t next_addr = (uintptr_t)block->next;
+        if (next_addr < heap_start_addr || next_addr + sizeof(*block) > heap_end_addr) {
+            printfs(PRINT_STATUS_FATAL,
+                "heap check failed at %s: block=0x%08x next=0x%08x\n",
+                where, (unsigned int)block_addr, (unsigned int)next_addr);
+            kernel_panic("heap next pointer corrupted");
+        }
+    }
 }
 
 /**
@@ -520,22 +584,32 @@ void kernel_panic(char* str) {
  */
 void *kernel_malloc(uint32_t size) {
     size = align(size);
+    uint32_t guard_size = kernel_heap_guard_size();
+    uint32_t alloc_size = size + guard_size;
     block_header_t *curr = heap_list;
 
     // First allocation
     if (!heap_list) {
         heap_list = (block_header_t *)current_heap;
+        heap_list->magic = HEAP_MAGIC;
         heap_list->size = size;
         heap_list->free = 0;
         heap_list->next = NULL;
-        current_heap += sizeof(block_header_t) + size;
+        current_heap += sizeof(block_header_t) + alloc_size;
+        if (current_heap > heap_end) {
+            kernel_panic("out of kernel heap memory");
+            return NULL;
+        }
+        kernel_heap_init_guard(heap_list);
         return (void *)(heap_list + 1);
     }
 
     // Look for a free block
     while (curr) {
+        kernel_heap_check_block(curr, "kernel_malloc");
         if (curr->free && curr->size >= size) {
             curr->free = 0;
+            kernel_heap_set_guard(curr);
             return (void *)(curr + 1);
         }
         if (!curr->next) break;
@@ -548,16 +622,18 @@ void *kernel_malloc(uint32_t size) {
 
     // Allocate new block
     block_header_t *new_block = (block_header_t *)current_heap;
-    current_heap += sizeof(block_header_t) + size;
-    if (current_heap >= heap_end) {
+    current_heap += sizeof(block_header_t) + alloc_size;
+    if (current_heap > heap_end) {
         kernel_panic("out of kernel heap memory");
         return NULL;
     }
 
+    new_block->magic = HEAP_MAGIC;
     new_block->size = size;
     new_block->free = 0;
     new_block->next = NULL;
     curr->next = new_block;
+    kernel_heap_init_guard(new_block);
 
     return (void *)(new_block + 1);
 }
@@ -570,7 +646,18 @@ void *kernel_malloc(uint32_t size) {
 void kernel_free(void *ptr) {
     if (!ptr) return;
 
+    uintptr_t ptr_addr = (uintptr_t)ptr;
+    uintptr_t heap_start_addr = (uintptr_t)heap_start;
+    uintptr_t heap_end_addr = (uintptr_t)heap_end;
+    if (ptr_addr < heap_start_addr + sizeof(block_header_t) || ptr_addr >= heap_end_addr) {
+        kernel_panic("kernel_free: pointer out of heap range");
+    }
+
     block_header_t *block = ((block_header_t *)ptr) - 1;
+    kernel_heap_check_block(block, "kernel_free");
+    if (block->free) {
+        kernel_panic("kernel_free: double free");
+    }
     block->free = 1;
 }
 
