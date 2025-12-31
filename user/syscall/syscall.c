@@ -238,7 +238,27 @@ int listdir(const char *path, char *buf, size_t size) {
 
 /**
  * @brief Initialize function (called before main)
- * 
+ *
  * Empty initialization function for runtime setup.
  */
 void _init(void) {}
+
+/**
+ * Newlib compatibility aliases.
+ * Newlib's internal functions (like stdio) call _write, _read, etc.
+ * These aliases connect newlib to our syscall implementations.
+ */
+int _write(int fd, const void *buf, size_t count) __attribute__((alias("write")));
+int _read(int fd, void *buf, size_t count) __attribute__((alias("read")));
+int _open(const char *path, int flags, ...) __attribute__((alias("open")));
+int _close(int fd) __attribute__((alias("close")));
+off_t _lseek(int fd, off_t offset, int whence) __attribute__((alias("lseek")));
+int _fstat(int fd, struct stat *st) __attribute__((alias("fstat")));
+int _stat(const char *path, struct stat *st) __attribute__((alias("stat")));
+int _isatty(int fd) __attribute__((alias("isatty")));
+pid_t _getpid(void) __attribute__((alias("getpid")));
+int _kill(pid_t pid, int sig) __attribute__((alias("kill")));
+void *_sbrk(ptrdiff_t incr) __attribute__((alias("sbrk")));
+pid_t _fork(void) __attribute__((alias("fork")));
+int _execve(const char *name, char *const argv[], char *const envp[]) __attribute__((alias("execve")));
+int _unlink(const char *path) __attribute__((alias("unlink")));
