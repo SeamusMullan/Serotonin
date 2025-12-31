@@ -254,6 +254,11 @@ void task_yield(int irq) {
  */
 void task_exit(uint8_t exit) {
     printfs(PRINT_STATUS_DEBUG, "task_exit: Task %s (pid=%u) exited:%s\n", current_task->name, current_task->pid,to_signal_name(exit));
+    
+    if (current_task->pid == 1) {
+        kernel_panic("init died");
+    }
+    
     current_task->state = PROCESS_STATE_TERMINATED;
     current_task->signal = exit;
 

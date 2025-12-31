@@ -928,12 +928,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     multitasking_init();
 
-    process_control_block_t *idle_task = task_create(kernel_idle_task, "kernel: idle", CPU_KERNEL_MODE, 0);
-    enqueue(idle_task);
-
-    vbe_worker_task = task_create(vbe_worker, "kernel: compositor", CPU_KERNEL_MODE, 255);
-    vbe_worker_task->no_requeue = 1;
-
     printfs(PRINT_STATUS_INFO,"Loading /bin/init\n");
 
     char* init_loc = "/bin/init";
@@ -945,6 +939,12 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     if (!init_status) {
         kernel_panic("unable to load init process!");
     }
+
+    process_control_block_t *idle_task = task_create(kernel_idle_task, "kernel: idle", CPU_KERNEL_MODE, 0);
+    enqueue(idle_task);
+
+    vbe_worker_task = task_create(vbe_worker, "kernel: compositor", CPU_KERNEL_MODE, 255);
+    vbe_worker_task->no_requeue = 1;
 
     enqueue(init);
     printfs(PRINT_STATUS_INFO,"Entering scheduler\n");
