@@ -18,6 +18,9 @@ __attribute__((aligned(PAGE_SIZE), section(".identity_data")))
 page_table_t fb_page_table;
 
 __attribute__((aligned(PAGE_SIZE), section(".identity_data")))
+page_table_t layer_page_tables[LAYER_PDE_COUNT];
+
+__attribute__((aligned(PAGE_SIZE), section(".identity_data")))
 page_table_t kernel_stack_page_table;
 
 // Global paging info
@@ -67,6 +70,15 @@ void paging_init(uintptr_t fb_phys_base) {
     for (uint32_t i = 0; i < PAGE_ENTRIES; ++i)
         fb_page_table[i] = (fb_phys_base + i * PAGE_SIZE) | PAGE_FLAGS;
     page_directory[FB_VMA_BASE >> 22] = ((uintptr_t)&fb_page_table) | PAGE_FLAGS;
+
+    // Map layer window: remaining 0xE* range up to kernel stack.
+    for (uint32_t pd_idx = 0; pd_idx < LAYER_PDE_COUNT; ++pd_idx) {
+        for (uint32_t i = 0; i < PAGE_ENTRIES; ++i) {
+            layer_page_tables[pd_idx][i] = 0;
+        }
+        page_directory[LAYER_PDE_BASE + pd_idx] =
+            mk_entry((uintptr_t)&layer_page_tables[pd_idx], PAGE_FLAGS);
+    }
 
     // Map heap: 256 MiB via 64 page tables at PDE[832..895]
     for (uint32_t pd_idx = 0; pd_idx < 64; ++pd_idx) {

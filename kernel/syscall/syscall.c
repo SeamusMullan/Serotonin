@@ -5,6 +5,7 @@
 #include "../kernel.h"
 #include "../stdlib/stdlib.h"
 #include "../vmm/paging_init.h"
+#include "../vmm/vmm.h"
 #include "../string.h"
 #include "../filesystem/vfs.h"
 #include "../filesystem/user_fs/user_fs.h"
@@ -20,6 +21,221 @@
 
 static uint32_t next_fd = FIRST_FD;
 static int errno = 0;
+
+typedef struct layer_state {
+    uint8_t allocated;
+    uint32_t owner_pid;
+    fb_layer_config_t cfg;
+    shm_object_t *fb_shm;
+    shm_object_t *meta_shm;
+    uint32_t fb_user_va;
+    uint32_t meta_user_va;
+    uint32_t fb_priv_va;
+    uint32_t meta_priv_va;
+    uint32_t fb_size;
+    uint32_t meta_size;
+    uint32_t priv_region_size;
+} layer_state_t;
+
+static layer_state_t layer_states[VBE_NUM_Z_LAYERS];
+
+static uint32_t layer_priv_base(void) {
+    return FB_VMA_BASE + align_up(fb_size_bytes, PAGE_SIZE);
+}
+
+static uint32_t layer_priv_end(void) {
+    return KERNEL_STACK_VMA;
+}
+
+static uint32_t layer_priv_find_free(uint32_t size) {
+    uint32_t addr = align_up(layer_priv_base(), PAGE_SIZE);
+    uint32_t end = layer_priv_end();
+
+    while (addr + size <= end) {
+        uint32_t next_start = end;
+        uint32_t next_size = 0;
+        int found = 0;
+
+        for (uint32_t i = 0; i < VBE_NUM_Z_LAYERS; i++) {
+            if (!layer_states[i].allocated)
+                continue;
+            uint32_t start = layer_states[i].fb_priv_va;
+            uint32_t stop = start + layer_states[i].priv_region_size;
+            if (stop <= addr)
+                continue;
+            if (start <= addr && stop > addr) {
+                addr = align_up(stop, PAGE_SIZE);
+                found = 1;
+                break;
+            }
+            if (start < next_start) {
+                next_start = start;
+                next_size = layer_states[i].priv_region_size;
+                found = 1;
+            }
+        }
+
+        if (!found || addr + size <= next_start)
+            return addr;
+
+        addr = align_up(next_start + next_size, PAGE_SIZE);
+    }
+
+    return 0;
+}
+
+static void layer_map_priv_shared(uint32_t vaddr, uint32_t *phys_pages, uint32_t npages) {
+    address_space_t *as = current_task->address_space;
+    for (uint32_t i = 0; i < npages; i++) {
+        map_page(as, vaddr + i * PAGE_SIZE, phys_pages[i], PAGE_FLAGS, 1);
+    }
+}
+
+static void layer_unmap_priv_shared(uint32_t vaddr, uint32_t npages) {
+    address_space_t *as = current_task->address_space;
+    for (uint32_t i = 0; i < npages; i++) {
+        unmap_page(as, vaddr + i * PAGE_SIZE, 0);
+    }
+}
+
+static void layer_remove_shmem_map(address_space_t *as, uint32_t start) {
+    shmem_map_t **pp = &as->shmem_list;
+    while (*pp) {
+        if ((*pp)->start == start) {
+            shmem_map_t *m = *pp;
+            *pp = m->next;
+            kernel_free(m);
+            return;
+        }
+        pp = &(*pp)->next;
+    }
+}
+
+static void layer_unmap_user(address_space_t *as, uint32_t vaddr, uint32_t size) {
+    uint32_t sz = align_up(size, PAGE_SIZE);
+    for (uint32_t off = 0; off < sz; off += PAGE_SIZE) {
+        unmap_page(as, vaddr + off, 0);
+    }
+    layer_remove_shmem_map(as, vaddr);
+}
+
+static void layer_free_shm(shm_object_t *shm) {
+    if (!shm)
+        return;
+    for (uint32_t i = 0; i < shm->npages; i++) {
+        free_frame((void*)shm->phys_pages[i]);
+    }
+    kernel_free(shm->phys_pages);
+    kernel_free(shm);
+}
+
+static void layer_release_state(uint16_t id, layer_state_t *state, address_space_t *as) {
+    if (!state->allocated)
+        return;
+
+    if (state->fb_shm)
+        layer_unmap_priv_shared(state->fb_priv_va, state->fb_shm->npages);
+    if (state->meta_shm)
+        layer_unmap_priv_shared(state->meta_priv_va, state->meta_shm->npages);
+
+    if (as) {
+        if (state->fb_user_va && state->fb_shm)
+            layer_unmap_user(as, state->fb_user_va, state->fb_shm->size);
+        if (state->meta_user_va && state->meta_shm)
+            layer_unmap_user(as, state->meta_user_va, state->meta_shm->size);
+    }
+
+    layer_free_shm(state->fb_shm);
+    layer_free_shm(state->meta_shm);
+    memset(state, 0, sizeof(*state));
+}
+
+static int layer_config_valid(const fb_layer_config_t *cfg) {
+    if (!cfg)
+        return 0;
+    if (cfg->size < sizeof(*cfg))
+        return 0;
+    if (cfg->x1 <= cfg->x0 || cfg->y1 <= cfg->y0)
+        return 0;
+    if (cfg->x1 > vbe_info.width || cfg->y1 > vbe_info.height)
+        return 0;
+    if ((cfg->stride & (sizeof(uint32_t) - 1)) != 0)
+        return 0;
+    if (cfg->stride < (uint32_t)(cfg->x1 - cfg->x0) * sizeof(uint32_t))
+        return 0;
+    return 1;
+}
+
+static int layer_prepare_state(uint16_t id, const fb_layer_config_t *cfg, layer_state_t *state) {
+    uint32_t width = (uint32_t)(cfg->x1 - cfg->x0);
+    uint32_t height = (uint32_t)(cfg->y1 - cfg->y0);
+    uint32_t fb_size = cfg->stride * height;
+    uint32_t meta_size = sizeof(fb_layer_metadata_t);
+    uint32_t fb_alloc = align_up(fb_size, PAGE_SIZE);
+    uint32_t meta_alloc = align_up(meta_size, PAGE_SIZE);
+    uint32_t region_size = fb_alloc + meta_alloc;
+
+    uint32_t priv_base = layer_priv_find_free(region_size);
+    if (!priv_base)
+        return -ENOMEM;
+
+    shm_object_t *fb_shm = shm_create(fb_alloc);
+    if (!fb_shm)
+        return -ENOMEM;
+
+    shm_object_t *meta_shm = shm_create(meta_alloc);
+    if (!meta_shm) {
+        layer_free_shm(fb_shm);
+        return -ENOMEM;
+    }
+
+    uint32_t fb_user_va = shm_map(current_task, fb_shm);
+    uint32_t meta_user_va = shm_map(current_task, meta_shm);
+
+    uint32_t fb_priv_va = priv_base;
+    uint32_t meta_priv_va = priv_base + fb_alloc;
+
+    layer_map_priv_shared(fb_priv_va, fb_shm->phys_pages, fb_shm->npages);
+    layer_map_priv_shared(meta_priv_va, meta_shm->phys_pages, meta_shm->npages);
+
+    memset((void*)fb_priv_va, 0, fb_size);
+    memset((void*)meta_priv_va, 0, meta_alloc);
+
+    memset(state, 0, sizeof(*state));
+    state->allocated = 1;
+    state->owner_pid = current_task->pid;
+    state->cfg = *cfg;
+    state->fb_shm = fb_shm;
+    state->meta_shm = meta_shm;
+    state->fb_user_va = fb_user_va;
+    state->meta_user_va = meta_user_va;
+    state->fb_priv_va = fb_priv_va;
+    state->meta_priv_va = meta_priv_va;
+    state->fb_size = fb_size;
+    state->meta_size = meta_size;
+    state->priv_region_size = region_size;
+
+    return 0;
+}
+
+static void layer_fill_info(uint16_t id, fb_layer_info_t *info) {
+    memset(info, 0, sizeof(*info));
+    info->size = sizeof(*info);
+    info->layer_id = id;
+
+    if (id < VBE_NUM_Z_LAYERS && layer_states[id].allocated) {
+        layer_state_t *state = &layer_states[id];
+        info->owned = 1;
+        info->fb_user_va = state->fb_user_va;
+        info->metadata_user_va = state->meta_user_va;
+        info->fb_size = state->fb_size;
+        info->metadata_size = state->meta_size;
+        info->cfg = state->cfg;
+    } else {
+        info->owned = 0;
+        info->cfg.size = sizeof(info->cfg);
+    }
+}
 
 static void fill_stat_from_node(vfs_node_t *node, struct stat *k_statbuf) {
     memset(k_statbuf, 0, sizeof(*k_statbuf));
@@ -949,6 +1165,178 @@ static void sys_5ht_list_proc(uint32_t arg2, uint32_t arg3) {
     errno = count;
 }
 
+static void sys_5ht_query_info(uint32_t arg2) {
+    if (!arg2) {
+        errno = -EINVAL;
+        return;
+    }
+
+    fb_info_t info = {0};
+    info.size = sizeof(info);
+    info.fb_size = fb_size_bytes;
+    info.layer_window_size = layer_priv_end() - layer_priv_base();
+    info.metadata_size = sizeof(fb_layer_metadata_t);
+    info.alignment = PAGE_SIZE;
+
+    if (copy_to_user(current_task->address_space, arg2, &info, sizeof(info)) != 0) {
+        errno = -EFAULT;
+        return;
+    }
+
+    errno = 0;
+}
+
+static void sys_5ht_query_layer(uint32_t arg2, uint32_t arg3) {
+    uint16_t id = (uint16_t)arg2;
+    if (id == 0 || id >= VBE_NUM_Z_LAYERS || !arg3) {
+        errno = -EINVAL;
+        return;
+    }
+
+    fb_layer_info_t info;
+    layer_fill_info(id, &info);
+    if (copy_to_user(current_task->address_space, arg3, &info, sizeof(info)) != 0) {
+        errno = -EFAULT;
+        return;
+    }
+
+    errno = 0;
+}
+
+static void sys_5ht_req_buf(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+    uint16_t id = (uint16_t)arg2;
+    if (id == 0 || id >= VBE_NUM_Z_LAYERS || !arg3 || !arg4) {
+        errno = -EINVAL;
+        return;
+    }
+
+    layer_state_t *state = &layer_states[id];
+    if (state->allocated) {
+        if (state->owner_pid != current_task->pid) {
+            errno = -EBUSY;
+            return;
+        }
+        fb_layer_info_t info;
+        layer_fill_info(id, &info);
+        if (copy_to_user(current_task->address_space, arg4, &info, sizeof(info)) != 0) {
+            errno = -EFAULT;
+            return;
+        }
+        errno = 0;
+        return;
+    }
+
+    fb_layer_config_t cfg = {0};
+    if (copy_from_user(current_task->address_space, &cfg, arg3, sizeof(cfg)) != 0) {
+        errno = -EFAULT;
+        return;
+    }
+    if (!layer_config_valid(&cfg)) {
+        errno = -EINVAL;
+        return;
+    }
+
+    int prep_rc = layer_prepare_state(id, &cfg, state);
+    if (prep_rc != 0) {
+        errno = prep_rc;
+        return;
+    }
+
+    vbe_layer_attach((uint8_t)id, (uint32_t*)state->fb_priv_va, &state->cfg,
+                     (fb_layer_metadata_t*)state->meta_priv_va);
+
+    fb_layer_info_t info;
+    layer_fill_info(id, &info);
+    if (copy_to_user(current_task->address_space, arg4, &info, sizeof(info)) != 0) {
+        vbe_layer_detach((uint8_t)id);
+        layer_release_state(id, state, current_task->address_space);
+        errno = -EFAULT;
+        return;
+    }
+
+    errno = 0;
+}
+
+static void sys_5ht_rel_buf(uint32_t arg2) {
+    uint16_t id = (uint16_t)arg2;
+    if (id == 0 || id >= VBE_NUM_Z_LAYERS) {
+        errno = -EINVAL;
+        return;
+    }
+
+    layer_state_t *state = &layer_states[id];
+    if (!state->allocated) {
+        errno = -ENOENT;
+        return;
+    }
+    if (state->owner_pid != current_task->pid) {
+        errno = -EPERM;
+        return;
+    }
+
+    vbe_layer_detach((uint8_t)id);
+    layer_release_state(id, state, current_task->address_space);
+    errno = 0;
+}
+
+static void sys_5ht_rcfg_layer(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+    uint16_t id = (uint16_t)arg2;
+    if (id == 0 || id >= VBE_NUM_Z_LAYERS || !arg3 || !arg4) {
+        errno = -EINVAL;
+        return;
+    }
+
+    layer_state_t *state = &layer_states[id];
+    if (!state->allocated) {
+        errno = -ENOENT;
+        return;
+    }
+    if (state->owner_pid != current_task->pid) {
+        errno = -EPERM;
+        return;
+    }
+
+    fb_layer_config_t cfg = {0};
+    if (copy_from_user(current_task->address_space, &cfg, arg3, sizeof(cfg)) != 0) {
+        errno = -EFAULT;
+        return;
+    }
+    if (!layer_config_valid(&cfg)) {
+        errno = -EINVAL;
+        return;
+    }
+
+    int needs_realloc = (cfg.x0 != state->cfg.x0) || (cfg.y0 != state->cfg.y0) ||
+                        (cfg.x1 != state->cfg.x1) || (cfg.y1 != state->cfg.y1) ||
+                        (cfg.stride != state->cfg.stride);
+    if (needs_realloc) {
+        layer_state_t new_state = {0};
+        int prep_rc = layer_prepare_state(id, &cfg, &new_state);
+        if (prep_rc != 0) {
+            errno = prep_rc;
+            return;
+        }
+
+        vbe_layer_detach((uint8_t)id);
+        layer_release_state(id, state, current_task->address_space);
+        *state = new_state;
+    } else {
+        state->cfg = cfg;
+    }
+
+    vbe_layer_attach((uint8_t)id, (uint32_t*)state->fb_priv_va, &state->cfg,
+                     (fb_layer_metadata_t*)state->meta_priv_va);
+
+    fb_layer_info_t info;
+    layer_fill_info(id, &info);
+    if (copy_to_user(current_task->address_space, arg4, &info, sizeof(info)) != 0) {
+        errno = -EFAULT;
+        return;
+    }
+
+    errno = 0;
+}
+
 /**
  * @brief Handle system calls.
  *
@@ -1056,6 +1444,21 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_5HT_LIST_PROC:
             sys_5ht_list_proc(arg2, arg3);
+            break;
+        case SYSTEM_CALL_5HT_REQ_BUF:
+            sys_5ht_req_buf(arg2, arg3, arg4);
+            break;
+        case SYSTEM_CALL_5HT_REL_BUF:
+            sys_5ht_rel_buf(arg2);
+            break;
+        case SYSTEM_CALL_5HT_RCFG_LAYER:
+            sys_5ht_rcfg_layer(arg2, arg3, arg4);
+            break;
+        case SYSTEM_CALL_5HT_QUERY_INFO:
+            sys_5ht_query_info(arg2);
+            break;
+        case SYSTEM_CALL_5HT_QUERY_LAYER:
+            sys_5ht_query_layer(arg2, arg3);
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);

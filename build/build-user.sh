@@ -22,6 +22,7 @@ i686-elf-gcc -c syscall/syscall.c -o syscall/syscall.o $CFLAGS
 i686-elf-gcc -c syscall/lib5ht/lib5ht.c -o syscall/lib5ht/lib5ht.o $CFLAGS
 i686-elf-gcc -c shell.c -o shell.o $CFLAGS
 i686-elf-gcc -c ls.c -o ls.o $CFLAGS
+i686-elf-gcc -c fb_layer_test.c -o fb_layer_test.o $CFLAGS
 i686-elf-gcc -c receiver.c -o receiver.o $CFLAGS
 i686-elf-gcc -c sender.c -o sender.o $CFLAGS
 i686-elf-gcc -c fs_syscall_test.c -o fs_syscall_test.o $CFLAGS
@@ -32,6 +33,7 @@ i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/c
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o listproc/listproc.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o listproc.elf
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o shell.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o sh.elf
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o ls.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o ls.elf
+i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o fb_layer_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o fb_layer_test.elf
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o fs_syscall_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o fs_syscall_test.elf
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o games/sponk/sponk.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o sponk.elf
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o receiver.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o receiver.elf

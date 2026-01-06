@@ -75,8 +75,16 @@ typedef struct {
     uint8_t z;
     uint8_t active;
     uint8_t alpha;
+    uint16_t width;
+    uint16_t height;
+    uint16_t x0;
+    uint16_t y0;
+    uint32_t pitch;
     __attribute__((aligned(16))) uint32_t *bufptr;
 } vbe_z_layer_t;
+
+typedef struct fb_layer_config fb_layer_config_t;
+typedef struct fb_layer_metadata fb_layer_metadata_t;
 
 extern vbe_mode_info_t vbe_info;
 extern uint32_t fb_size_bytes;
@@ -111,6 +119,9 @@ void vbe_clear_all_z_layers(void);
 // If resulting alpha <= 0 it becomes fully transparent (pixel value 0).
 void vbe_z_copy_and_fade(uint32_t src_z, uint32_t dst_z, uint8_t fade_amount);
 vbe_z_layer_t* vbe_create_z_layer(uint8_t z, uint8_t alpha, uint8_t active);
+void vbe_layer_attach(uint8_t z, uint32_t *bufptr, const fb_layer_config_t *cfg, fb_layer_metadata_t *meta);
+void vbe_layer_detach(uint8_t z);
+fb_layer_metadata_t *vbe_layer_get_metadata(uint8_t z);
 void vbe_mark_region_dirty(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
 void vbe_handle_ansi_sequence(const char *seq);
 void vbe_worker(void);

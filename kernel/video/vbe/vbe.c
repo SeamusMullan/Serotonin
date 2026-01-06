@@ -9,6 +9,7 @@
 #include "../../schedule/schedule.h"
 #include <stdint.h>
 #include <stddef.h>
+#include "../../syscall/sys/lib5ht.h"
 #include "../../multiboot.h"
 #include "../../vmm/paging_init.h"
 #include "../font.h"
@@ -35,6 +36,8 @@ static const uint16_t k257w[8] __attribute__((aligned(16))) = {0x0101, 0x0101, 0
 static const uint16_t k254w[8] __attribute__((aligned(16))) = {0x00FE, 0x00FE, 0x00FE, 0x00FE, 0x00FE, 0x00FE, 0x00FE, 0x00FE};
 static const uint32_t kAlphaFF[4] __attribute__((aligned(16))) = {0xFF000000u, 0xFF000000u, 0xFF000000u, 0xFF000000u};
 static vbe_z_layer_t *vbe_z_layers[VBE_NUM_Z_LAYERS];
+static fb_layer_metadata_t *vbe_layer_meta[VBE_NUM_Z_LAYERS];
+static uint32_t *vbe_layer_default_bufs[VBE_NUM_Z_LAYERS];
 static inline int vbe_z_valid(uint8_t z) { return (z > 0 && z < VBE_NUM_Z_LAYERS); }
 
 #define DIRTY_BITMAP_SIZE ((SCREEN_WIDTH * SCREEN_HEIGHT + 7) / 8)
@@ -112,7 +115,12 @@ vbe_z_layer_t* vbe_create_z_layer(uint8_t z, uint8_t alpha, uint8_t active) {
     z_layer->z = z;
     z_layer->alpha = alpha;
     z_layer->active = active;
-    
+    z_layer->width = vbe_info.width;
+    z_layer->height = vbe_info.height;
+    z_layer->x0 = 0;
+    z_layer->y0 = 0;
+    z_layer->pitch = vbe_info.pitch;
+
     uint32_t *z_layer_buf = (uint32_t*)kernel_malloc_align(16, fb_size_bytes);
     z_layer->bufptr = z_layer_buf;
     memset(z_layer->bufptr, 0, fb_size_bytes);
@@ -121,6 +129,48 @@ vbe_z_layer_t* vbe_create_z_layer(uint8_t z, uint8_t alpha, uint8_t active) {
     init_z++;
 
     return z_layer;
+}
+
+void vbe_layer_attach(uint8_t z, uint32_t *bufptr, const fb_layer_config_t *cfg, fb_layer_metadata_t *meta)
+{
+    if (!vbe_z_valid(z) || !vbe_z_layers[z])
+        return;
+
+    if (!vbe_layer_default_bufs[z])
+        vbe_layer_default_bufs[z] = vbe_z_layers[z]->bufptr;
+
+    vbe_z_layers[z]->bufptr = bufptr;
+    vbe_z_layers[z]->alpha = cfg ? cfg->alpha : 0;
+    vbe_z_layers[z]->width = cfg ? (uint16_t)(cfg->x1 - cfg->x0) : vbe_info.width;
+    vbe_z_layers[z]->height = cfg ? (uint16_t)(cfg->y1 - cfg->y0) : vbe_info.height;
+    vbe_z_layers[z]->x0 = cfg ? cfg->x0 : 0;
+    vbe_z_layers[z]->y0 = cfg ? cfg->y0 : 0;
+    vbe_z_layers[z]->pitch = cfg ? cfg->stride : vbe_info.pitch;
+    vbe_z_layers[z]->active = 1;
+    vbe_layer_meta[z] = meta;
+}
+
+void vbe_layer_detach(uint8_t z)
+{
+    if (!vbe_z_valid(z) || !vbe_z_layers[z])
+        return;
+
+    vbe_z_layers[z]->active = 0;
+    if (vbe_layer_default_bufs[z])
+        vbe_z_layers[z]->bufptr = vbe_layer_default_bufs[z];
+    vbe_z_layers[z]->width = vbe_info.width;
+    vbe_z_layers[z]->height = vbe_info.height;
+    vbe_z_layers[z]->x0 = 0;
+    vbe_z_layers[z]->y0 = 0;
+    vbe_z_layers[z]->pitch = vbe_info.pitch;
+    vbe_layer_meta[z] = NULL;
+}
+
+fb_layer_metadata_t *vbe_layer_get_metadata(uint8_t z)
+{
+    if (!vbe_z_valid(z))
+        return NULL;
+    return vbe_layer_meta[z];
 }
 
 /**
@@ -220,7 +270,7 @@ inline void vbe_mark_region_dirty(uint16_t x, uint16_t y, uint16_t w, uint16_t h
         w = vbe_info.width - x;
     if (y + h > vbe_info.height)
         h = vbe_info.height - y;
-    
+
     if (dbb->x0 == (uint16_t)-1 ||
         dbb->x1 == (uint16_t)-1 ||
         dbb->y0 == (uint16_t)-1 ||
@@ -240,7 +290,7 @@ inline void vbe_mark_region_dirty(uint16_t x, uint16_t y, uint16_t w, uint16_t h
         if (y >= dbb->y1) dbb->y1 = y + h;
     }
 }
- 
+
 /**
  * @brief Draw a pixel on the backbuffer.
  *
@@ -459,6 +509,122 @@ static void vbe_blend_area(uint32_t *dst, uint32_t *src, uint32_t x1, uint32_t x
     }
 }
 
+static void vbe_blend_area_stride(uint32_t *dst, uint32_t dst_pitch, uint32_t *src, uint32_t src_pitch,
+                                  uint32_t dst_x, uint32_t dst_y, uint32_t src_x, uint32_t src_y,
+                                  uint32_t w, uint32_t h) {
+    if (!dst || !src || w == 0 || h == 0)
+        return;
+
+    const __m128i vz     = _mm_setzero_si128();
+    const __m128i v255   = _mm_set1_epi16((short)255);
+    const __m128i v255_32= _mm_set1_epi32(0x000000FF);
+    const __m128i vrnd   = _mm_set1_epi32(128);
+
+    for (uint32_t y = 0; y < h; y++) {
+        uint8_t *dst_row = (uint8_t *)dst + (dst_y + y) * dst_pitch + dst_x * sizeof(uint32_t);
+        uint8_t *src_row = (uint8_t *)src + (src_y + y) * src_pitch + src_x * sizeof(uint32_t);
+        uint32_t *d = (uint32_t *)dst_row;
+        uint32_t *s = (uint32_t *)src_row;
+
+        uint32_t x = 0;
+        for (; x < w; x++) {
+            uintptr_t dp = (uintptr_t)(&d[x]);
+            uintptr_t sp = (uintptr_t)(&s[x]);
+            if (((dp | sp) & 0xF) == 0) {
+                break;
+            }
+            uint32_t spx = s[x];
+            uint32_t a = spx >> 24;
+            if (a == 0) {
+                continue;
+            } else if (a == 255) {
+                d[x] = spx;
+            } else {
+                uint32_t dpx = d[x];
+                uint32_t ia = 255 - a;
+                uint32_t rb = (((dpx & 0x00FF00FFu) * ia) + ((spx & 0x00FF00FFu) * a) + 0x00800080u) >> 8;
+                uint32_t g  = (((dpx & 0x0000FF00u) * ia) + ((spx & 0x0000FF00u) * a) + 0x00008000u) >> 8;
+                d[x] = (spx & 0xFF000000u) | (rb & 0x00FF00FFu) | (g & 0x0000FF00u);
+            }
+        }
+
+        for (; x + 4 <= w; x += 4) {
+            __m128i spx = _mm_load_si128((const __m128i *)&s[x]);
+            __m128i dpx = _mm_load_si128((const __m128i *)&d[x]);
+
+            __m128i a32 = _mm_srli_epi32(spx, 24);
+            __m128i m_trans = _mm_cmpeq_epi32(a32, vz);
+            __m128i m_opaque= _mm_cmpeq_epi32(a32, v255_32);
+
+            int mt = _mm_movemask_epi8(m_trans);
+            if (mt == 0xFFFF) {
+                continue;
+            }
+            int mo = _mm_movemask_epi8(m_opaque);
+            if (mo == 0xFFFF) {
+                _mm_store_si128((__m128i *)&d[x], spx);
+                continue;
+            }
+
+            __m128i s_lo = _mm_unpacklo_epi8(spx, vz);
+            __m128i s_hi = _mm_unpackhi_epi8(spx, vz);
+            __m128i d_lo = _mm_unpacklo_epi8(dpx, vz);
+            __m128i d_hi = _mm_unpackhi_epi8(dpx, vz);
+
+            __m128i a    = _mm_srli_epi32(spx, 24);
+            __m128i a_lo = _mm_unpacklo_epi8(a, vz);
+            __m128i a_hi = _mm_unpackhi_epi8(a, vz);
+
+            a_lo = _mm_shufflelo_epi16(a_lo, 0x00);
+            a_lo = _mm_shufflehi_epi16(a_lo, 0x00);
+            a_hi = _mm_shufflelo_epi16(a_hi, 0x00);
+            a_hi = _mm_shufflehi_epi16(a_hi, 0x00);
+
+            __m128i ia_lo = _mm_sub_epi16(v255, a_lo);
+            __m128i ia_hi = _mm_sub_epi16(v255, a_hi);
+
+            __m128i ps_lo = _mm_mullo_epi16(s_lo, a_lo);
+            __m128i pd_lo = _mm_mullo_epi16(d_lo, ia_lo);
+            __m128i ps_hi = _mm_mullo_epi16(s_hi, a_hi);
+            __m128i pd_hi = _mm_mullo_epi16(d_hi, ia_hi);
+
+            __m128i sum0 = _mm_add_epi32(_mm_unpacklo_epi16(ps_lo, vz), _mm_unpacklo_epi16(pd_lo, vz));
+            __m128i sum1 = _mm_add_epi32(_mm_unpackhi_epi16(ps_lo, vz), _mm_unpackhi_epi16(pd_lo, vz));
+            __m128i sum2 = _mm_add_epi32(_mm_unpacklo_epi16(ps_hi, vz), _mm_unpacklo_epi16(pd_hi, vz));
+            __m128i sum3 = _mm_add_epi32(_mm_unpackhi_epi16(ps_hi, vz), _mm_unpackhi_epi16(pd_hi, vz));
+
+            sum0 = _mm_add_epi32(sum0, vrnd);
+            sum1 = _mm_add_epi32(sum1, vrnd);
+            sum2 = _mm_add_epi32(sum2, vrnd);
+            sum3 = _mm_add_epi32(sum3, vrnd);
+
+            sum0 = _mm_srli_epi32(sum0, 8);
+            sum1 = _mm_srli_epi32(sum1, 8);
+            sum2 = _mm_srli_epi32(sum2, 8);
+            sum3 = _mm_srli_epi32(sum3, 8);
+
+            __m128i out_lo = _mm_packus_epi16(_mm_packs_epi32(sum0, sum1), _mm_packs_epi32(sum2, sum3));
+            _mm_store_si128((__m128i *)&d[x], out_lo);
+        }
+
+        for (; x < w; x++) {
+            uint32_t spx = s[x];
+            uint32_t a = spx >> 24;
+            if (a == 0) {
+                continue;
+            } else if (a == 255) {
+                d[x] = spx;
+            } else {
+                uint32_t dpx = d[x];
+                uint32_t ia = 255 - a;
+                uint32_t rb = (((dpx & 0x00FF00FFu) * ia) + ((spx & 0x00FF00FFu) * a) + 0x00800080u) >> 8;
+                uint32_t g  = (((dpx & 0x0000FF00u) * ia) + ((spx & 0x0000FF00u) * a) + 0x00008000u) >> 8;
+                d[x] = (spx & 0xFF000000u) | (rb & 0x00FF00FFu) | (g & 0x0000FF00u);
+            }
+        }
+    }
+}
+
 /**
  * @brief Copy the backbuffer contents to the framebuffer.
  */
@@ -472,9 +638,9 @@ void vbe_flip(void)
     uint16_t rect_height = y1-y0;
     uint32_t rect_bytes = rect_height * vbe_info.pitch;
 
-    uint32_t* bb_ptr = vbe_info.backbuffer + y0 * vbe_info.pitch; 
-    uint32_t* fb_ptr = vbe_info.framebuffer + y0 * vbe_info.pitch;
-    uint32_t* buf0_ptr = vbe_z_layers[0]->bufptr + y0 * vbe_info.pitch;
+    uint8_t *bb_ptr = (uint8_t *)vbe_info.backbuffer + y0 * vbe_info.pitch;
+    uint8_t *fb_ptr = (uint8_t *)vbe_info.framebuffer + y0 * vbe_info.pitch;
+    uint8_t *buf0_ptr = (uint8_t *)vbe_z_layers[0]->bufptr + y0 * vbe_info.pitch;
 
     memcpy_nt(bb_ptr, buf0_ptr, rect_bytes);
 
@@ -483,10 +649,27 @@ void vbe_flip(void)
         if (!layer->active)
             continue;
 
-        uint32_t* src_z_ptr = vbe_z_layers[z]->bufptr + y0 * vbe_info.pitch;
-        uint32_t* dst_z_ptr = bb_ptr;
+        uint16_t layer_x0 = layer->x0;
+        uint16_t layer_y0 = layer->y0;
+        uint16_t layer_x1 = layer_x0 + layer->width;
+        uint16_t layer_y1 = layer_y0 + layer->height;
 
-        vbe_blend_area(dst_z_ptr, src_z_ptr, x0, x1, y0, y1);
+        uint16_t ix0 = (x0 > layer_x0) ? x0 : layer_x0;
+        uint16_t iy0 = (y0 > layer_y0) ? y0 : layer_y0;
+        uint16_t ix1 = (x1 < layer_x1) ? x1 : layer_x1;
+        uint16_t iy1 = (y1 < layer_y1) ? y1 : layer_y1;
+
+        if (ix1 <= ix0 || iy1 <= iy0)
+            continue;
+
+        uint32_t w = ix1 - ix0;
+        uint32_t h = iy1 - iy0;
+        uint32_t src_x = ix0 - layer_x0;
+        uint32_t src_y = iy0 - layer_y0;
+
+        vbe_blend_area_stride(vbe_info.backbuffer, vbe_info.pitch,
+                              layer->bufptr, layer->pitch,
+                              ix0, iy0, src_x, src_y, w, h);
     }
 
     memcpy_nt(fb_ptr, bb_ptr, rect_bytes);
@@ -988,7 +1171,7 @@ void vbe_handle_ansi_sequence(const char *seq) {
         return;
     char cmd = buf[len - 1];
     buf[len - 1] = '\0'; // remove command char for parsing
-    
+
     // split params
     char *params[16];
     int count = 0;
@@ -1090,7 +1273,45 @@ void vbe_handle_ansi_sequence(const char *seq) {
 
 void vbe_worker(void) {
     while (1) {
+        clear_interrupts();
+        for (uint8_t z = 1; z < VBE_NUM_Z_LAYERS; z++) {
+            if (!vbe_z_layers[z] || !vbe_z_layers[z]->active)
+                continue;
+
+            fb_layer_metadata_t *meta = vbe_layer_meta[z];
+            if (!meta || !meta->ready)
+                continue;
+
+            vbe_z_layer_t *layer = vbe_z_layers[z];
+            uint16_t layer_w = layer->width;
+            uint16_t layer_h = layer->height;
+
+            uint16_t dx0 = meta->dx0;
+            uint16_t dx1 = meta->dx1;
+            uint16_t dy0 = meta->dy0;
+            uint16_t dy1 = meta->dy1;
+
+            if (dx1 > dx0 && dy1 > dy0) {
+                if (dx0 >= layer_w || dy0 >= layer_h) {
+                    meta->ready = 0;
+                    continue;
+                }
+                if (dx1 > layer_w) dx1 = layer_w;
+                if (dy1 > layer_h) dy1 = layer_h;
+
+                uint16_t sx0 = layer->x0 + dx0;
+                uint16_t sy0 = layer->y0 + dy0;
+                uint16_t w = dx1 - dx0;
+                uint16_t h = dy1 - dy0;
+                vbe_mark_region_dirty(sx0, sy0, w, h);
+            } else {
+                vbe_mark_region_dirty(layer->x0, layer->y0, layer_w, layer_h);
+            }
+
+            meta->ready = 0;
+        }
         vbe_flip();
+        enable_interrupts();
         kernel_yield();
     }
 }

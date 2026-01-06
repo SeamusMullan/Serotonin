@@ -914,7 +914,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     //ps2_mouse_init();
 
-    printfs(PRINT_STATUS_INFO,"Trying to mount rootfs drive 1\n");
+    printfs(PRINT_STATUS_INFO,"Mounting rootfs drive 1\n");
 
     vfs_init();
     ide_init();
