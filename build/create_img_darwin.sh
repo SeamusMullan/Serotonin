@@ -31,23 +31,14 @@ DISKDEV=$(hdiutil attach "$TEMP_DMG" | grep "^/dev/" | tail -n1 | awk '{print $1
 echo "[*] Mounted at ${MOUNT_POINT}"
 sleep 1  # wait for mount to complete
 
-# === COPY FILES FROM FILELIST ===
-echo "[*] Copying files according to ${FILE_LIST} ..."
-while read -r src dst; do
-    [[ -z "${src:-}" || -z "${dst:-}" ]] && continue  # skip blanks
-
-    src_path="${SRC_DIR}/${src}"
-    dest_path="${MOUNT_POINT}/${dst}"
-    dest_dir="$(dirname "$dest_path")"
-
-    if [[ -f "$src_path" ]]; then
-        echo "   → ${src} -> ${dst}"
-        sudo mkdir -p "$dest_dir"
-        sudo cp "$src_path" "$dest_path"
-    else
-        echo "   [!] Missing: $src"
-    fi
-done < "$FILE_LIST"
+# === COPY ALL ELF FILES ===
+echo "[*] Copying all ELF files from ${SRC_DIR} ..."
+sudo mkdir -p "${MOUNT_POINT}/bin"
+find "$SRC_DIR" -name "*.elf" -type f | while read -r elf_file; do
+    elf_name="$(basename "$elf_file")"
+    echo "   → ${elf_file} -> bin/${elf_name}"
+    sudo cp "$elf_file" "${MOUNT_POINT}/bin/${elf_name}"
+done
 
 # === CLEAN UP ===
 echo "[*] Ejecting disk image..."
