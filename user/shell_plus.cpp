@@ -1,5 +1,16 @@
-// shell_plus.cpp - Enhanced shell for Serotonin OS
-// Uses STLport for C++ containers and iostream
+/**
+ * @file shell_plus.cpp
+ * @brief Enhanced command-line shell for Serotonin OS
+ *
+ * A feature-rich shell implementation using C++ STL (via STLport).
+ * Features include:
+ * - ANSI color-coded output
+ * - Command history with !! and !n expansion
+ * - Built-in commands (cd, ls, ps, env, etc.)
+ * - Background process execution with &
+ * - Quote-aware argument parsing
+ * - PATH-based command search
+ */
 
 #include <iostream>
 #include <string>

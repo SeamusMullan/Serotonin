@@ -1,3 +1,12 @@
+/**
+ * @file fs_syscall_test.c
+ * @brief Filesystem system call test program
+ *
+ * Comprehensive test suite for filesystem operations including
+ * mkdir, chdir, getcwd, open, read, write, lseek, close,
+ * unlink, and rmdir system calls.
+ */
+
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -5,6 +14,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/**
+ * @brief Assert that a return code is zero
+ *
+ * @param rc Return code to check
+ * @param label Descriptive label for error messages
+ * @return 0 if rc is 0, -1 otherwise (prints error)
+ */
 static int expect_zero(int rc, const char *label) {
     if (rc != 0) {
         printf("%s failed rc=%d errno=%d\n", label, rc, errno);
@@ -13,6 +29,14 @@ static int expect_zero(int rc, const char *label) {
     return 0;
 }
 
+/**
+ * @brief Assert that a return code matches expected value
+ *
+ * @param rc Return code to check
+ * @param expected Expected value
+ * @param label Descriptive label for error messages
+ * @return 0 if rc equals expected, -1 otherwise (prints error)
+ */
 static int expect_len(int rc, int expected, const char *label) {
     if (rc != expected) {
         printf("%s failed rc=%d expected=%d errno=%d\n", label, rc, expected, errno);
@@ -21,6 +45,17 @@ static int expect_len(int rc, int expected, const char *label) {
     return 0;
 }
 
+/**
+ * @brief Main entry point for filesystem test
+ *
+ * Runs through a series of filesystem operations:
+ * 1. Creates a test directory
+ * 2. Changes into the directory
+ * 3. Creates, writes, reads, and deletes a file
+ * 4. Cleans up by removing the test directory
+ *
+ * @return 0 on success, 1 on any test failure
+ */
 int main(void) {
     char cwd[256];
     const char *dir = "fstest";

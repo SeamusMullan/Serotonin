@@ -1,13 +1,39 @@
+/**
+ * @file fb_layer_test.c
+ * @brief Framebuffer layer animation test program
+ *
+ * Demonstrates the 5HT framebuffer layer system by creating a layer,
+ * drawing animated rectangles, and using double-buffering with
+ * the compositor for smooth animation.
+ */
+
 #include <stdint.h>
 #include "syscall/lib5ht/lib5ht.h"
 
+/** @brief Bytes per pixel (32-bit ARGB) */
 #define BYTES_PER_PIXEL 4
+/** @brief Layer width in pixels */
 #define LAYER_WIDTH 480
+/** @brief Layer height in pixels */
 #define LAYER_HEIGHT 300
+/** @brief Layer X position on screen */
 #define LAYER_X0 200
+/** @brief Layer Y position on screen */
 #define LAYER_Y0 150
+/** @brief Stride in bytes per row */
 #define STRIDE_BYTES (LAYER_WIDTH * BYTES_PER_PIXEL)
 
+/**
+ * @brief Fill a rectangular region with a solid color
+ *
+ * @param fb Pointer to framebuffer
+ * @param stride_pixels Stride in pixels (not bytes)
+ * @param x X position of rectangle
+ * @param y Y position of rectangle
+ * @param w Width of rectangle
+ * @param h Height of rectangle
+ * @param color 32-bit ARGB color value
+ */
 static void fill_rect(uint32_t *fb, uint32_t stride_pixels, uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
     uint32_t *row = fb + y * stride_pixels + x;
     for (uint32_t yy = 0; yy < h; yy++) {
@@ -19,6 +45,15 @@ static void fill_rect(uint32_t *fb, uint32_t stride_pixels, uint32_t x, uint32_t
     }
 }
 
+/**
+ * @brief Clear the entire framebuffer with a solid color
+ *
+ * @param fb Pointer to framebuffer
+ * @param stride_pixels Stride in pixels (not bytes)
+ * @param width Width of framebuffer in pixels
+ * @param height Height of framebuffer in pixels
+ * @param color 32-bit ARGB color value
+ */
 static void clear_fb(uint32_t *fb, uint32_t stride_pixels, uint32_t width, uint32_t height, uint32_t color) {
     for (uint32_t y = 0; y < height; y++) {
         uint32_t *row = fb + y * stride_pixels;
@@ -28,6 +63,14 @@ static void clear_fb(uint32_t *fb, uint32_t stride_pixels, uint32_t width, uint3
     }
 }
 
+/**
+ * @brief Main entry point for framebuffer layer test
+ *
+ * Creates a framebuffer layer, renders 300 frames of animation
+ * showing a bouncing rectangle, then releases the layer.
+ *
+ * @return 0 on success, 1 on layer allocation failure
+ */
 int main(void) {
     fb_layer_config_t cfg = {0};
     cfg.size = sizeof(cfg);

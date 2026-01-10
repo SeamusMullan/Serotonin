@@ -1,6 +1,20 @@
+/**
+ * @file syscall_table.h
+ * @brief System call number definitions for Serotonin OS
+ *
+ * Defines the system call numbers used by the kernel syscall dispatcher.
+ * These numbers are passed in the EAX register when executing int 0x80.
+ */
+
 #ifndef _5HT_SYSCALL_TABLE
 #define _5HT_SYSCALL_TABLE
 
+/**
+ * @brief System call number enumeration
+ *
+ * Each value corresponds to a specific kernel function that can be
+ * invoked from user space via the int 0x80 software interrupt.
+ */
 enum {
     SYSTEM_CALL_EXIT       = 0,
     SYSTEM_CALL_WRITE      = 1,

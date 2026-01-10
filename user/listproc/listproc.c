@@ -1,6 +1,23 @@
+/**
+ * @file listproc.c
+ * @brief Process listing utility for Serotonin OS
+ *
+ * Displays a formatted table of all running processes including
+ * their PID, name, priority, and privilege level (kernel/user mode).
+ * Uses ANSI color codes to distinguish kernel and user processes.
+ */
+
 #include <stdio.h>
 #include "../syscall/lib5ht/lib5ht.h"
 
+/**
+ * @brief Main entry point for process listing utility
+ *
+ * Retrieves the list of running processes from the kernel and
+ * displays them in a formatted table with color-coded privilege levels.
+ *
+ * @return 0 on success
+ */
 int main(void) {
 
     proc_5ht_t procs[10];

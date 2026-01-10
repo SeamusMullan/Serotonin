@@ -1,25 +1,44 @@
-// STLport test program for Serotonin OS
-// Tests basic STL container functionality
+/**
+ * @file stl_test.cpp
+ * @brief STLport container and algorithm test for Serotonin OS
+ *
+ * Tests STL functionality without relying on iostream, using
+ * direct system calls for output. Verifies:
+ * - std::vector push_back and indexing
+ * - std::string concatenation and c_str()
+ * - std::sort algorithm
+ */
 
 #include <vector>
 #include <string>
 #include <algorithm>
 
-// Forward declare syscall (from syscall.o)
+/** @brief System call for writing to file descriptor */
 extern "C" int write(int fd, const void* buf, unsigned long count);
 
-// Helper to get string length
+/**
+ * @brief Calculate string length
+ * @param s Null-terminated string
+ * @return Length of string (not including null terminator)
+ */
 static unsigned long my_strlen(const char* s) {
     unsigned long len = 0;
     while (s[len]) len++;
     return len;
 }
 
-// Helper to print a string via syscall
+/**
+ * @brief Print a null-terminated string via syscall
+ * @param s String to print
+ */
 static void print(const char* s) {
     write(1, s, my_strlen(s));
 }
 
+/**
+ * @brief Print an integer as decimal string
+ * @param n Integer to print
+ */
 static void print_num(int n) {
     char buf[16];
     int i = 0;
@@ -46,6 +65,17 @@ static void print_num(int n) {
     print(buf);
 }
 
+/**
+ * @brief Main entry point for STL test program
+ *
+ * Runs tests for std::vector, std::string, and std::sort,
+ * printing results directly via system calls.
+ *
+ * @param argc Argument count (unused)
+ * @param argv Argument vector (unused)
+ * @param envp Environment variables (unused)
+ * @return 0 on success
+ */
 int main(int argc, char** argv, char** envp) {
     (void)argc; (void)argv; (void)envp;
 

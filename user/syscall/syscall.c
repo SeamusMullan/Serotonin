@@ -97,6 +97,13 @@ int fstat(int fd, struct stat *st) {
     return do_syscall(SYSTEM_CALL_FSTAT, fd, (uintptr_t)st, 0);
 }
 
+/**
+ * @brief Get file status by path
+ *
+ * @param path Path to the file
+ * @param st Pointer to stat structure to fill
+ * @return 0 on success, -1 on error (errno set)
+ */
 int stat(const char *path, struct stat *st) {
     return do_syscall(SYSTEM_CALL_STAT, (uintptr_t)path, (uintptr_t)st, 0);
 }
@@ -179,47 +186,116 @@ int execve(const char *name, char *const argv[], char *const envp[]) {
     return do_syscall(SYSTEM_CALL_EXECVE, (uint32_t)name, (uint32_t)argv, (uint32_t)envp);
 }
 
+/**
+ * @brief Get current time of day
+ *
+ * @param tv Pointer to timeval structure to fill
+ * @param tz Timezone (unused, should be NULL)
+ * @return 0 on success, -1 on error
+ */
 int gettimeofday(struct timeval *tv, void *tz) {
     return do_syscall(SYSTEM_CALL_TOD, (uint32_t)tv, (uint32_t)tz, 0);
 }
 
+/**
+ * @brief Register a signal handler
+ *
+ * @param sig Signal number to handle
+ * @param handler Pointer to signal handler function
+ * @return 0 on success, -1 on error
+ */
 int signal(int sig, void* handler) {
     return do_syscall(SYSTEM_CALL_SIGNAL, (uint32_t)sig, (uint32_t)handler, 0);
 }
 
+/**
+ * @brief Send a signal to the current process
+ *
+ * @param sig Signal number to send
+ * @return 0 on success, -1 on error
+ */
 int raise(int sig) {
     return kill(getpid(), sig);
 }
 
+/**
+ * @brief Suspend until a signal is received
+ *
+ * @return -1 when interrupted by a signal (errno set to EINTR)
+ */
 int pause(void) {
     return do_syscall(SYSTEM_CALL_PAUSE, 0, 0, 0);
 }
 
+/**
+ * @brief Create a shared memory segment
+ *
+ * @param size Size of the shared memory segment in bytes
+ * @return Shared memory ID on success, -1 on error
+ */
 int shm_create(size_t size) {
     return do_syscall(SYSTEM_CALL_SHM_CREATE, (uint32_t)size, 0, 0);
 }
 
+/**
+ * @brief Map a shared memory segment into process address space
+ *
+ * @param shm_id Shared memory ID from shm_create
+ * @return Pointer to mapped memory on success, NULL on error
+ */
 void *shm_map(int shm_id) {
     return (void*)do_syscall(SYSTEM_CALL_SHM_MAP, (uint32_t)shm_id, 0, 0);
 }
 
+/**
+ * @brief Unmap a shared memory segment
+ *
+ * @param addr Address of mapped shared memory
+ * @return 0 on success, -1 on error
+ */
 int shm_unmap(void* addr) {
     return do_syscall(SYSTEM_CALL_SHM_UNMAP, (uint32_t)addr, 0, 0);
 }
 
+/**
+ * @brief Create a directory
+ *
+ * @param path Path of directory to create
+ * @param mode Permission mode (currently unused)
+ * @return 0 on success, -1 on error
+ */
 int mkdir(const char *path, mode_t mode) {
     (void)mode;
     return do_syscall(SYSTEM_CALL_MKDIR, (uint32_t)path, 0, 0);
 }
 
+/**
+ * @brief Remove an empty directory
+ *
+ * @param path Path of directory to remove
+ * @return 0 on success, -1 on error
+ */
 int rmdir(const char *path) {
     return do_syscall(SYSTEM_CALL_RMDIR, (uint32_t)path, 0, 0);
 }
 
+/**
+ * @brief Change current working directory
+ *
+ * @param path Path of directory to change to
+ * @return 0 on success, -1 on error
+ */
 int chdir(const char *path) {
     return do_syscall(SYSTEM_CALL_CHDIR, (uint32_t)path, 0, 0);
 }
 
+/**
+ * @brief Get current working directory
+ *
+ * @param buf Buffer to store path
+ * @param size Size of buffer
+ * @return Pointer to buf on success, NULL on error
+ */
 char *getcwd(char *buf, size_t size) {
     int ret = do_syscall(SYSTEM_CALL_GETCWD, (uint32_t)buf, (uint32_t)size, 0);
     if (ret != 0) {
@@ -228,10 +304,24 @@ char *getcwd(char *buf, size_t size) {
     return buf;
 }
 
+/**
+ * @brief Delete a file
+ *
+ * @param path Path of file to delete
+ * @return 0 on success, -1 on error
+ */
 int unlink(const char *path) {
     return do_syscall(SYSTEM_CALL_UNLINK, (uint32_t)path, 0, 0);
 }
 
+/**
+ * @brief List directory contents
+ *
+ * @param path Path of directory to list
+ * @param buf Buffer to store directory listing
+ * @param size Size of buffer
+ * @return Number of bytes written on success, -1 on error
+ */
 int listdir(const char *path, char *buf, size_t size) {
     return do_syscall(SYSTEM_CALL_LISTDIR, (uint32_t)path, (uint32_t)buf, (uint32_t)size);
 }
