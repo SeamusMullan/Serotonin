@@ -66,6 +66,12 @@ i686-elf-g++ -c iostream_test.cpp -o iostream_test.o $CXXFLAGS $STLPORT_FLAGS
 i686-elf-g++ -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o iostream_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -L$STLPORT_LIB -lstlport -Wl,--start-group -lc -lm -Wl,--end-group -o iostr.elf
 echo "iostream test build complete: iostreamtest.elf"
 
+# Build enhanced C++ shell (shell+)
+echo "Building shell+..."
+i686-elf-g++ -c shell_plus.cpp -o shell_plus.o $CXXFLAGS $STLPORT_FLAGS
+i686-elf-g++ -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o shell_plus.o syscall/syscall.o syscall/lib5ht/lib5ht.o -L$STLPORT_LIB -lstlport -Wl,--start-group -lc -lm -Wl,--end-group -o shplus.elf
+echo "shell+ build complete: shplus.elf"
+
 # Build Lua
 echo "Building Lua..."
 cd lua/lua-5.4.8/src

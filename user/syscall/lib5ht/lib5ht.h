@@ -5,6 +5,10 @@
 #include <errno.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct proc_5ht {
     int pid;
     char name[32];
@@ -86,5 +90,9 @@ int sys_5ht_rel_buf(uint16_t id);
 int sys_5ht_rcfg_layer(uint16_t id, const fb_layer_config_t *cfg, fb_layer_info_t *out);
 int sys_5ht_query_info(fb_info_t *out);
 int sys_5ht_query_layer(uint16_t id, fb_layer_info_t *out);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
