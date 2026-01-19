@@ -1,7 +1,7 @@
 /**
  * @file syscall.c
  * @brief System call interface for Serotonin OS
- * 
+ *
  * Provides user-space wrappers for kernel system calls using the
  * interrupt-based system call mechanism (int 0x80). Each function
  * invokes the appropriate system call and handles error conditions.
@@ -18,9 +18,9 @@ int errno;
 
 /**
  * @brief Terminate the calling process
- * 
+ *
  * This function does not return.
- * 
+ *
  * @param status Exit status code
  */
 void _exit(int status) {
@@ -30,7 +30,7 @@ void _exit(int status) {
 
 /**
  * @brief Write data to a file descriptor
- * 
+ *
  * @param fd File descriptor
  * @param buf Buffer containing data to write
  * @param count Number of bytes to write
@@ -42,7 +42,7 @@ int write(int fd, const void *buf, size_t count) {
 
 /**
  * @brief Read data from a file descriptor
- * 
+ *
  * @param fd File descriptor
  * @param buf Buffer to store read data
  * @param count Maximum number of bytes to read
@@ -54,7 +54,7 @@ int read(int fd, void *buf, size_t count) {
 
 /**
  * @brief Open a file
- * 
+ *
  * @param path Path to the file
  * @param flags Open flags (O_RDONLY, O_WRONLY, O_RDWR, etc.)
  * @param ... Optional mode argument for file creation
@@ -66,7 +66,7 @@ int open(const char *path, int flags, ...) {
 
 /**
  * @brief Close a file descriptor
- * 
+ *
  * @param fd File descriptor to close
  * @return 0 on success, -1 on error (errno set)
  */
@@ -76,7 +76,7 @@ int close(int fd) {
 
 /**
  * @brief Reposition file offset
- * 
+ *
  * @param fd File descriptor
  * @param offset Offset value
  * @param whence Reference point (SEEK_SET, SEEK_CUR, SEEK_END)
@@ -88,7 +88,7 @@ off_t lseek(int fd, off_t offset, int whence) {
 
 /**
  * @brief Get file status by file descriptor
- * 
+ *
  * @param fd File descriptor
  * @param st Pointer to stat structure to fill
  * @return 0 on success, -1 on error (errno set)
@@ -110,7 +110,7 @@ int stat(const char *path, struct stat *st) {
 
 /**
  * @brief Check if file descriptor refers to a terminal
- * 
+ *
  * @param fd File descriptor
  * @return 1 if terminal, 0 if not, -1 on error (errno set)
  */
@@ -120,7 +120,7 @@ int isatty(int fd) {
 
 /**
  * @brief Get current process ID
- * 
+ *
  * @return Process ID
  */
 pid_t getpid(void) {
@@ -129,7 +129,7 @@ pid_t getpid(void) {
 
 /**
  * @brief Send signal to a process
- * 
+ *
  * @param pid Process ID to send signal to
  * @param sig Signal number
  * @return 0 on success, -1 on error (errno set)
@@ -140,7 +140,7 @@ int kill(pid_t pid, int sig) {
 
 /**
  * @brief Change data segment size (heap allocation)
- * 
+ *
  * @param incr Number of bytes to increment (positive) or decrement (negative)
  * @return Previous program break on success, (void *)-1 on error
  */
@@ -153,7 +153,7 @@ void *sbrk(ptrdiff_t incr) {
 
 /**
  * @brief Create a new process by duplicating the current process
- * 
+ *
  * @return 0 in child process, child PID in parent process, -1 on error
  */
 pid_t fork() {
@@ -162,7 +162,7 @@ pid_t fork() {
 
 /**
  * @brief Wait for process to change state
- * 
+ *
  * @param pid Process ID to wait for
  * @param status Pointer to store exit status
  * @return Process ID of terminated child, -1 on error (errno set)
@@ -173,10 +173,10 @@ int waitpid(pid_t pid, int *status) {
 
 /**
  * @brief Execute a program
- * 
+ *
  * Replaces the current process image with a new program.
  * This function only returns on error.
- * 
+ *
  * @param name Path to the executable
  * @param argv Argument vector (NULL-terminated)
  * @param envp Environment variables (NULL-terminated)
@@ -209,9 +209,18 @@ int signal(int sig, void* handler) {
 }
 
 /**
+ * @brief Return from signal handler
+ *
+ * @return nothing, TROLL on error
+ */
+int sigreturn(void) {
+    return do_syscall(SYSTEM_CALL_SIGRET, 0, 0, 0);
+}
+
+/**
  * @brief Send a signal to the current process
  *
- * @param sig Signal number to send
+ * @param sig Signal number
  * @return 0 on success, -1 on error
  */
 int raise(int sig) {

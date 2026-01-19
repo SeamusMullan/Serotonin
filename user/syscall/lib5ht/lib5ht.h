@@ -96,10 +96,10 @@ typedef struct fb_layer_metadata {
 
 /**
  * @brief Execute a system call via interrupt 0x80
- * 
+ *
  * Low-level function that performs the actual system call by triggering
  * interrupt 0x80 with the appropriate register values.
- * 
+ *
  * @param num System call number
  * @param arg1 First argument
  * @param arg2 Second argument
@@ -179,6 +179,7 @@ int sys_5ht_query_info(fb_info_t *out);
  * @return 0 on success, negative error code on failure
  */
 int sys_5ht_query_layer(uint16_t id, fb_layer_info_t *out);
+int sys_5ht_set_fid(pid_t pid);
 
 /** @} */ /* end of lib5ht group */
 

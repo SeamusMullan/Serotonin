@@ -1,8 +1,6 @@
 #ifndef _KERNEL_FAULT
 #define _KERNEL_FAULT
 
-#pragma once
-
 typedef enum {
     ISR_DIVIDE_ERROR         = 0,   // #DE
     ISR_DEBUG                = 1,   // #DB
@@ -37,6 +35,5 @@ typedef enum {
     ISR_RESERVED_30          = 30,
     ISR_RESERVED_31          = 31
 } isr_vector_t;
-
 
 #endif

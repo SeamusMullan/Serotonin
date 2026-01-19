@@ -101,6 +101,40 @@ i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/c
 
 echo "Lua build complete: lua.elf"
 
+# Build binutils for userland
+echo "Building binutils..."
+BINUTILS_SRC="$DIR/../build-tools/src/binutils-gdb"
+BINUTILS_BUILD="$DIR/binutils-user-build"
+BINUTILS_STAGE="$DIR/binutils-user-stage"
+BINUTILS_LDFLAGS="-nostartfiles -Wl,-Ttext=0x400100 $DIR/../user/crt0.o $DIR/../user/cxx/cxx_init.o $DIR/../user/cxx/cxx_runtime.o $DIR/../user/syscall/syscall.o $DIR/../user/syscall/lib5ht/lib5ht.o"
+BINUTILS_LIBS=""
+
+mkdir -p "$BINUTILS_BUILD" "$BINUTILS_STAGE"
+cd "$BINUTILS_BUILD"
+
+if [ ! -f "config.status" ]; then
+    echo "Configuring binutils..."
+    CC="i686-elf-gcc"     AR="i686-elf-ar"     RANLIB="i686-elf-ranlib"     CFLAGS="$CFLAGS"     LDFLAGS="$BINUTILS_LDFLAGS"     LIBS="$BINUTILS_LIBS"     "$BINUTILS_SRC/configure"         --host="$TARGET"         --target="$TARGET"         --prefix=/usr         --program-prefix=         --disable-nls         --disable-werror         --disable-gdb         --disable-gdbserver         --disable-gprofng         --disable-gold         --disable-sim
+fi
+
+
+echo "Building binutils utilities..."
+make -j $(nproc)
+
+echo "Installing binutils utilities to staging..."
+make DESTDIR="$BINUTILS_STAGE" install
+
+echo "Copying binutils utilities to userland..."
+BINUTILS_STAGE_BIN="$BINUTILS_STAGE/usr/bin"
+for bin in "$BINUTILS_STAGE_BIN"/*; do
+    if [ -f "$bin" ]; then
+        bin_name="$(basename "$bin")"
+        cp "$bin" "$DIR/../user/${bin_name}.elf"
+    fi
+done
+
+cd "$DIR/../user"
+
 echo ""
 echo "=== Build complete ==="
 echo "STLport containers are available (header-only mode)"

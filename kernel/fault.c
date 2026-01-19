@@ -190,14 +190,14 @@ void page_fault_handler(uint32_t *stack) {
                 current_task->processor_context->cs, current_task->processor_context->ds, current_task->processor_context->es,
                 current_task->processor_context->fs, current_task->processor_context->gs, current_task->processor_context->ss);
         dump_user_bytes(fault_eip);
-        task_exit(EXIT_SIGSEGV);
+        task_exit(current_task,EXIT_SIGSEGV);
         return;
     }
 
     printfs(PRINT_STATUS_ERROR,"Kernel mode page fault at EIP=0x%08x CS=0x%08x EFLAGS=0x%08x\n",
             fault_eip, fault_cs, fault_eflags);
     dump_kernel_bytes(fault_eip);
-    kernel_panic("unhandled exception - page fault (#PF)");
+    kernel_panic("kernel mode exception - page fault (#PF)");
 }
 
 /**
@@ -208,7 +208,7 @@ void page_fault_handler(uint32_t *stack) {
 void gp_fault_handler(uint32_t error_code) {
     printfs(PRINT_STATUS_ERROR,"A general protection fault has occured. Error code: 0x%08x\n", error_code);
 
-    if (multitasking_ready == 1) {
+    if (multitasking_ready == 1 && current_task->priv == CPU_USER_MODE) {
         printfs(PRINT_STATUS_ERROR,"Process \"%s\" (pid=%d) has attempted to execute an illegal instruction and will be terminated.\n", current_task->name,current_task->pid);
         printfs(PRINT_STATUS_ERROR,"Register dump:\n");
         printfs(PRINT_STATUS_ERROR,"EAX: 0x%08x EBX: 0x%08x ECX: 0x%08x EDX: 0x%08x\n", current_task->processor_context->eax, current_task->processor_context->ebx, current_task->processor_context->ecx, current_task->processor_context->edx);
@@ -217,11 +217,11 @@ void gp_fault_handler(uint32_t error_code) {
         printfs(PRINT_STATUS_ERROR,"CS: 0x%08x DS: 0x%08x ES: 0x%08x FS: 0x%08x GS: 0x%08x SS: 0x%08x\n",
                 current_task->processor_context->cs, current_task->processor_context->ds, current_task->processor_context->es,
                 current_task->processor_context->fs, current_task->processor_context->gs, current_task->processor_context->ss);
-        task_exit(EXIT_SIGILL);
+        task_exit(current_task,EXIT_SIGILL);
         return;
     }
 
-    kernel_panic("unhandled exception - general protection fault (#GP)");
+    kernel_panic("kernel mode exception - general protection fault (#GP)");
 }
 
 /**
@@ -229,7 +229,7 @@ void gp_fault_handler(uint32_t error_code) {
  *
  */
 void div_zero_fault_handler(void) {
-    if (multitasking_ready == 1) {
+    if (multitasking_ready == 1 && current_task->priv == CPU_USER_MODE) {
         printfs(PRINT_STATUS_ERROR,"Process \"%s\" attempted to divide by zero and will be terminated.\n",current_task->name);
         printfs(PRINT_STATUS_ERROR,"Register dump:\n");
         printfs(PRINT_STATUS_ERROR,"EAX: 0x%08x EBX: 0x%08x ECX: 0x%08x EDX: 0x%08x\n", current_task->processor_context->eax, current_task->processor_context->ebx, current_task->processor_context->ecx, current_task->processor_context->edx);
@@ -238,11 +238,11 @@ void div_zero_fault_handler(void) {
         printfs(PRINT_STATUS_ERROR,"CS: 0x%08x DS: 0x%08x ES: 0x%08x FS: 0x%08x GS: 0x%08x SS: 0x%08x\n",
                 current_task->processor_context->cs, current_task->processor_context->ds, current_task->processor_context->es,
                 current_task->processor_context->fs, current_task->processor_context->gs, current_task->processor_context->ss);
-        task_exit(EXIT_SIGILL);
+        task_exit(current_task,EXIT_SIGILL);
         return;
     }
 
-    kernel_panic("unhandled exception - divide by zero (#DE)");
+    kernel_panic("kernel mode exception - divide by zero (#DE)");
 }
 
 void invalid_opcode_handler(uint32_t *stack) {
@@ -266,12 +266,12 @@ void invalid_opcode_handler(uint32_t *stack) {
                 current_task->processor_context->cs, current_task->processor_context->ds, current_task->processor_context->es,
                 current_task->processor_context->fs, current_task->processor_context->gs, current_task->processor_context->ss);
         dump_user_bytes(eip);
-        task_exit(EXIT_SIGILL);
+        task_exit(current_task,EXIT_SIGILL);
         return;
     }
 
     printfs(PRINT_STATUS_ERROR,"Invalid opcode in kernel mode, EIP=0x%08x CS=0x%08x EFLAGS=0x%08x\n",
             eip, cs, eflags);
     dump_kernel_bytes(eip);
-    kernel_panic("unhandled exception - invalid opcode (#UD)");
+    kernel_panic("kernel mode exception - invalid opcode (#UD)");
 }

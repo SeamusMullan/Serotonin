@@ -307,7 +307,7 @@ void handle_illegal_call(uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t a
     printfs(PRINT_STATUS_WARNING,"Illegal system call from %s (pid=%d)!\n", current_task->name, current_task->pid);
     printfs(PRINT_STATUS_WARNING,"EIP: %p\n", current_task->processor_context->eip);
     printfs(PRINT_STATUS_WARNING,"Args: %p %p %p %p\n", arg1, arg2, arg3, arg4);
-    task_exit(EXIT_SIGKILL);
+    task_exit(current_task,EXIT_SIGKILL);
 }
 
 /**
@@ -316,7 +316,7 @@ void handle_illegal_call(uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t a
  * @param arg2 The exit status.
  */
 static void sys_exit(uint32_t arg2) {
-    task_exit(arg2);
+    task_exit(current_task,arg2);
 }
 
 /**
@@ -678,9 +678,7 @@ static void sys_waitpid(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) 
     lock_scheduler();
     int pid = arg2;
     int* status_ptr = (int*)arg3;
-    process_control_block_t *target = task_list;
-    while (target && target->pid != pid)
-        target = target->next;
+    process_control_block_t *target = task_lookup_by_pid(pid);
 
     if (!target) {
         errno = -ESRCH;
@@ -691,7 +689,6 @@ static void sys_waitpid(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) 
     if (target->state != PROCESS_STATE_TERMINATED) {
         current_task->waiting_on = pid;
         current_task->status_ptr = status_ptr;
-        unlock_scheduler();
         task_block();
         return;
     }
@@ -1337,6 +1334,19 @@ static void sys_5ht_rcfg_layer(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
     errno = 0;
 }
 
+void sys_5ht_set_fid(uint32_t arg2) {
+    process_control_block_t *fid_task = task_lookup_by_pid((int)arg2);
+
+    if (fid_task->priv == CPU_KERNEL_MODE) {
+        printfs(PRINT_STATUS_WARNING,"Attempted to set illegal foreground task id\n");
+        errno = -EFAULT;
+        return;
+    }
+
+    foreground_pid = (int)arg2;
+    errno = 0;
+}
+
 /**
  * @brief Handle system calls.
  *
@@ -1459,6 +1469,9 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_5HT_QUERY_LAYER:
             sys_5ht_query_layer(arg2, arg3);
+            break;
+        case SYSTEM_CALL_5HT_SET_FID:
+            sys_5ht_set_fid(arg2);
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);

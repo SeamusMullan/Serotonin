@@ -33,6 +33,7 @@ volatile uint32_t lock_count = 0;
 volatile uint8_t pending_schedule = 0;
 static __attribute__((aligned(16))) fpu_fxsave_area_t fx_clean;
 static process_control_block_t *zombie_list = NULL;
+volatile int foreground_pid = 0;
 
 static void reap_zombies(void) {
     process_control_block_t *task = zombie_list;
@@ -229,21 +230,19 @@ void task_yield(int irq) {
             enqueue(current_task);
     }
 
-    process_control_block_t* next = NULL;
-    while ((next = dequeue()) != NULL) {
-        if (next->state == PROCESS_STATE_READY) {
-            lock_scheduler();
-            if (next->priv == CPU_USER_MODE) {
-                switch_address_space(next->address_space);
-                task_ipc_deliver_signals(next, next->processor_context);
-            }
-            // found someone we can switch into
-            next->state = PROCESS_STATE_RUNNING;
-            preempt_enable();
-
-            // if nothing is pending, switch
-            switch_task(next);
+    process_control_block_t* next = dequeue();
+    if (next->state == PROCESS_STATE_READY) {
+        lock_scheduler();
+        if (next->priv == CPU_USER_MODE) {
+            switch_address_space(next->address_space);
+            task_ipc_deliver_signals(next, next->processor_context);
         }
+        // found someone we can switch into
+        next->state = PROCESS_STATE_RUNNING;
+        preempt_enable();
+
+        // if nothing is pending, switch
+        switch_task(next);
     }
 
     kernel_panic("task_yield: no valid task to switch to");
@@ -252,20 +251,20 @@ void task_yield(int irq) {
 /**
  * @brief Terminates the currently running task and switches to the next one.
  */
-void task_exit(uint8_t exit) {
-    printfs(PRINT_STATUS_DEBUG, "task_exit: Task %s (pid=%u) exited:%s\n", current_task->name, current_task->pid,to_signal_name(exit));
-    
+void task_exit(process_control_block_t* task_exited, uint8_t exit) {
+    printfs(PRINT_STATUS_DEBUG, "task_exit: Task %s (pid=%u) exited:%s\n", task_exited->name, task_exited->pid,to_signal_name(exit));
+
     if (current_task->pid == 1) {
         kernel_panic("init died");
     }
-    
-    current_task->state = PROCESS_STATE_TERMINATED;
-    current_task->signal = exit;
+
+    task_exited->state = PROCESS_STATE_TERMINATED;
+    task_exited->signal = exit;
 
     process_control_block_t *task = task_list;
     process_control_block_t *prev_task = NULL;
     while (task) {
-        if (task->waiting_on == (int)current_task->pid) {
+        if (task->waiting_on == task_exited->pid) {
             task->waiting_on = -1;
             int write_rc = 0;
             if (task->status_ptr) {
@@ -285,7 +284,7 @@ void task_exit(uint8_t exit) {
             task->processor_context->eax = write_rc ? write_rc : exit;
             enqueue(task);
         }
-        if (task == current_task) {
+        if (task == task_exited) {
             if (prev_task) {
                 prev_task->next = task->next;
             } else {
@@ -295,8 +294,8 @@ void task_exit(uint8_t exit) {
         prev_task = task;
         task = task->next;
     }
-    current_task->next = zombie_list;
-    zombie_list = current_task;
+    task_exited->next = zombie_list;
+    zombie_list = task_exited;
 
     task_yield(0);  // pick the next runnable task
     kernel_panic("task_exit: nothing to switch to");
@@ -525,7 +524,7 @@ void task_lock_release(lock_t *lock) {
 process_control_block_t* task_fork(process_control_block_t *parent) {
     if (parent->priv == CPU_KERNEL_MODE) {
         printfs(PRINT_STATUS_ERROR,"Process '%s' attempted fork in kernel mode and will be terminated.\n",current_task->name);
-        task_exit(EXIT_SIGILL);
+        task_exit(parent,EXIT_SIGILL);
     }
 
     process_control_block_t *pcb = (process_control_block_t*)kernel_malloc_align(PCB_ALIGNMENT, sizeof(process_control_block_t));
@@ -614,6 +613,11 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     pcb->brk_start = USER_HEAP_START;
     pcb->brk_end = USER_HEAP_START;
     pcb->next = NULL;
+
+    pcb->signal_bitmask = 0;
+    for (int i = 0; i < 16; i++) {
+        pcb->signal_handlers[i] = 0;
+    }
 
     /*
     // create stack
@@ -781,7 +785,7 @@ int task_ipc_deliver_signals(process_control_block_t *task, processor_context_t*
     uint32_t handler = task->signal_handlers[sig];
 
     if (handler == 0) {
-        task_exit(sig);
+        task_exit(task,sig);
         return -1;
     }
 
@@ -796,4 +800,16 @@ int task_ipc_deliver_signals(process_control_block_t *task, processor_context_t*
     task->in_signal_handler = 1;
 
     return 0;
+}
+
+void task_ipc_break_fid() {
+    process_control_block_t *fpcb = task_lookup_by_pid(foreground_pid);
+
+    if (!fpcb)
+        return;
+
+    if (fpcb->priv == CPU_KERNEL_MODE)
+        kernel_panic("kernel process as foreground pid!");
+
+    task_ipc_signal_raise(fpcb, EXIT_SIGINT);
 }

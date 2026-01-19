@@ -26,6 +26,7 @@ static const char scancode_map_shift[128] = {
 
 char stdio_buffer[STDIO_INPUT_BUFFER];
 static uint8_t shift_pressed = 0;
+static uint8_t ctrl_pressed = 0;
 
 /**
  * @brief Handle keyboard scancodes.
@@ -64,6 +65,8 @@ void handle_scancode(uint8_t scancode) {
         uint8_t released = scancode & 0x7F;
         if (released == 0x2A || released == 0x36) {
             shift_pressed = 0;
+        } else if (released == 0x1D) {
+            ctrl_pressed = 0;
         }
     }
     else if (scancode == 0x1C)
@@ -89,15 +92,31 @@ void handle_scancode(uint8_t scancode) {
     }
     else
     {
-        if (scancode == 0x2A || scancode == 0x36) {
-            shift_pressed = 1;
-        }
-        char c = shift_pressed ? scancode_map_shift[scancode] : scancode_map[scancode];
-        if (c) {
-            stdio_buffer[stdin_idx] = (unsigned char)c;
-            stdin_idx++;
-            vbe_terminal_putchar(c);
-            serial_putchar(COM1_BASE, c);
+        if (scancode == 0x1D) {
+            ctrl_pressed = 1;
+        } else if (ctrl_pressed && scancode == 0x2E) {
+            vbe_terminal_putchar('^');
+            vbe_terminal_putchar('C');
+            vbe_terminal_putchar('\n');
+            serial_putchar(COM1_BASE, '^');
+            serial_putchar(COM1_BASE, 'C');
+            serial_putchar(COM1_BASE, '\n');
+            stdio_buffer[0] = '\0';
+            stdin_idx = 0;
+            stdin_lock->owner->processor_context->eax = -EINTR;
+            task_ipc_break_fid();
+            task_lock_release(stdin_lock);
+        } else {
+            if (scancode == 0x2A || scancode == 0x36) {
+                shift_pressed = 1;
+            }
+            char c = shift_pressed ? scancode_map_shift[scancode] : scancode_map[scancode];
+            if (c) {
+                stdio_buffer[stdin_idx] = (unsigned char)c;
+                stdin_idx++;
+                vbe_terminal_putchar(c);
+                serial_putchar(COM1_BASE, c);
+            }
         }
     }
     preempt_enable();

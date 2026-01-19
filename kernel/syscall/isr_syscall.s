@@ -21,7 +21,7 @@ isr_syscall:
     movw %ax, %fs
     movw %ax, %gs
 
-    # Save FPU if multitasking
+    # Save FPU if multitasking (should be multitasking here, BIG problem if not)
     movl    current_task, %edx
     test    %edx, %edx
     jz      1f

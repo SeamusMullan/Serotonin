@@ -137,6 +137,7 @@ extern process_control_block_t *task_list;
 extern volatile uint32_t preempt_count;
 extern volatile uint8_t pending_schedule;
 extern lock_t *stdin_lock;
+extern volatile int foreground_pid;
 
 void multitasking_init(void);
 void multitasking_make_ready(void);
@@ -144,7 +145,7 @@ __attribute__((naked,noreturn)) extern void switch_task(process_control_block_t*
 __attribute__((naked,noreturn)) extern void switch_task_iret(process_control_block_t* next_thread);
 process_control_block_t* task_create(void (*entry)(void), const char *name, uint8_t priv, uint8_t prio);
 void task_yield(int irq);
-void task_exit(uint8_t exit);
+void task_exit(process_control_block_t* task_exited, uint8_t exit);
 void enqueue(process_control_block_t* pcb);
 process_control_block_t* dequeue();
 void lock_scheduler(void);
@@ -168,6 +169,8 @@ int task_ipc_signal_raise(process_control_block_t *task, uint8_t signal);
 int task_ipc_register_signal_handler(process_control_block_t *task, uint8_t signal, uint32_t handler);
 int task_ipc_deliver_signals(process_control_block_t *task, processor_context_t* ctx) ;
 process_control_block_t *task_lookup_by_pid(uint32_t pid);
+void task_set_fid(int pid);
+void task_ipc_break_fid();
 
 static inline const char* to_signal_name(int signal_id) {
     static const char* const signal_names[16] = {

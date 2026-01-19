@@ -11,6 +11,12 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <string.h>
+#include <signal.h>
+#include "syscall/lib5ht/lib5ht.h"
+
+void sigint_handle(int sig) {
+    return;
+}
 
 /**
  * @brief Main shell loop
@@ -26,6 +32,11 @@
  */
 int main(int argc, char **argv, char **envp)
 {
+    pid_t sh_pid = getpid();
+    sys_5ht_set_fid(sh_pid);
+
+    signal(SIGINT, sigint_handle);
+
 	char command[256];
 	const char *prompt = "serotonin# ";
 	const char *read_error = "Error: failed to read input\n";
@@ -49,6 +60,9 @@ int main(int argc, char **argv, char **envp)
     	}
 
     	int count = read(0, command, sizeof(command) - 1);
+
+        if (errno)
+            continue;
 
 		if (count < 0) {
 			write(2, read_error, 28);
@@ -209,9 +223,11 @@ int main(int argc, char **argv, char **envp)
 			_exit(1);
 		} else {
 			// Parent process: wait for child
+			sys_5ht_set_fid(fork_result); // not a race since parent runs first in kernel
 			int status;
 			if (!background) {
 				pid_t wait_result = waitpid(fork_result, &status, 0);
+				sys_5ht_set_fid(sh_pid);
 
 				if (wait_result < 0) {
 					write(2, "Error: failed to wait for child process\n", 41);
