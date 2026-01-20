@@ -36,8 +36,9 @@ echo "[*] Copying all ELF files from ${SRC_DIR} ..."
 sudo mkdir -p "${MOUNT_POINT}/bin"
 find "$SRC_DIR" -name "*.elf" -type f | while read -r elf_file; do
     elf_name="$(basename "$elf_file")"
-    echo "   → ${elf_file} -> bin/${elf_name}"
-    sudo cp "$elf_file" "${MOUNT_POINT}/bin/${elf_name}"
+    dest_name="${elf_name%.elf}"
+    echo "   → ${elf_file} -> bin/${dest_name}"
+    sudo cp "$elf_file" "${MOUNT_POINT}/bin/${dest_name}"
 done
 
 # === CLEAN UP ===
