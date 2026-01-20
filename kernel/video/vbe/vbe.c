@@ -83,6 +83,7 @@ static uint32_t ansi_color_table[16] = {
 
 static uint32_t ansi_fg = 0xFFFFFFFF;
 static uint32_t ansi_bg = 0xFF000000;
+static uint8_t ansi_bold = 0;
 
 // dirty bounding box used for rect dirty marking
 dirty_bb_t *dbb;
@@ -801,7 +802,9 @@ void vbe_terminal_putchar(char c)
     }
     else
     {
-        FontGlyph *glyph = find_glyph((uint8_t)c);
+        FontGlyph *glyph = ansi_bold ? find_glyph_bold((uint8_t)c) : find_glyph((uint8_t)c);
+        if (!glyph && ansi_bold)
+            glyph = find_glyph((uint8_t)c);
         if (glyph)
         {
             uint32_t px = term_cursor_col * VBE_FONT_WIDTH;
@@ -1187,6 +1190,7 @@ void vbe_handle_ansi_sequence(const char *seq) {
                 // reset
                 ansi_fg = 0xFFFFFFFF;
                 ansi_bg = 0xFF000000;
+                ansi_bold = 0;
                 vbe_setcolor_fg(ansi_fg);
                 vbe_setcolor_bg(ansi_bg);
                 return;
@@ -1198,8 +1202,15 @@ void vbe_handle_ansi_sequence(const char *seq) {
                 if (code == 0) {
                     ansi_fg = 0xFFFFFFFF;
                     ansi_bg = 0xFF000000;
+                    ansi_bold = 0;
                     vbe_setcolor_fg(ansi_fg);
                     vbe_setcolor_bg(ansi_bg);
+                }
+                else if (code == 1) {
+                    ansi_bold = 1;
+                }
+                else if (code == 22) {
+                    ansi_bold = 0;
                 }
                 else if (code >= 30 && code <= 37) {
                     ansi_fg = ansi_color_table[code - 30];
