@@ -37,13 +37,12 @@ sudo mount "${LOOPDEV}p1" "$MOUNT_POINT"
 # === COPY ALL .elf FILES TO /bin ===
 echo "[*] Copying all .elf files to /bin ..."
 sudo mkdir -p "${MOUNT_POINT}/bin"
-for elf_file in "${SRC_DIR}"/*.elf; do
-    [[ -f "$elf_file" ]] || continue
+while IFS= read -r -d '' elf_file; do
     basename="${elf_file##*/}"
     dest_name="${basename%.elf}"
-    echo "   → ${basename} -> /bin/${dest_name}"
+    echo "   → ${elf_file} -> /bin/${dest_name}"
     sudo cp "$elf_file" "${MOUNT_POINT}/bin/${dest_name}"
-done
+done < <(find "${SRC_DIR}" -name "*.elf" -type f -print0)
 
 # === CLEAN UP ===
 echo "[*] Unmounting and detaching..."
