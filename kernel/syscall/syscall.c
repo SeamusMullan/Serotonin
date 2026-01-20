@@ -336,6 +336,10 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
         case WRITE_STDOUT:
             if (buf_size) {
                 char *kbuf = (char*)kernel_malloc(buf_size);
+                if (!kbuf) {
+                    errno = -ENOMEM;
+                    return;
+                }
                 if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
                     kernel_free(kbuf);
                     errno = -EFAULT;
@@ -352,6 +356,10 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
         case WRITE_STDERR:
             if (buf_size) {
                 char *kbuf = (char*)kernel_malloc(buf_size);
+                if (!kbuf) {
+                    errno = -ENOMEM;
+                    return;
+                }
                 if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
                     kernel_free(kbuf);
                     errno = -EFAULT;
@@ -383,6 +391,10 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
             }
 
             char *kbuf = (char*)kernel_malloc(buf_size);
+            if (!kbuf) {
+                errno = -ENOMEM;
+                return;
+            }
             if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
                 kernel_free(kbuf);
                 errno = -EFAULT;
@@ -451,6 +463,10 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
     }
 
     char* read_buf = kernel_malloc(buf_size);
+    if (!read_buf) {
+        errno = -ENOMEM;
+        return;
+    }
 
     int read_bytes = vfs_read(handle->node, handle->offset, buf_size, read_buf);
     if (read_bytes < 0) {
@@ -738,9 +754,15 @@ static void sys_lseek(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
 static void sys_fstat(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) {
     int fd = arg2;
     struct stat *statbuf = (struct stat*)arg3;
+    uint32_t stat_addr = (uint32_t)statbuf;
 
     if ((fd >= FD_MAX || current_task->fd_table[fd] == NULL) && fd > 2) {
         errno = -EBADF;
+        return;
+    }
+    if (stat_addr < USER_SPACE_START ||
+        stat_addr + sizeof(struct stat) - 1 > USER_SPACE_END) {
+        errno = -EFAULT;
         return;
     }
 
@@ -756,7 +778,11 @@ static void sys_fstat(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) {
         fill_stat_from_node(node, k_statbuf);
     }
 
-    memcpy(statbuf, k_statbuf, sizeof(struct stat));
+    if (copy_to_user(current_task->address_space, stat_addr, k_statbuf, sizeof(struct stat)) != 0) {
+        kernel_free_align(k_statbuf);
+        errno = -EFAULT;
+        return;
+    }
     kernel_free_align(k_statbuf);
 
     errno = 0;
@@ -766,9 +792,15 @@ static void sys_stat(uint32_t arg2, uint32_t arg3) {
     char *path = (char*)arg2;
     struct stat *statbuf = (struct stat*)arg3;
     char abs_path[256];
+    uint32_t stat_addr = (uint32_t)statbuf;
 
     if (build_abs_path(path, abs_path, sizeof(abs_path)) != 0) {
         errno = -ENAMETOOLONG;
+        return;
+    }
+    if (stat_addr < USER_SPACE_START ||
+        stat_addr + sizeof(struct stat) - 1 > USER_SPACE_END) {
+        errno = -EFAULT;
         return;
     }
 
@@ -780,7 +812,12 @@ static void sys_stat(uint32_t arg2, uint32_t arg3) {
 
     struct stat *k_statbuf = (struct stat*)kernel_malloc_align(16, sizeof(struct stat));
     fill_stat_from_node(node, k_statbuf);
-    memcpy(statbuf, k_statbuf, sizeof(struct stat));
+    if (copy_to_user(current_task->address_space, stat_addr, k_statbuf, sizeof(struct stat)) != 0) {
+        kernel_free_align(k_statbuf);
+        vfs_close(node);
+        errno = -EFAULT;
+        return;
+    }
     kernel_free_align(k_statbuf);
     vfs_close(node);
 

@@ -198,8 +198,9 @@ void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
         size -= head;
     }
 
+    mis = (uintptr_t)dst & 15;
     uintptr_t src_mis = (uintptr_t)src & 15;
-    if (mis == src_mis) {
+    if (mis == 0 && src_mis == 0) {
         // aligned src
 
         // 128 byte copy
@@ -299,14 +300,14 @@ void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
                 "movdqu 80(%[s]), %%xmm5\n\t"
                 "movdqu 96(%[s]), %%xmm6\n\t"
                 "movdqu 112(%[s]), %%xmm7\n\t"
-                "movdqa %%xmm0, 0(%[d])\n\t"
-                "movdqa %%xmm1, 16(%[d])\n\t"
-                "movdqa %%xmm2, 32(%[d])\n\t"
-                "movdqa %%xmm3, 48(%[d])\n\t"
-                "movdqa %%xmm4, 64(%[d])\n\t"
-                "movdqa %%xmm5, 80(%[d])\n\t"
-                "movdqa %%xmm6, 96(%[d])\n\t"
-                "movdqa %%xmm7, 112(%[d])\n\t"
+                "movdqu %%xmm0, 0(%[d])\n\t"
+                "movdqu %%xmm1, 16(%[d])\n\t"
+                "movdqu %%xmm2, 32(%[d])\n\t"
+                "movdqu %%xmm3, 48(%[d])\n\t"
+                "movdqu %%xmm4, 64(%[d])\n\t"
+                "movdqu %%xmm5, 80(%[d])\n\t"
+                "movdqu %%xmm6, 96(%[d])\n\t"
+                "movdqu %%xmm7, 112(%[d])\n\t"
                 : [d] "+r"(dst), [s] "+r"(src)
                 :
                 : "xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7","memory"
@@ -324,10 +325,10 @@ void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
                 "movdqu 16(%[s]), %%xmm1\n\t"
                 "movdqu 32(%[s]), %%xmm2\n\t"
                 "movdqu 48(%[s]), %%xmm3\n\t"
-                "movdqa %%xmm0, 0(%[d])\n\t"
-                "movdqa %%xmm1, 16(%[d])\n\t"
-                "movdqa %%xmm2, 32(%[d])\n\t"
-                "movdqa %%xmm3, 48(%[d])\n\t"
+                "movdqu %%xmm0, 0(%[d])\n\t"
+                "movdqu %%xmm1, 16(%[d])\n\t"
+                "movdqu %%xmm2, 32(%[d])\n\t"
+                "movdqu %%xmm3, 48(%[d])\n\t"
                 : [d] "+r"(dst), [s] "+r"(src)
                 :
                 : "xmm0","xmm1","xmm2","xmm3","memory"
@@ -341,7 +342,7 @@ void* memcpy(void* restrict dstptr, const void* restrict srcptr, size_t size) {
         while (size >= 16) {
             asm volatile (
                 "movdqu (%[s]), %%xmm0\n\t"
-                "movdqa %%xmm0, (%[d])\n\t"
+                "movdqu %%xmm0, (%[d])\n\t"
                 : [d] "+r"(dst), [s] "+r"(src)
                 :
                 : "xmm0","memory"

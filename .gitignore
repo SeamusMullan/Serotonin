@@ -3,6 +3,8 @@
 *.iso
 *.img
 *.elf
+build/binutils-user-build
+build/binutils-user-stage
 build-tools/bin
 build-tools/src
 docs/html

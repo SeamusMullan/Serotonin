@@ -95,6 +95,8 @@ cd ../../..
 
 i686-elf-gcc -c lua_stubs.c -o lua_stubs.o $CFLAGS
 i686-elf-gcc -c libgcc_stubs.c -o libgcc_stubs.o $CFLAGS
+i686-elf-gcc -c binutils/posix_stubs.c -o binutils/posix_stubs.o $CFLAGS
+i686-elf-gcc -I"$DIR/../build-tools/src/binutils-gdb/include" -c binutils/sframe_stubs.c -o binutils/sframe_stubs.o $CFLAGS
 
 # Link without -lgcc
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o lua/lua-5.4.8/src/lua.o lua/lua-5.4.8/src/liblua.a syscall.o lua_stubs.o libgcc_stubs.o -Wl,--start-group -lc -lm -Wl,--end-group -o lua.elf
@@ -106,20 +108,87 @@ echo "Building binutils..."
 BINUTILS_SRC="$DIR/../build-tools/src/binutils-gdb"
 BINUTILS_BUILD="$DIR/binutils-user-build"
 BINUTILS_STAGE="$DIR/binutils-user-stage"
-BINUTILS_LDFLAGS="-nostartfiles -Wl,-Ttext=0x400100 $DIR/../user/crt0.o $DIR/../user/cxx/cxx_init.o $DIR/../user/cxx/cxx_runtime.o $DIR/../user/syscall/syscall.o $DIR/../user/syscall/lib5ht/lib5ht.o"
-BINUTILS_LIBS=""
+BINUTILS_CFLAGS="$CFLAGS -Wno-error=incompatible-pointer-types -Wno-incompatible-pointer-types -mno-tls-direct-seg-refs -DBFD_NO_THREADS"
+BINUTILS_CC_WRAPPER="$BINUTILS_BUILD/cc-wrapper.sh"
 
 mkdir -p "$BINUTILS_BUILD" "$BINUTILS_STAGE"
 cd "$BINUTILS_BUILD"
 
+cat > "$BINUTILS_CC_WRAPPER" <<EOF
+#!/usr/bin/env sh
+set -e
+
+user_objs="$DIR/../user/crt0.o $DIR/../user/cxx/cxx_init.o $DIR/../user/cxx/cxx_runtime.o $DIR/../user/syscall/syscall.o $DIR/../user/syscall/lib5ht/lib5ht.o $DIR/../user/binutils/posix_stubs.o $DIR/../user/binutils/sframe_stubs.o"
+user_ldflags="-nostartfiles -Wl,-Ttext=0x400100"
+user_libs="-Wl,--start-group -lc -lm -Wl,--end-group"
+
+for arg in "\$@"; do
+    if [ "\$arg" = "-c" ]; then
+        exec i686-elf-gcc "\$@"
+    fi
+done
+
+out=""
+prev=""
+for arg in "\$@"; do
+    if [ "\$prev" = "-o" ]; then
+        out="\$arg"
+        break
+    fi
+    prev="\$arg"
+done
+
+case "\$out" in
+    *.a|*.la|*.so|*.o)
+        exec i686-elf-gcc "\$@"
+        ;;
+esac
+
+exec i686-elf-gcc "\$@" \$user_ldflags \$user_objs \$user_libs
+EOF
+chmod +x "$BINUTILS_CC_WRAPPER"
+
 if [ ! -f "config.status" ]; then
     echo "Configuring binutils..."
-    CC="i686-elf-gcc"     AR="i686-elf-ar"     RANLIB="i686-elf-ranlib"     CFLAGS="$CFLAGS"     LDFLAGS="$BINUTILS_LDFLAGS"     LIBS="$BINUTILS_LIBS"     "$BINUTILS_SRC/configure"         --host="$TARGET"         --target="$TARGET"         --prefix=/usr         --program-prefix=         --disable-nls         --disable-werror         --disable-gdb         --disable-gdbserver         --disable-gprofng         --disable-gold         --disable-sim
+    CC="$BINUTILS_CC_WRAPPER"     AR="i686-elf-ar"     RANLIB="i686-elf-ranlib"     CFLAGS="$BINUTILS_CFLAGS"     "$BINUTILS_SRC/configure"         --host="$TARGET"         --target="$TARGET"         --prefix=/usr         --program-prefix=         --disable-nls         --disable-werror         --disable-gdb         --disable-gdbserver         --disable-gprofng         --disable-gold         --disable-libsframe         --disable-libbacktrace         --disable-libctf         --disable-readline         --disable-gprof         --disable-sim
+fi
+
+if [ ! -d "opcodes" ]; then
+    echo "Configuring opcodes..."
+    mkdir -p opcodes
+    (cd opcodes && \
+        CC="$BINUTILS_CC_WRAPPER" \
+        AR="i686-elf-ar" \
+        RANLIB="i686-elf-ranlib" \
+        CFLAGS="$BINUTILS_CFLAGS" \
+        "$BINUTILS_SRC/opcodes/configure" \
+            --host="$TARGET" \
+            --target="$TARGET" \
+            --prefix=/usr \
+            --disable-nls \
+            --disable-werror \
+    )
 fi
 
 
 echo "Building binutils utilities..."
-make -j $(nproc)
+make -j$(nproc)
+
+echo "Building libiberty..."
+make -C "$BINUTILS_BUILD/libiberty" all
+make -C "$BINUTILS_BUILD/libiberty" libiberty.a || true
+if [ -f "$BINUTILS_BUILD/libiberty/required-list" ]; then
+    (cd "$BINUTILS_BUILD/libiberty" && \
+        i686-elf-ar cru libiberty.a $(cat required-list) && \
+        i686-elf-ranlib libiberty.a)
+fi
+if [ ! -f "$BINUTILS_BUILD/libiberty/libiberty.a" ] && [ -f "$BINUTILS_BUILD/libiberty/.libs/libiberty.a" ]; then
+    cp "$BINUTILS_BUILD/libiberty/.libs/libiberty.a" "$BINUTILS_BUILD/libiberty/libiberty.a"
+fi
+if [ ! -f "$BINUTILS_BUILD/libiberty/libiberty.a" ]; then
+    echo "libiberty.a missing after build"
+    exit 1
+fi
 
 echo "Installing binutils utilities to staging..."
 make DESTDIR="$BINUTILS_STAGE" install
@@ -129,7 +198,7 @@ BINUTILS_STAGE_BIN="$BINUTILS_STAGE/usr/bin"
 for bin in "$BINUTILS_STAGE_BIN"/*; do
     if [ -f "$bin" ]; then
         bin_name="$(basename "$bin")"
-        cp "$bin" "$DIR/../user/${bin_name}.elf"
+        cp "$bin" "$DIR/../user/binutils/${bin_name}.elf"
     fi
 done
 

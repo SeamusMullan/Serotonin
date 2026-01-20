@@ -170,6 +170,13 @@ vfs_node_t *fat32_mount(const char *device) {
  * @param buffer The buffer to read the cluster data into.
  */
 static void fat32_read_cluster(fat32_fs_info_t *fs_info, uint32_t cluster, uint8_t *buffer) {
+    if (!buffer || cluster < 2 || cluster >= FAT32_CLUSTER_END) {
+        if (buffer && fs_info) {
+            uint32_t cluster_size = fs_info->bytes_per_sector * fs_info->sectors_per_cluster;
+            memset(buffer, 0, cluster_size);
+        }
+        return;
+    }
     uint32_t first_sector = fs_info->cluster_heap_start_lba + (cluster - 2) * fs_info->sectors_per_cluster;
 
     for (uint8_t i = 0; i < fs_info->sectors_per_cluster; i++) {
@@ -311,15 +318,16 @@ static int fat32_read(vfs_node_t *node,
     uint32_t cluster_offset = offset % cluster_size;
     for (uint32_t i = 0; i < skip; i++) {
         cluster = fat32_read_fat_entry(fs, cluster);
-        if (cluster >= FAT32_CLUSTER_END) return 0;
+        if (cluster < 2 || cluster >= FAT32_CLUSTER_END) return 0;
     }
 
     // allocate a single-cluster buffer
     uint8_t *clusbuf = kernel_malloc(cluster_size);
+    if (!clusbuf) return -1;
     uint32_t read = 0;
 
     // read cluster by cluster
-    while (read < size && cluster < FAT32_CLUSTER_END) {
+    while (read < size && cluster >= 2 && cluster < FAT32_CLUSTER_END) {
         fat32_read_cluster(fs, cluster, clusbuf);
 
         // how many bytes to copy from this cluster
@@ -503,6 +511,7 @@ static uint32_t fat32_allocate_cluster(fat32_fs_info_t *fs)
  */
 static void fat32_write_cluster(fat32_fs_info_t *fs, uint32_t cluster, const uint8_t *buffer)
 {
+    if (!buffer || cluster < 2 || cluster >= FAT32_CLUSTER_END) return;
     uint32_t first_sector = fs->cluster_heap_start_lba
                           + (cluster - 2) * fs->sectors_per_cluster;
 
@@ -737,6 +746,7 @@ static int fat32_write(vfs_node_t *node, uint32_t offset, uint32_t size, const c
 
     // temp buffer for cluster writes
     uint8_t *clusbuf = kernel_malloc(cluster_size);
+    if (!clusbuf) return -1;
     uint32_t written = 0;
 
     while (written < size) {
