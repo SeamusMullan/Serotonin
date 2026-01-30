@@ -603,6 +603,14 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
     size_t path_size = strlen(abs_path) + 1;
     char *path = (char*)kernel_malloc(path_size);
     strncpy(path, abs_path, path_size);
+
+    vfs_node_t *node = vfs_resolve_path(path);
+    if (!node) {
+        kernel_free(path);
+        errno = -ENOENT;
+        return;
+    }
+
     const char **argv_temp = (const char**)arg3;
     const char **envp_temp = (const char**)arg4;
 
@@ -644,7 +652,7 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
     current_task->brk_end     = USER_HEAP_START;
 
     int execve_stat = kernel_load_elf(current_task, path, path, argv, argc, envp, envc);
-    if (execve_stat) {
+    if (!execve_stat) {
         destroy_address_space(oldas);
         printfs(PRINT_STATUS_DEBUG, "execve: executing %s, pid=%d\n", path, current_task->pid);
         kernel_free(argv);
@@ -656,6 +664,7 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
         kernel_free(argv);
         kernel_free(envp);
         kernel_free(path);
+        printf("lol:%p\n",current_task->processor_context->eip);
         errno = -EIO;
     }
 }

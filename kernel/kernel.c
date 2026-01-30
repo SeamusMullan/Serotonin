@@ -695,24 +695,24 @@ void kernel_idle_task(void) {
  * @param pcb The pointer to the process control block.
  * @param path The path to the ELF executable.
  * @param pname The name of the process.
- * @return int 0 on failure, 1 on success
+ * @return int 1 on failure, 0 on success
  */
 int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *pname, const char *const *argv, int argc, const char *const *envp, int envc) {
     vfs_node_t *node = vfs_open(path);
     if (!node) {
-        return 0;
+        return 1;
     }
 
     uint32_t file_size = node->size;
     uint8_t *elf_data = kernel_malloc(file_size);
     if (!elf_data) {
         vfs_close(node);
-        return 0;
+        return 1;
     }
     if (vfs_read(node, 0, file_size, (char *)elf_data) < 0) {
         kernel_free(elf_data);
         vfs_close(node);
-        return 0;
+        return 1;
     }
     vfs_close(node);
 
@@ -723,7 +723,7 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
         ehdr->e_type             != ET_EXEC ||
         ehdr->e_machine          != EM_386) {
         kernel_free(elf_data);
-        return 0;
+        return 1;
     }
 
     address_space_t *as = create_address_space();
@@ -817,7 +817,7 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
     pcb->argv                           = argv_user_array;
     pcb->envp                           = envp_user_array;
 
-    return 1;
+    return 0;
 }
 
 /**
@@ -936,7 +936,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     const char *argv[1] = {"/bin/init"}; int argc = 1;
     const char *envp[1] = {"PATH=/bin"}; int envc = 1;
     int init_status = kernel_load_elf(init, init_loc, init_loc, argv, argc, envp, envc);
-    if (!init_status) {
+    if (init_status) {
         kernel_panic("unable to load init process!");
     }
 
