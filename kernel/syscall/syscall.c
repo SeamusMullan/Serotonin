@@ -1413,6 +1413,8 @@ void system_call(processor_context_t *ctx) {
     printfs(PRINT_STATUS_DEBUG, "[SYSCALL] eip=%p Recieved system call from %s (pid=%d): operation:%d, arg2:%p, arg3:%p, arg4:%p\n",
             ctx->eip, current_task->name, current_task->pid, operation, arg2, arg3, arg4);
 
+    enable_interrupts();
+
     switch (operation) {
         case SYSTEM_CALL_EXIT:
             sys_exit(arg2);

@@ -14,7 +14,6 @@
 #include "vmm/vmm.h"
 #include "video/vbe/vbe.h"
 #include "video/font.h"
-#include "video/splash.h"
 #include "filesystem/vfs.h"
 #include "filesystem/ide.h"
 #include "filesystem/tmpfs/tmpfs.h"
@@ -23,7 +22,6 @@
 #include "audio/pcspeaker/pcspeaker.h"
 #include "gdt.h"
 #include "audio/startup/opl2_sound/opl2_startup.h"
-#include "video/pipes.h"
 #include "io/serial.h"
 
 #define KERNEL_VERSION_HIGH 0
@@ -856,8 +854,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     vbe_init(mbi);
     vbe_palette_init();
     vbe_flip();
-    splash_render(0,0);
-    //create_color_render(275);
 
     serial_puts(COM1_BASE,"init_high: framebuffer ready, early init complete\n");
 
@@ -916,6 +912,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     printfs(PRINT_STATUS_INFO,"Mounting rootfs drive 1\n");
 
+    vbe_flip();
+
     vfs_init();
     ide_init();
     fat32_init();
@@ -925,10 +923,12 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         kernel_panic("unable to mount rootfs on drive 1");
     }
     printfs(PRINT_STATUS_SUCCESS,"Mounted rootfs!\n");
+    vbe_flip();
 
     multitasking_init();
 
     printfs(PRINT_STATUS_INFO,"Loading /bin/init\n");
+    vbe_flip();
 
     char* init_loc = "/bin/init";
 
@@ -948,6 +948,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     enqueue(init);
     printfs(PRINT_STATUS_INFO,"Entering scheduler\n");
+    vbe_flip();
     multitasking_make_ready();
 
 
