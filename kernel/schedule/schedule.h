@@ -75,6 +75,32 @@ typedef struct process_control_block {
     char cwd[256];
 } process_control_block_t;
 
+typedef struct pipe_waiter {
+    process_control_block_t *task;
+    struct pipe_waiter *next;
+} pipe_waiter_t;
+
+typedef struct pipe_state {
+    char *buffer;
+    uint32_t size;
+    uint32_t read_pos;
+    uint32_t write_pos;
+    uint32_t data_len;
+    uint32_t readers;
+    uint32_t writers;
+    pipe_waiter_t *read_waiters_head;
+    pipe_waiter_t *read_waiters_tail;
+    pipe_waiter_t *write_waiters_head;
+    pipe_waiter_t *write_waiters_tail;
+} pipe_state_t;
+
+typedef struct pipe_endpoint {
+    pipe_state_t *pipe;
+    uint8_t is_read_end;
+} pipe_endpoint_t;
+
+extern vfs_ops_t task_ipc_pipe_ops;
+
 typedef struct wait_node {
     struct process_control_block *task;
     struct wait_node           *next;
@@ -171,6 +197,9 @@ int task_ipc_deliver_signals(process_control_block_t *task, processor_context_t*
 process_control_block_t *task_lookup_by_pid(uint32_t pid);
 void task_set_fid(int pid);
 void task_ipc_break_fid();
+int task_ipc_pipe_read(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer);
+int task_ipc_pipe_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer);
+int task_ipc_pipe_close(vfs_node_t *node);
 
 static inline const char* to_signal_name(int signal_id) {
     static const char* const signal_names[16] = {

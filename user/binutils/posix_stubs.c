@@ -9,6 +9,8 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include "../syscall/syscall_table.h"
+#include "../syscall/lib5ht/lib5ht.h"
 
 int access(const char *path, int mode) {
     (void)path;
@@ -56,31 +58,9 @@ int utime(const char *path, const void *times) {
     return -1;
 }
 
-int dup(int oldfd) {
-    (void)oldfd;
-    errno = ENOSYS;
-    return -1;
-}
-
 unsigned int sleep(unsigned int seconds) {
     (void)seconds;
     return 0;
-}
-
-int pipe(int pipefd[2]) {
-    if (pipefd) {
-        pipefd[0] = -1;
-        pipefd[1] = -1;
-    }
-    errno = ENOSYS;
-    return -1;
-}
-
-int dup2(int oldfd, int newfd) {
-    (void)oldfd;
-    (void)newfd;
-    errno = ENOSYS;
-    return -1;
 }
 
 int execvp(const char *file, char *const argv[]) {

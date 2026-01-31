@@ -34,6 +34,7 @@ volatile uint8_t pending_schedule = 0;
 static __attribute__((aligned(16))) fpu_fxsave_area_t fx_clean;
 static process_control_block_t *zombie_list = NULL;
 volatile int foreground_pid = 0;
+vfs_ops_t task_ipc_pipe_ops;
 
 static void reap_zombies(void) {
     process_control_block_t *task = zombie_list;
@@ -209,6 +210,9 @@ void multitasking_init(void) {
 
     stdin_lock = kernel_malloc(sizeof(lock_t));
     task_lock_init(stdin_lock, 1);
+    task_ipc_pipe_ops.read = task_ipc_pipe_read;
+    task_ipc_pipe_ops.write = task_ipc_pipe_write;
+    task_ipc_pipe_ops.close = task_ipc_pipe_close;
 }
 
 
@@ -260,6 +264,12 @@ void task_exit(process_control_block_t* task_exited, uint8_t exit) {
 
     task_exited->state = PROCESS_STATE_TERMINATED;
     task_exited->signal = exit;
+
+    for (int i = 0; i < FD_MAX; i++) {
+        if (task_exited->fd_table[i]) {
+            close_fd(task_exited, i);
+        }
+    }
 
     process_control_block_t *task = task_list;
     process_control_block_t *prev_task = NULL;
@@ -618,6 +628,11 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     for (int i = 0; i < 16; i++) {
         pcb->signal_handlers[i] = 0;
     }
+    for (int i = 0; i < FD_MAX; i++) {
+        if (pcb->fd_table[i]) {
+            pcb->fd_table[i]->refcount++;
+        }
+    }
 
     /*
     // create stack
@@ -812,4 +827,177 @@ void task_ipc_break_fid() {
         kernel_panic("kernel process as foreground pid!");
 
     task_ipc_signal_raise(fpcb, EXIT_SIGINT);
+}
+
+int task_ipc_pipe_waiter_enqueue(pipe_waiter_t **head, pipe_waiter_t **tail, process_control_block_t *task) {
+    pipe_waiter_t *node = kernel_malloc(sizeof(*node));
+    if (!node)
+        return -ENOMEM;
+    node->task = task;
+    node->next = NULL;
+    if (*tail) {
+        (*tail)->next = node;
+        *tail = node;
+    } else {
+        *head = *tail = node;
+    }
+    return 0;
+}
+
+process_control_block_t *task_ipc_pipe_waiter_dequeue(pipe_waiter_t **head, pipe_waiter_t **tail) {
+    if (!*head)
+        return NULL;
+    pipe_waiter_t *node = *head;
+    process_control_block_t *task = node->task;
+    *head = node->next;
+    if (!*head)
+        *tail = NULL;
+    kernel_free(node);
+    return task;
+}
+
+void task_ipc_pipe_wake_one_reader(pipe_state_t *pipe) {
+    process_control_block_t *task = task_ipc_pipe_waiter_dequeue(&pipe->read_waiters_head, &pipe->read_waiters_tail);
+    if (task)
+        task_unblock(task);
+}
+
+void task_ipc_pipe_wake_one_writer(pipe_state_t *pipe) {
+    process_control_block_t *task = task_ipc_pipe_waiter_dequeue(&pipe->write_waiters_head, &pipe->write_waiters_tail);
+    if (task)
+        task_unblock(task);
+}
+
+void task_ipc_pipe_wake_all_readers(pipe_state_t *pipe) {
+    process_control_block_t *task;
+    while ((task = task_ipc_pipe_waiter_dequeue(&pipe->read_waiters_head, &pipe->read_waiters_tail)) != NULL) {
+        task_unblock(task);
+    }
+}
+
+void task_ipc_pipe_wake_all_writers(pipe_state_t *pipe) {
+    process_control_block_t *task;
+    while ((task = task_ipc_pipe_waiter_dequeue(&pipe->write_waiters_head, &pipe->write_waiters_tail)) != NULL) {
+        task_unblock(task);
+    }
+}
+
+int task_ipc_pipe_read(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer) {
+    (void)offset;
+    if (!node || !buffer || size == 0)
+        return 0;
+
+    pipe_endpoint_t *endpoint = (pipe_endpoint_t*)node->fs_data;
+    if (!endpoint || !endpoint->pipe || !endpoint->is_read_end)
+        return -EBADF;
+
+    pipe_state_t *pipe = endpoint->pipe;
+
+    while (1) {
+        lock_scheduler();
+        if (pipe->data_len > 0) {
+            uint32_t to_read = size < pipe->data_len ? size : pipe->data_len;
+            for (uint32_t i = 0; i < to_read; i++) {
+                buffer[i] = pipe->buffer[pipe->read_pos];
+                pipe->read_pos = (pipe->read_pos + 1) % pipe->size;
+            }
+            pipe->data_len -= to_read;
+            if (pipe->write_waiters_head)
+                task_ipc_pipe_wake_one_writer(pipe);
+            unlock_scheduler();
+            return (int)to_read;
+        }
+
+        if (pipe->writers == 0) {
+            unlock_scheduler();
+            return 0;
+        }
+
+        if (task_ipc_pipe_waiter_enqueue(&pipe->read_waiters_head, &pipe->read_waiters_tail, current_task) != 0) {
+            unlock_scheduler();
+            return -ENOMEM;
+        }
+        current_task->state = PROCESS_STATE_BLOCKED;
+        unlock_scheduler();
+        task_yield(1);
+    }
+}
+
+int task_ipc_pipe_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer) {
+    (void)offset;
+    if (!node || !buffer || size == 0)
+        return 0;
+
+    pipe_endpoint_t *endpoint = (pipe_endpoint_t*)node->fs_data;
+    if (!endpoint || !endpoint->pipe || endpoint->is_read_end)
+        return -EBADF;
+
+    pipe_state_t *pipe = endpoint->pipe;
+    uint32_t written = 0;
+
+    while (written < size) {
+        lock_scheduler();
+        if (pipe->readers == 0) {
+            unlock_scheduler();
+            task_ipc_signal_raise(current_task, EXIT_SIGPIPE);
+            return -EPIPE;
+        }
+
+        if (pipe->data_len < pipe->size) {
+            uint32_t space = pipe->size - pipe->data_len;
+            uint32_t to_write = (size - written) < space ? (size - written) : space;
+            for (uint32_t i = 0; i < to_write; i++) {
+                pipe->buffer[pipe->write_pos] = buffer[written + i];
+                pipe->write_pos = (pipe->write_pos + 1) % pipe->size;
+            }
+            pipe->data_len += to_write;
+            written += to_write;
+            if (pipe->read_waiters_head)
+                task_ipc_pipe_wake_one_reader(pipe);
+            unlock_scheduler();
+            return (int)written;
+        }
+
+        if (task_ipc_pipe_waiter_enqueue(&pipe->write_waiters_head, &pipe->write_waiters_tail, current_task) != 0) {
+            unlock_scheduler();
+            return -ENOMEM;
+        }
+        current_task->state = PROCESS_STATE_BLOCKED;
+        unlock_scheduler();
+        task_yield(1);
+    }
+
+    return (int)written;
+}
+
+int task_ipc_pipe_close(vfs_node_t *node) {
+    if (!node)
+        return 0;
+
+    pipe_endpoint_t *endpoint = (pipe_endpoint_t*)node->fs_data;
+    if (!endpoint || !endpoint->pipe)
+        return 0;
+
+    pipe_state_t *pipe = endpoint->pipe;
+    lock_scheduler();
+    if (endpoint->is_read_end) {
+        if (pipe->readers > 0)
+            pipe->readers--;
+        if (pipe->readers == 0)
+            task_ipc_pipe_wake_all_writers(pipe);
+    } else {
+        if (pipe->writers > 0)
+            pipe->writers--;
+        if (pipe->writers == 0)
+            task_ipc_pipe_wake_all_readers(pipe);
+    }
+    int free_pipe = (pipe->readers == 0 && pipe->writers == 0);
+    unlock_scheduler();
+
+    kernel_free(endpoint);
+    if (free_pipe) {
+        kernel_free(pipe->buffer);
+        kernel_free(pipe);
+    }
+    return 0;
 }

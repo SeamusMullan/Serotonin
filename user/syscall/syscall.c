@@ -75,6 +75,37 @@ int close(int fd) {
 }
 
 /**
+ * @brief Duplicate a file descriptor
+ *
+ * @param oldfd Existing file descriptor
+ * @return New file descriptor on success, -1 on error (errno set)
+ */
+int dup(int oldfd) {
+    return do_syscall(SYSTEM_CALL_DUP, oldfd, (uint32_t)-1, 0);
+}
+
+/**
+ * @brief Duplicate a file descriptor to a specific value
+ *
+ * @param oldfd Existing file descriptor
+ * @param newfd Target file descriptor
+ * @return newfd on success, -1 on error (errno set)
+ */
+int dup2(int oldfd, int newfd) {
+    return do_syscall(SYSTEM_CALL_DUP, oldfd, newfd, 0);
+}
+
+/**
+ * @brief Create a pipe
+ *
+ * @param pipefd Array to receive read and write fds
+ * @return 0 on success, -1 on error (errno set)
+ */
+int pipe(int pipefd[2]) {
+    return do_syscall(SYSTEM_CALL_PIPE, (uint32_t)pipefd, 0, 0);
+}
+
+/**
  * @brief Reposition file offset
  *
  * @param fd File descriptor
@@ -351,6 +382,9 @@ int _write(int fd, const void *buf, size_t count) __attribute__((alias("write"))
 int _read(int fd, void *buf, size_t count) __attribute__((alias("read")));
 int _open(const char *path, int flags, ...) __attribute__((alias("open")));
 int _close(int fd) __attribute__((alias("close")));
+int _dup(int oldfd) __attribute__((alias("dup")));
+int _dup2(int oldfd, int newfd) __attribute__((alias("dup2")));
+int _pipe(int pipefd[2]) __attribute__((alias("pipe")));
 off_t _lseek(int fd, off_t offset, int whence) __attribute__((alias("lseek")));
 int _fstat(int fd, struct stat *st) __attribute__((alias("fstat")));
 int _stat(const char *path, struct stat *st) __attribute__((alias("stat")));

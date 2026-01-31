@@ -21,6 +21,7 @@
 
 static uint32_t next_fd = FIRST_FD;
 static int errno = 0;
+#define PIPE_BUFFER_SIZE 4096
 
 typedef struct layer_state {
     uint8_t allocated;
@@ -240,7 +241,9 @@ static void layer_fill_info(uint16_t id, fb_layer_info_t *info) {
 static void fill_stat_from_node(vfs_node_t *node, struct stat *k_statbuf) {
     memset(k_statbuf, 0, sizeof(*k_statbuf));
 
-    if (node->flags & VFS_FLAG_DIRECTORY) {
+    if (node->flags & VFS_FLAG_PIPE) {
+        k_statbuf->st_mode = S_IFIFO | 0666;
+    } else if (node->flags & VFS_FLAG_DIRECTORY) {
         k_statbuf->st_mode = S_IFDIR | 0755;
     } else if (node->flags & VFS_FLAG_SYMLINK) {
         k_statbuf->st_mode = S_IFLNK | 0777;
@@ -332,6 +335,46 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
     char* write_ptr = (char*)arg3;
     uint32_t buf_size = arg4;
 
+    if (fd >= FD_MAX) {
+        errno = -EBADF;
+        return;
+    }
+
+    if (current_task->fd_table[fd] != NULL) {
+        file_handle_t *handle = current_task->fd_table[fd];
+        int access = handle->flags & 0x3;
+        if (access == O_RDONLY) {
+            errno = -EBADF;
+            return;
+        }
+
+        if (handle->flags & O_APPEND) {
+            handle->offset = handle->node->size;
+        }
+
+        char *kbuf = (char*)kernel_malloc(buf_size);
+        if (!kbuf) {
+            errno = -ENOMEM;
+            return;
+        }
+        if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
+            kernel_free(kbuf);
+            errno = -EFAULT;
+            return;
+        }
+
+        int written = vfs_write(handle->node, handle->offset, buf_size, kbuf);
+        kernel_free(kbuf);
+        if (written < 0) {
+            errno = (written == -1) ? -EIO : written;
+            return;
+        }
+
+        handle->offset += written;
+        errno = written;
+        return;
+    }
+
     switch (arg2) {
         case WRITE_STDOUT:
             if (buf_size) {
@@ -374,42 +417,7 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
             errno = (int)buf_size;
             break;
         default:
-            if (fd >= FD_MAX || current_task->fd_table[fd] == NULL) {
-                errno = -EBADF;
-                return;
-            }
-
-            file_handle_t *handle = current_task->fd_table[fd];
-            int access = handle->flags & 0x3;
-            if (access == O_RDONLY) {
-                errno = -EBADF;
-                return;
-            }
-
-            if (handle->flags & O_APPEND) {
-                handle->offset = handle->node->size;
-            }
-
-            char *kbuf = (char*)kernel_malloc(buf_size);
-            if (!kbuf) {
-                errno = -ENOMEM;
-                return;
-            }
-            if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
-                kernel_free(kbuf);
-                errno = -EFAULT;
-                return;
-            }
-
-            int written = vfs_write(handle->node, handle->offset, buf_size, kbuf);
-            kernel_free(kbuf);
-            if (written < 0) {
-                errno = -EIO;
-                return;
-            }
-
-            handle->offset += written;
-            errno = written;
+            errno = -EBADF;
             break;
     }
 }
@@ -426,8 +434,42 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
     uint32_t fd = arg2;
     char* read_ptr = (char*)arg3;
     uint32_t buf_size = arg4;
-    if (read_ptr < (char*)USER_SPACE_START || read_ptr > (char*)USER_SPACE_END || fd >= FD_MAX) {
+
+    if (fd >= FD_MAX) {
         errno = -EBADF;
+        return;
+    }
+
+    if (current_task->fd_table[fd] != NULL) {
+        file_handle_t *handle = current_task->fd_table[fd];
+        int access = handle->flags & 0x3;
+        if (access == O_WRONLY) {
+            errno = -EBADF;
+            return;
+        }
+
+        char* read_buf = kernel_malloc(buf_size);
+        if (!read_buf) {
+            errno = -ENOMEM;
+            return;
+        }
+
+    int read_bytes = vfs_read(handle->node, handle->offset, buf_size, read_buf);
+    if (read_bytes < 0) {
+        kernel_free(read_buf);
+        errno = (read_bytes == -1) ? -EIO : read_bytes;
+        return;
+    }
+
+        if (copy_to_user(current_task->address_space, (uint32_t)read_ptr, read_buf, (size_t)read_bytes) != 0) {
+            kernel_free(read_buf);
+            errno = -EFAULT;
+            return;
+        }
+        handle->offset += read_bytes;
+        errno = read_bytes;
+
+        kernel_free(read_buf);
         return;
     }
 
@@ -450,40 +492,7 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
         return;
     }
 
-    if (current_task->fd_table[fd] == NULL) {
-        errno = -EBADF;
-        return;
-    }
-
-    file_handle_t *handle = current_task->fd_table[fd];
-    int access = handle->flags & 0x3;
-    if (access == O_WRONLY) {
-        errno = -EBADF;
-        return;
-    }
-
-    char* read_buf = kernel_malloc(buf_size);
-    if (!read_buf) {
-        errno = -ENOMEM;
-        return;
-    }
-
-    int read_bytes = vfs_read(handle->node, handle->offset, buf_size, read_buf);
-    if (read_bytes < 0) {
-        kernel_free(read_buf);
-        errno = -EIO;
-        return;
-    }
-
-    if (copy_to_user(current_task->address_space, (uint32_t)read_ptr, read_buf, (size_t)read_bytes) != 0) {
-        kernel_free(read_buf);
-        errno = -EFAULT;
-        return;
-    }
-    handle->offset += read_bytes;
-    errno = read_bytes;
-
-    kernel_free(read_buf);
+    errno = -EBADF;
 }
 
 /**
@@ -561,7 +570,7 @@ nodeCreated:
     handle->node = node;
     handle->flags = flags;
     handle->offset = (flags & O_APPEND) ? node->size : 0;
-    handle->refcount = 1;
+    handle->refcount = 0;
 
     int fd = alloc_fd(current_task, handle);
 
@@ -588,9 +597,145 @@ static void sys_close(uint32_t arg2) {
         return;
     }
 
-    file_handle_t *handle = current_task->fd_table[fd];
-    vfs_close(handle->node);
     close_fd(current_task, fd);
+}
+
+static void sys_pipe(uint32_t arg2) {
+    uint32_t pipe_addr = arg2;
+    if (pipe_addr < USER_SPACE_START ||
+        pipe_addr + (sizeof(int) * 2) - 1 > USER_SPACE_END) {
+        errno = -EFAULT;
+        return;
+    }
+
+    pipe_state_t *pipe = (pipe_state_t*)kernel_malloc(sizeof(*pipe));
+    if (!pipe) {
+        errno = -ENOMEM;
+        return;
+    }
+    memset(pipe, 0, sizeof(*pipe));
+    pipe->size = PIPE_BUFFER_SIZE;
+    pipe->buffer = (char*)kernel_malloc(pipe->size);
+    if (!pipe->buffer) {
+        kernel_free(pipe);
+        errno = -ENOMEM;
+        return;
+    }
+
+    pipe_endpoint_t *read_ep = (pipe_endpoint_t*)kernel_malloc(sizeof(*read_ep));
+    pipe_endpoint_t *write_ep = (pipe_endpoint_t*)kernel_malloc(sizeof(*write_ep));
+    vfs_node_t *read_node = (vfs_node_t*)kernel_malloc(sizeof(*read_node));
+    vfs_node_t *write_node = (vfs_node_t*)kernel_malloc(sizeof(*write_node));
+    file_handle_t *read_handle = (file_handle_t*)kernel_malloc(sizeof(*read_handle));
+    file_handle_t *write_handle = (file_handle_t*)kernel_malloc(sizeof(*write_handle));
+
+    if (!read_ep || !write_ep || !read_node || !write_node || !read_handle || !write_handle) {
+        if (read_handle) kernel_free(read_handle);
+        if (write_handle) kernel_free(write_handle);
+        if (read_node) kernel_free(read_node);
+        if (write_node) kernel_free(write_node);
+        if (read_ep) kernel_free(read_ep);
+        if (write_ep) kernel_free(write_ep);
+        kernel_free(pipe->buffer);
+        kernel_free(pipe);
+        errno = -ENOMEM;
+        return;
+    }
+
+    read_ep->pipe = pipe;
+    read_ep->is_read_end = 1;
+    write_ep->pipe = pipe;
+    write_ep->is_read_end = 0;
+
+    memset(read_node, 0, sizeof(*read_node));
+    memset(write_node, 0, sizeof(*write_node));
+    read_node->flags = VFS_FLAG_FILE | VFS_FLAG_PIPE;
+    write_node->flags = VFS_FLAG_FILE | VFS_FLAG_PIPE;
+    read_node->ops = &task_ipc_pipe_ops;
+    write_node->ops = &task_ipc_pipe_ops;
+    read_node->fs_data = read_ep;
+    write_node->fs_data = write_ep;
+
+    memset(read_handle, 0, sizeof(*read_handle));
+    memset(write_handle, 0, sizeof(*write_handle));
+    read_handle->node = read_node;
+    read_handle->flags = O_RDONLY;
+    read_handle->offset = 0;
+    read_handle->refcount = 0;
+    write_handle->node = write_node;
+    write_handle->flags = O_WRONLY;
+    write_handle->offset = 0;
+    write_handle->refcount = 0;
+
+    int read_fd = alloc_fd(current_task, read_handle);
+    if (read_fd < 0) {
+        kernel_free(read_handle);
+        kernel_free(write_handle);
+        kernel_free(read_node);
+        kernel_free(write_node);
+        kernel_free(read_ep);
+        kernel_free(write_ep);
+        kernel_free(pipe->buffer);
+        kernel_free(pipe);
+        errno = -EMFILE;
+        return;
+    }
+    pipe->readers = 1;
+
+    int write_fd = alloc_fd(current_task, write_handle);
+    if (write_fd < 0) {
+        close_fd(current_task, read_fd);
+        kernel_free(write_handle);
+        kernel_free(write_node);
+        kernel_free(write_ep);
+        errno = -EMFILE;
+        return;
+    }
+    pipe->writers = 1;
+
+    int pipefd[2] = { read_fd, write_fd };
+    if (copy_to_user(current_task->address_space, pipe_addr, pipefd, sizeof(pipefd)) != 0) {
+        close_fd(current_task, read_fd);
+        close_fd(current_task, write_fd);
+        errno = -EFAULT;
+        return;
+    }
+
+    errno = 0;
+}
+
+static void sys_dup(uint32_t arg2, uint32_t arg3) {
+    int oldfd = (int)arg2;
+    int newfd = (int)arg3;
+
+    if (oldfd < 0 || oldfd >= FD_MAX || current_task->fd_table[oldfd] == NULL) {
+        errno = -EBADF;
+        return;
+    }
+
+    if (newfd < 0) {
+        int allocated = alloc_fd(current_task, current_task->fd_table[oldfd]);
+        errno = allocated;
+        return;
+    }
+
+    if (newfd >= FD_MAX) {
+        errno = -EBADF;
+        return;
+    }
+
+    if (newfd == oldfd) {
+        errno = newfd;
+        return;
+    }
+
+    if (current_task->fd_table[newfd] != NULL) {
+        close_fd(current_task, newfd);
+    }
+
+    current_task->fd_table[newfd] = current_task->fd_table[oldfd];
+    current_task->fd_table[newfd]->refcount++;
+    errno = newfd;
 }
 
 static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
@@ -765,7 +910,7 @@ static void sys_fstat(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) {
     struct stat *statbuf = (struct stat*)arg3;
     uint32_t stat_addr = (uint32_t)statbuf;
 
-    if ((fd >= FD_MAX || current_task->fd_table[fd] == NULL) && fd > 2) {
+    if (fd >= FD_MAX || (current_task->fd_table[fd] == NULL && fd > 2)) {
         errno = -EBADF;
         return;
     }
@@ -777,7 +922,7 @@ static void sys_fstat(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) {
 
     struct stat *k_statbuf = (struct stat*)kernel_malloc_align(16, sizeof(struct stat));
 
-    if (fd < 3) {
+    if (fd < 3 && current_task->fd_table[fd] == NULL) {
         memset(k_statbuf, 0, sizeof(struct stat));
         k_statbuf->st_mode = S_IFCHR;
         k_statbuf->st_blksize = 1024;
@@ -835,7 +980,7 @@ static void sys_stat(uint32_t arg2, uint32_t arg3) {
 
 static void sys_isatty(uint32_t arg2) {
     uint32_t fd = arg2;
-    if (fd < 3) {
+    if (fd < 3 && current_task->fd_table[fd] == NULL) {
         errno = 1;
     } else {
         errno = 0;
@@ -883,6 +1028,8 @@ static void sys_sigret(processor_context_t *ctx) {
     memcpy(task->processor_context, task->signal_processor_context, sizeof(processor_context_t));
     memcpy(ctx, task->signal_processor_context, sizeof(processor_context_t));
     memcpy(&task->fpu_fx, &task->signal_fpu_fx, sizeof(fpu_fxsave_area_t));
+
+    errno = (int)ctx->eax;
 
     task->in_signal_handler = 0;
 
@@ -1520,6 +1667,12 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_5HT_SET_FID:
             sys_5ht_set_fid(arg2);
+            break;
+        case SYSTEM_CALL_DUP:
+            sys_dup(arg2, arg3);
+            break;
+        case SYSTEM_CALL_PIPE:
+            sys_pipe(arg2);
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);

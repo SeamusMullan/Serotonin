@@ -35,6 +35,13 @@ int close_fd(process_control_block_t *pcb, int fd) {
 
     file_handle_t *handle = pcb->fd_table[fd];
     if (--handle->refcount == 0) {
+        if (handle->node && (handle->node->flags & VFS_FLAG_PIPE)) {
+            if (handle->node->ops && handle->node->ops->close)
+                handle->node->ops->close(handle->node);
+            kernel_free(handle->node);
+        } else {
+            vfs_close(handle->node);
+        }
         kernel_free(pcb->fd_table[fd]);
     }
     pcb->fd_table[fd] = NULL;

@@ -10,6 +10,7 @@
 #define VFS_FLAG_FILE      0x1
 #define VFS_FLAG_DIRECTORY 0x2
 #define VFS_FLAG_SYMLINK   0x4
+#define VFS_FLAG_PIPE      0x8
 
 typedef struct vfs_node vfs_node_t;
 typedef struct vfs_ops vfs_ops_t;
