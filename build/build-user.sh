@@ -21,7 +21,7 @@ i686-elf-g++ -c cxx/cxx_runtime.cpp -o cxx/cxx_runtime.o $CXXFLAGS
 i686-elf-g++ -c cxx/cxx_new_delete.cpp  -o cxx/cxx_new_delete.o $CXXFLAGS
 
 i686-elf-gcc -c init/init.c -o init/init.o $CFLAGS
-i686-elf-gcc -c init/init.c -o init/init.o $CFLAGS
+i686-elf-gcc -c test.c -o test.o $CFLAGS
 i686-elf-gcc -c syscall/syscall.c -o syscall/syscall.o $CFLAGS
 i686-elf-gcc -c syscall/lib5ht/lib5ht.c -o syscall/lib5ht/lib5ht.o $CFLAGS
 i686-elf-gcc -c shell.c -o shell.o $CFLAGS
@@ -35,6 +35,7 @@ i686-elf-gcc -c listproc/listproc.c -o listproc/listproc.o $CFLAGS
 i686-elf-gcc -c games/sponk/sponk.c -o games/sponk/sponk.o $CFLAGS
 
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o init/init.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o init.elf
+i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o test.elf
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o listproc/listproc.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o listproc.elf
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o shell.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o sh.elf
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o ls.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o ls.elf

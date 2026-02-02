@@ -6,8 +6,14 @@
 .global isr0
 isr0:
     cli
-    pushl $0
+    pusha
+    pushl %ds
+    mov %esp, %eax
+    push %eax
     call div_zero_fault_handler
+    add $4, %esp
+    popl %ds
+    popa
     iret
 
 .global isr1
@@ -29,33 +35,53 @@ isr2:
 .global isr3
 isr3:
     cli
-1:
-	jmp 1b
-    sti
+    pusha
+    pushl %ds
+    mov %esp, %eax
+    push %eax
+    call breakpoint_fault_handler
+    add $4, %esp
+    popl %ds
+    popa
     iret
 
 .global isr4
 isr4:
     cli
-    pushl $4
-    call fault_handler
+    pusha
+    pushl %ds
+    mov %esp, %eax
+    push %eax
+    call overflow_fault_handler
     add $4, %esp
+    popl %ds
+    popa
     iret
 
 .global isr5
 isr5:
     cli
-    pushl $5
-    call fault_handler
+    pusha
+    pushl %ds
+    mov %esp, %eax
+    push %eax
+    call bound_range_fault_handler
     add $4, %esp
+    popl %ds
+    popa
     iret
 
 .global isr6
 isr6:
     cli
-    pushl %esp
+    pusha
+    pushl %ds
+    mov %esp, %eax
+    push %eax
     call invalid_opcode_handler
     add $4, %esp
+    popl %ds
+    popa
     iret
 
 .global isr7
@@ -112,13 +138,14 @@ isr13:
     pusha
     pushl %ds
 
-    mov 44(%esp), %eax
+    mov %esp, %eax
     push %eax
     call gp_fault_handler
 
     add $4, %esp
     popl %ds
     popa
+    add $4, %esp
     iret
 
 .global isr14
@@ -134,6 +161,7 @@ isr14:
     add $4, %esp
     popl %ds
     popa
+    add $4, %esp
     iret
 
 .global isr15
@@ -155,8 +183,14 @@ isr16:
 .global isr17
 isr17:
     cli
-    pushl $17
-    call fault_handler
+    pusha
+    pushl %ds
+    mov %esp, %eax
+    push %eax
+    call alignment_check_fault_handler
+    add $4, %esp
+    popl %ds
+    popa
     add $4, %esp
     iret
 
@@ -171,9 +205,14 @@ isr18:
 .global isr19
 isr19:
     cli
-    pushl $19
-    call fault_handler
+    pusha
+    pushl %ds
+    mov %esp, %eax
+    push %eax
+    call simd_fp_exception_handler
     add $4, %esp
+    popl %ds
+    popa
     iret
 
 .global isr20
