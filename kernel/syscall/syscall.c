@@ -577,6 +577,8 @@ nodeCreated:
     if (fd < 0) {
         vfs_close(node);
         kernel_free(handle);
+        errno = -EIO;
+        return;
     }
 
     errno = fd;
