@@ -380,7 +380,7 @@ void vfs_list_dir(const char *path) {
  * @param parent The buffer to store the parent directory.
  * @param name The buffer to store the name.
  */
-static void split_path(const char *path, char *parent, char *name) {
+void split_path(const char *path, char *parent, char *name) {
     char tmp[256];
     strncpy(tmp, path, sizeof(tmp));
     tmp[255] = 0;

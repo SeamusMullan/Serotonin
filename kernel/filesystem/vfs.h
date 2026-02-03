@@ -6,6 +6,7 @@
 */
 
 #include <stdint.h>
+#include <stddef.h>
 
 #define VFS_FLAG_FILE      0x1
 #define VFS_FLAG_DIRECTORY 0x2
