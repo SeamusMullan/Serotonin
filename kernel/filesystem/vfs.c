@@ -14,6 +14,36 @@ vfs_node_t *vfs_root = NULL;
 filesystem_t *registered_filesystems = NULL;
 
 /**
+ * @brief Attaches a mounted filesystem root onto an existing mountpoint node.
+ *
+ * This keeps the mountpoint node pointer stable (so parent->finddir still works),
+ * while replacing its filesystem-specific fields with the mounted root's.
+ */
+static void vfs_attach_mount(vfs_node_t *mountpoint, vfs_node_t *root) {
+    char saved_name[256];
+    vfs_node_t *saved_parent = mountpoint->parent;
+    vfs_node_t *saved_next = mountpoint->next;
+    uint32_t saved_refcount = mountpoint->refcount;
+
+    strncpy(saved_name, mountpoint->name, sizeof(saved_name));
+    saved_name[sizeof(saved_name) - 1] = '\0';
+
+    *mountpoint = *root;
+
+    strncpy(mountpoint->name, saved_name, sizeof(mountpoint->name));
+    mountpoint->name[sizeof(mountpoint->name) - 1] = '\0';
+    mountpoint->parent = saved_parent;
+    mountpoint->next = saved_next;
+    mountpoint->refcount = saved_refcount;
+
+    for (vfs_node_t *child = mountpoint->children; child; child = child->next) {
+        child->parent = mountpoint;
+    }
+}
+
+static void split_path(const char *path, char *parent, char *name);
+
+/**
  * @brief Initializes the Virtual Filesystem (VFS).
  *
  * This function initializes the global VFS state.
@@ -39,7 +69,7 @@ void vfs_register_fs(filesystem_t *fs) {
  * @param device The device identifier.
  * @param mountpoint The mount point (e.g., "/").
  * @param fs_type The filesystem type to mount.
- * @return 0 on success, -1 if mount failed, -2 if non-root mounting not implemented, -3 if filesystem type not found.
+ * @return 0 on success, -1 if mount failed, -3 if filesystem type not found.
  */
 int vfs_mount(const char *device, const char *mountpoint, const char *fs_type) {
     filesystem_t *fs = registered_filesystems;
@@ -53,8 +83,26 @@ int vfs_mount(const char *device, const char *mountpoint, const char *fs_type) {
                 vfs_root = root;
                 return 0;
             } else {
-                // TODO: Non-root mounting not implemented
-                return -2;
+                if (!vfs_root) return -1;
+                vfs_node_t *mp = vfs_resolve_path(mountpoint);
+                if (!mp) {
+                    char parent_path[256], name[256];
+                    split_path(mountpoint, parent_path, name);
+                    vfs_node_t *parent = vfs_open(parent_path);
+                    if (!parent) return -1;
+                    if (!parent->ops || !parent->ops->mkdir) {
+                        vfs_close(parent);
+                        return -1;
+                    }
+                    vfs_node_t *newdir = parent->ops->mkdir(parent, name);
+                    vfs_close(parent);
+                    if (!newdir) return -1;
+                    mp = newdir;
+                }
+                if (!(mp->flags & VFS_FLAG_DIRECTORY)) return -1;
+
+                vfs_attach_mount(mp, root);
+                return 0;
             }
         }
         fs = fs->next;
