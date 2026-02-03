@@ -31,6 +31,7 @@ i686-elf-gcc -c fb_layer_test.c -o fb_layer_test.o $CFLAGS
 i686-elf-gcc -c receiver.c -o receiver.o $CFLAGS
 i686-elf-gcc -c sender.c -o sender.o $CFLAGS
 i686-elf-gcc -c fs_syscall_test.c -o fs_syscall_test.o $CFLAGS
+i686-elf-gcc -c devfs_example.c -o devfs_example.o $CFLAGS
 i686-elf-gcc -c listproc/listproc.c -o listproc/listproc.o $CFLAGS
 i686-elf-gcc -c games/sponk/sponk.c -o games/sponk/sponk.o $CFLAGS
 
@@ -45,6 +46,7 @@ i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/c
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o games/sponk/sponk.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o sponk.elf
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o receiver.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o receiver.elf
 i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o sender.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o sender.elf
+i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o devfs_example.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o devfs_example.elf
 
 i686-elf-g++ -c cxx_test.cpp -o cxx_test.o $CXXFLAGS
 i686-elf-g++ -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o cxx_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o cxxtest.elf
