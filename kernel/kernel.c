@@ -17,12 +17,14 @@
 #include "filesystem/vfs.h"
 #include "filesystem/ide.h"
 #include "filesystem/tmpfs/tmpfs.h"
+#include "filesystem/devfs/devfs.h"
 #include "filesystem/fat32/fat32.h"
 #include "schedule/schedule.h"
 #include "audio/pcspeaker/pcspeaker.h"
 #include "gdt.h"
 #include "audio/startup/opl2_sound/opl2_startup.h"
 #include "io/serial.h"
+#include "device/devfs_example.h"
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 4
@@ -910,24 +912,55 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     //ps2_mouse_init();
 
-    printfs(PRINT_STATUS_INFO,"Mounting rootfs drive 1\n");
-
+    printfs(PRINT_STATUS_INFO,"vfs: init\n");
     vbe_flip();
 
     vfs_init();
+
+    printfs(PRINT_STATUS_INFO,"ide: init\n");
+    vbe_flip();
+
     ide_init();
+
+    printfs(PRINT_STATUS_INFO,"fat32: init\n");
+    vbe_flip();
+
     fat32_init();
+
+    printfs(PRINT_STATUS_INFO,"devfs: init\n");
+    vbe_flip();
+
+    devfs_init();
+
+    printfs(PRINT_STATUS_INFO,"vfs: mounting root filesystem\n");
+    vbe_flip();
+
     int mount_result = vfs_mount("1", "/", "fat32");
 
     if (mount_result != 0) {
         kernel_panic("unable to mount rootfs on drive 1");
     }
-    printfs(PRINT_STATUS_SUCCESS,"Mounted rootfs!\n");
+    printfs(PRINT_STATUS_INFO,"vfs: root filesystem mounted\n");
+    vbe_flip();
+
+    printfs(PRINT_STATUS_INFO,"vfs: mounting /dev\n");
+    vbe_flip();
+
+    if (vfs_mount("devfs", "/dev", "devfs") != 0) {
+        kernel_panic("unable to mount devfs on /dev");
+    }
+
+    printfs(PRINT_STATUS_INFO,"devices: example init\n");
+    vbe_flip();
+
+    devfs_example_init();
+
+    printfs(PRINT_STATUS_INFO,"scheduler: init\n");
     vbe_flip();
 
     multitasking_init();
 
-    printfs(PRINT_STATUS_INFO,"Loading /bin/init\n");
+    printfs(PRINT_STATUS_INFO,"scheduler: /bin/init\n");
     vbe_flip();
 
     char* init_loc = "/bin/init";
@@ -940,14 +973,19 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         kernel_panic("unable to load init process!");
     }
 
+
+    printfs(PRINT_STATUS_INFO,"scheduler: idle\n");
+    vbe_flip();
     process_control_block_t *idle_task = task_create(kernel_idle_task, "kernel: idle", CPU_KERNEL_MODE, 0);
     enqueue(idle_task);
 
+    printfs(PRINT_STATUS_INFO,"scheduler: compositor\n");
+    vbe_flip();
     vbe_worker_task = task_create(vbe_worker, "kernel: compositor", CPU_KERNEL_MODE, 255);
     vbe_worker_task->no_requeue = 1;
 
     enqueue(init);
-    printfs(PRINT_STATUS_INFO,"Entering scheduler\n");
+    printfs(PRINT_STATUS_INFO,"init complete, entering scheduler\n");
     vbe_flip();
     multitasking_make_ready();
 
