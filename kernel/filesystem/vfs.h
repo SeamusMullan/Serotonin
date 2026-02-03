@@ -27,7 +27,7 @@ typedef struct vfs_node {
     uint32_t size;               // File size
     uint32_t flags;              // File / directory / device / symlink
     uint32_t refcount;           // For resource tracking
-    
+
     struct filesystem *fs;       // Filesystem driver owning this node
     void *fs_data;               // Filesystem-private data (inode, etc.)
 
@@ -66,6 +66,12 @@ typedef struct filesystem {
     struct vfs_node *(*mount)(const char *device);
     struct filesystem *next;                 // Linked list of registered FSes
 } filesystem_t;
+
+typedef struct vfs_mount_entry {
+    char path[256];
+    vfs_node_t *node;
+    struct vfs_mount_entry *next;
+} vfs_mount_entry_t;
 
 void vfs_init(void);
 void vfs_register_fs(filesystem_t *fs);
