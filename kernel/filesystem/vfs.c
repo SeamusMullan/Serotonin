@@ -21,7 +21,7 @@ vfs_mount_entry_t *vfs_mounts = NULL;
  * This keeps the mountpoint node pointer stable (so parent->finddir still works),
  * while replacing its filesystem-specific fields with the mounted root's.
  */
-static void vfs_attach_mount(vfs_node_t *mountpoint, vfs_node_t *root) {
+void vfs_attach_mount(vfs_node_t *mountpoint, vfs_node_t *root) {
     char saved_name[256];
     vfs_node_t *saved_parent = mountpoint->parent;
     vfs_node_t *saved_next = mountpoint->next;
@@ -42,11 +42,6 @@ static void vfs_attach_mount(vfs_node_t *mountpoint, vfs_node_t *root) {
         child->parent = mountpoint;
     }
 }
-
-static void split_path(const char *path, char *parent, char *name);
-static vfs_node_t *vfs_lookup_mount(const char *path);
-static void vfs_register_mount(const char *path, vfs_node_t *node);
-static void vfs_normalize_mount_path(const char *path, char *out, size_t out_size);
 
 /**
  * @brief Initializes the Virtual Filesystem (VFS).
@@ -211,7 +206,7 @@ vfs_node_t *vfs_resolve_path(const char *path) {
     return current;
 }
 
-static vfs_node_t *vfs_lookup_mount(const char *path) {
+vfs_node_t *vfs_lookup_mount(const char *path) {
     if (!path) return NULL;
     for (vfs_mount_entry_t *entry = vfs_mounts; entry; entry = entry->next) {
         if (strcmp(entry->path, path) == 0) {
@@ -221,7 +216,7 @@ static vfs_node_t *vfs_lookup_mount(const char *path) {
     return NULL;
 }
 
-static void vfs_register_mount(const char *path, vfs_node_t *node) {
+void vfs_register_mount(const char *path, vfs_node_t *node) {
     if (!path || !node) return;
 
     char normalized[256];
@@ -247,7 +242,7 @@ static void vfs_register_mount(const char *path, vfs_node_t *node) {
     vfs_mounts = entry;
 }
 
-static void vfs_normalize_mount_path(const char *path, char *out, size_t out_size) {
+void vfs_normalize_mount_path(const char *path, char *out, size_t out_size) {
     if (!out || out_size == 0) return;
     if (!path || path[0] == '\0') {
         out[0] = '\0';

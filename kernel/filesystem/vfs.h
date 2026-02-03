@@ -86,6 +86,10 @@ void vfs_close(vfs_node_t *node);
 void vfs_list_dir(const char *path);
 vfs_node_t *vfs_create(const char *path);
 int vfs_mkdir(const char *path);
+void split_path(const char *path, char *parent, char *name);
+vfs_node_t *vfs_lookup_mount(const char *path);
+void vfs_register_mount(const char *path, vfs_node_t *node);
+void vfs_normalize_mount_path(const char *path, char *out, size_t out_size);
 
 vfs_node_t *vfs_resolve_path(const char *path);
 
