@@ -2,6 +2,8 @@
 #include "../../filesystem/devfs/devfs.h"
 #include "../../filesystem/vfs.h"
 #include "../../io/io.h"
+#include "../../stdio/stdio.h"
+#include "../../video/vbe/vbe.h"
 #include "../../stdlib/stdlib.h"
 #include "../../string.h"
 #include "../../syscall/sys/file.h"
@@ -22,32 +24,17 @@ static vfs_ops_t dev_mouse_read_pos_ops = {
 
 int dev_mouse_read_pos(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer) {
     (void)node;
-    char mouseX_str[16];
-    char mouseY_str[16];
-
-    char seperator[2] = {',','\0'};
-
-    kitoa(mouse_x,mouseX_str);
-    kitoa(mouse_y,mouseY_str);
-
-    mouseX_str[15] = '\0';
-    mouseY_str[15] = '\0';
-
     char mouse_pos[32];
-
-    strcat(mouse_pos,mouseX_str);
-    strcat(mouse_pos,seperator);
-    strcat(mouse_pos,mouseY_str);
+    snprintf(mouse_pos, 31,"%d,%d",mouse_x,mouse_y);
+    mouse_pos[31] = '\0';
 
     uint32_t len = (uint32_t)strlen(mouse_pos);
-    if (offset >= len) return 1;
+    if (offset >= len) return 0;
 
     uint32_t remaining = len - offset;
     uint32_t to_copy = size < remaining ? size : remaining;
     memcpy(buffer, mouse_pos + offset, to_copy);
     return (int)to_copy;
-
-    return 0;
 }
 
 
