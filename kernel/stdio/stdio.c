@@ -293,7 +293,7 @@ void printfs_write_status(enum print_status_types status_type) {
  * @param fmt Format string.
  * @param ... Variable arguments.
  */
-void printfs(enum print_status_types status_type, const char* fmt, ...) 
+void printfs(enum print_status_types status_type, const char* fmt, ...)
 {
     if (!printfs_masked(status_type))
         return;
@@ -305,4 +305,248 @@ void printfs(enum print_status_types status_type, const char* fmt, ...)
 
     printfs_write_status(status_type);
     printf_internal(p, arg_ptr);
+}
+
+/**
+ * @brief Write a character to buffer if space permits.
+ *
+ * @param buf Pointer to current buffer position.
+ * @param end Pointer to one past the last writable position.
+ * @param c Character to write.
+ * @return New buffer position.
+ */
+static char* buf_putchar(char* buf, char* end, char c) {
+    if (buf < end) {
+        *buf = c;
+    }
+    return buf + 1;
+}
+
+/**
+ * @brief Write a string to buffer if space permits.
+ *
+ * @param buf Pointer to current buffer position.
+ * @param end Pointer to one past the last writable position.
+ * @param s String to write.
+ * @return New buffer position.
+ */
+static char* buf_puts(char* buf, char* end, const char* s) {
+    while (*s) {
+        buf = buf_putchar(buf, end, *s++);
+    }
+    return buf;
+}
+
+/**
+ * @brief Internal sprintf function that writes to a buffer.
+ *
+ * @param buf Output buffer (can be NULL for counting only).
+ * @param size Buffer size (0 for unlimited/sprintf behavior).
+ * @param p Format string.
+ * @param arg_ptr Pointer to the argument list.
+ * @return Number of characters that would have been written (excluding null terminator).
+ */
+static int sprintf_internal(char* buf, size_t size, const char* p, void** arg_ptr) {
+    char tmpbuf[32];
+    char* out = buf;
+    char* end = (size > 0) ? (buf + size - 1) : (char*)(uintptr_t)-1;
+
+    while (*p) {
+        if (*p == '%' && *(p + 1)) {
+            p++;
+
+            char pad_char = ' ';
+            if (*p == '0') {
+                pad_char = '0';
+                p++;
+            }
+
+            int width = 0;
+            while (*p >= '0' && *p <= '9') {
+                width = width * 10 + (*p - '0');
+                p++;
+            }
+
+            enum { LEN_NONE, LEN_HH, LEN_H, LEN_L, LEN_LL } length = LEN_NONE;
+            if (*p == 'h') {
+                if (*(p + 1) == 'h') {
+                    length = LEN_HH;
+                    p += 2;
+                } else {
+                    length = LEN_H;
+                    p++;
+                }
+            } else if (*p == 'l') {
+                if (*(p + 1) == 'l') {
+                    length = LEN_LL;
+                    p += 2;
+                } else {
+                    length = LEN_L;
+                    p++;
+                }
+            }
+
+            char* str = tmpbuf;
+
+            switch (*p) {
+                case 'd': {
+                    long long val;
+                    switch (length) {
+                        case LEN_HH: val = (char)(intptr_t)*arg_ptr++; break;
+                        case LEN_H:  val = (short)(intptr_t)*arg_ptr++; break;
+                        case LEN_L:  val = (long)(intptr_t)*arg_ptr++; break;
+                        case LEN_LL: val = (long long)(intptr_t)*arg_ptr++; break;
+                        default:     val = (int)(intptr_t)*arg_ptr++; break;
+                    }
+                    lltoa(val, tmpbuf);
+
+                    int len = strlen(tmpbuf);
+                    while (len < width) {
+                        out = buf_putchar(out, end, pad_char);
+                        width--;
+                    }
+                    out = buf_puts(out, end, tmpbuf);
+                    break;
+                }
+
+                case 'u': {
+                    unsigned long long val;
+                    switch (length) {
+                        case LEN_HH: val = (unsigned char)(uintptr_t)*arg_ptr++; break;
+                        case LEN_H:  val = (unsigned short)(uintptr_t)*arg_ptr++; break;
+                        case LEN_L:  val = (unsigned long)(uintptr_t)*arg_ptr++; break;
+                        case LEN_LL: val = (unsigned long long)(uintptr_t)*arg_ptr++; break;
+                        default:     val = (unsigned int)(uintptr_t)*arg_ptr++; break;
+                    }
+                    ulltoa(val, tmpbuf);
+
+                    int len = strlen(tmpbuf);
+                    while (len < width) {
+                        out = buf_putchar(out, end, pad_char);
+                        width--;
+                    }
+                    out = buf_puts(out, end, tmpbuf);
+                    break;
+                }
+
+                case 'x': {
+                    unsigned long long val;
+                    switch (length) {
+                        case LEN_HH: val = (unsigned char)(uintptr_t)*arg_ptr++; break;
+                        case LEN_H:  val = (unsigned short)(uintptr_t)*arg_ptr++; break;
+                        case LEN_L:  val = (unsigned long)(uintptr_t)*arg_ptr++; break;
+                        case LEN_LL: val = (unsigned long long)(uintptr_t)*arg_ptr++; break;
+                        default:     val = (unsigned int)(uintptr_t)*arg_ptr++; break;
+                    }
+                    ulltoa_hex(val, tmpbuf);
+
+                    int len = strlen(tmpbuf);
+                    while (len < width) {
+                        out = buf_putchar(out, end, pad_char);
+                        width--;
+                    }
+                    out = buf_puts(out, end, tmpbuf);
+                    break;
+                }
+
+                case 's': {
+                    char* str_arg = (char*)*arg_ptr++;
+                    if (!str_arg) {
+                        str_arg = "(null)";
+                    }
+                    out = buf_puts(out, end, str_arg);
+                    break;
+                }
+
+                case 'c':
+                    out = buf_putchar(out, end, (char)(intptr_t)*arg_ptr++);
+                    break;
+
+                case 'p': {
+                    void* ptr = *arg_ptr++;
+                    uintptr_t addr = (uintptr_t)ptr;
+                    out = buf_puts(out, end, "0x");
+                    ulltoa_hex(addr, tmpbuf);
+
+                    int len = strlen(tmpbuf);
+                    while (len < width) {
+                        out = buf_putchar(out, end, pad_char);
+                        width--;
+                    }
+                    out = buf_puts(out, end, tmpbuf);
+                    break;
+                }
+
+                case 'f': {
+                    double val = *(double*)arg_ptr;
+                    arg_ptr++;
+
+                    ftoa(val, tmpbuf, 6);
+                    out = buf_puts(out, end, tmpbuf);
+                    break;
+                }
+
+                case '%':
+                    out = buf_putchar(out, end, '%');
+                    break;
+
+                default:
+                    out = buf_putchar(out, end, '%');
+                    out = buf_putchar(out, end, *p);
+                    break;
+            }
+        } else {
+            out = buf_putchar(out, end, *p);
+        }
+        p++;
+    }
+
+    // Null terminate
+    if (size > 0) {
+        if (out <= end) {
+            *out = '\0';
+        } else {
+            *end = '\0';
+        }
+    } else if (buf) {
+        *out = '\0';
+    }
+
+    return (int)(out - buf);
+}
+
+/**
+ * @brief Write formatted output to a string.
+ *
+ * @param str Output buffer.
+ * @param fmt Format string.
+ * @param ... Variable arguments.
+ * @return Number of characters written (excluding null terminator).
+ */
+int sprintf(char* str, const char* fmt, ...) {
+    void** arg_ptr = (void**)(&fmt);
+    arg_ptr++;
+
+    return sprintf_internal(str, 0, fmt, arg_ptr);
+}
+
+/**
+ * @brief Write formatted output to a sized buffer.
+ *
+ * @param str Output buffer.
+ * @param size Buffer size.
+ * @param fmt Format string.
+ * @param ... Variable arguments.
+ * @return Number of characters that would have been written (excluding null terminator),
+ *         or a negative value on error.
+ */
+int snprintf(char* str, size_t size, const char* fmt, ...) {
+    if (!str || size == 0) {
+        return 0;
+    }
+
+    void** arg_ptr = (void**)(&fmt);
+    arg_ptr++;
+
+    return sprintf_internal(str, size, fmt, arg_ptr);
 }

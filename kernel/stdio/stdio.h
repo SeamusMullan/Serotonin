@@ -2,6 +2,7 @@
 #define _KERNEL_STDIO
 
 #include <stdint.h>
+#include <stddef.h>
 
 #ifndef NULL
 #define NULL ((void*)0)
@@ -10,7 +11,7 @@
 typedef struct stdio_lck {
     void* stdin_ptr;
     uint32_t  stdin_buf_size;
-} stdio_lck_t; 
+} stdio_lck_t;
 
 enum print_status_types {
     PRINT_STATUS_DEBUG = 0,
@@ -24,5 +25,8 @@ enum print_status_types {
 void printf(const char* fmt, ...);
 void printfs(enum print_status_types status_type, const char* fmt, ...);
 void printfs_set_mask(uint32_t mask);
+
+int sprintf(char* str, const char* fmt, ...);
+int snprintf(char* str, size_t size, const char* fmt, ...);
 
 #endif
