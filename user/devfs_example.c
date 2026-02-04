@@ -25,7 +25,7 @@ int main(void) {
         return 1;
     }
     buf[n] = '\0';
-    printf("number read: %s", buf);
+    printf("read %d bytes, number read: %s\n", n, buf);
     close(fd);
 
     fd = open("/dev/example/write", O_WRONLY);
