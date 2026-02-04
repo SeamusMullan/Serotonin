@@ -76,6 +76,8 @@ extern volatile int multitasking_ready;
 extern volatile int irq_disabled;
 extern volatile rtc_time_t last_rtc_time;
 extern volatile uint32_t unix_timestamp;
+extern volatile int mouse_x;
+extern volatile int mouse_y;
 
 /**
  * @brief Output a byte to a port.

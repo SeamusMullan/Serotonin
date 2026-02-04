@@ -13,11 +13,11 @@ volatile int irq_disabled = 1;
 volatile rtc_time_t last_rtc_time;
 volatile uint32_t unix_timestamp = 0;
 volatile uint32_t vbe_ticks = 0;
+volatile int mouse_x = 0;
+volatile int mouse_y = 0;
 
 static uint8_t ps2_mouse_packet[3];
 static int ps2_mouse_packet_index = 0;
-static int mouse_x = 0;
-static int mouse_y = 0;
 
 /**
  * @brief Handle IRQ (Interrupt Request) signals.
@@ -31,7 +31,7 @@ void irq_handler(int irq, processor_context_t *ctx) {
 
         if (multitasking_ready == 0)
             goto end_irq;
-        
+
         if (vbe_ticks >= VBE_TICKS_PER_FRAME) {
             vbe_ticks = 0;
             enqueue(vbe_worker_task);
@@ -65,8 +65,6 @@ void irq_handler(int irq, processor_context_t *ctx) {
         ps2_mouse_packet[ps2_mouse_packet_index++] = mouse_data;
 
         if (ps2_mouse_packet_index == 3) {
-            vbe_z_fillrect(1, mouse_x, mouse_y, 50, 50, 0x00000000);
-
             int left = ps2_mouse_packet[0] & 0x01;
             int right = ps2_mouse_packet[0] & 0x02;
             int middle = ps2_mouse_packet[0] & 0x04;
@@ -90,20 +88,6 @@ void irq_handler(int irq, processor_context_t *ctx) {
             if (mouse_y >= SCREEN_HEIGHT) mouse_y = SCREEN_HEIGHT - 1;
 
             ps2_mouse_packet_index = 0;
-
-            int r = map_range(mouse_x, 0, SCREEN_WIDTH, 127, 255);
-            int g = map_range(mouse_y, 0, SCREEN_HEIGHT, 127, 255);
-            int b = abs(r - g);
-            if (b > 255) b = 255;
-            if (b < 127) b=127;
-
-            int a = 0xAA;
-            int col = (a << 24) | (r << 16) | (g << 8) | b;
-
-            vbe_z_fillrect(1, mouse_x, mouse_y, 50, 50, col);
-
-            vbe_set_cursor(0,0);
-            printf("Mouse abs: x=%d y=%d (dx=%d dy=%d) L=%d R=%d M=%d       \n", mouse_x, mouse_y, rel_x, rel_y, left, right, middle);
         }
         goto end_irq;
     } else if (irq == IRQ_RTC) {

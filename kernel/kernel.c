@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <cpuid.h>
 #include "kernel.h"
+#include "device/mouse/dev_mouse.h"
 #include "tty.h"
 #include "string.h"
 #include "stdio/stdio.h"
@@ -25,6 +26,7 @@
 #include "audio/startup/opl2_sound/opl2_startup.h"
 #include "io/serial.h"
 #include "device/devfs_example.h"
+#include "device/mouse/dev_mouse.h"
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 4
@@ -910,8 +912,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     kernel_print_cpu_features(&processor_features);
     printfs(PRINT_STATUS_INFO,"Booted with arguments: %s\n",cmdline);
 
-    //ps2_mouse_init();
-
     printfs(PRINT_STATUS_INFO,"vfs: init\n");
     vbe_flip();
 
@@ -954,6 +954,11 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     vbe_flip();
 
     devfs_example_init();
+
+    printfs(PRINT_STATUS_INFO,"devices: mouse init\n");
+    vbe_flip();
+    ps2_mouse_init();
+    dev_mouse_init();
 
     printfs(PRINT_STATUS_INFO,"scheduler: init\n");
     vbe_flip();
