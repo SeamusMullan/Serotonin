@@ -31,8 +31,43 @@ typedef struct proc_5ht {
     int pid;            /**< Process ID */
     char name[32];      /**< Process name */
     int priority;       /**< Scheduling priority */
-    int priv;           /**< Privilege level (0=kernel, 1=user) */
+    int priv;           /**< Privilege level (0=kernel, 3=user) */
 } proc_5ht_t;
+
+/**
+ * @defgroup mouse Mouse Event Interface
+ * @{
+ */
+
+/** Mouse event buffer size (kernel-side) */
+#define MOUSE_EVENT_BUFFER_SIZE 64
+
+/** Mouse button masks */
+#define MOUSE_BTN_LEFT   (1 << 0)
+#define MOUSE_BTN_RIGHT  (1 << 1)
+#define MOUSE_BTN_MIDDLE (1 << 2)
+
+/** Mouse event types */
+enum {
+    MOUSE_EVENT_MOVE = 0,        /**< Mouse moved (reserved for future use) */
+    MOUSE_EVENT_BUTTON_DOWN = 1, /**< Button pressed */
+    MOUSE_EVENT_BUTTON_UP = 2    /**< Button released */
+};
+
+/**
+ * @brief Mouse event structure
+ *
+ * Returned when reading from /dev/mouse/event.
+ * Use blocking read to wait for events, or O_NONBLOCK for polling.
+ */
+typedef struct mouse_event {
+    int16_t x;          /**< X coordinate at time of event */
+    int16_t y;          /**< Y coordinate at time of event */
+    uint8_t buttons;    /**< Button state (MOUSE_BTN_* masks) */
+    uint8_t event_type; /**< Event type (MOUSE_EVENT_*) */
+} __attribute__((packed)) mouse_event_t;
+
+/** @} */ /* end of mouse group */
 
 /**
  * @brief Framebuffer information structure
@@ -119,7 +154,7 @@ static inline int do_syscall(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_
 
     if ((int)eax < 0) {
         errno = -(int)eax;
-        return errno;
+        return -1;
     }
     return eax;
 }

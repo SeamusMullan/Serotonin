@@ -3,6 +3,7 @@
 #include "../../kernel.h"
 #include "../../stdlib/stdlib.h"
 #include "../../string.h"
+#include "../../schedule/schedule.h"
 
 static vfs_node_t *devfs_root = NULL;
 
@@ -77,6 +78,8 @@ static vfs_node_t *devfs_create_file_node(const char *name, mode_t mode, vfs_ops
     }
     file_data->mode = mode;
     file_data->ops = ops;
+    file_data->wait_queue.head = NULL;
+    file_data->wait_queue.tail = NULL;
     file_node->fs_data = file_data;
 
     return file_node;
@@ -245,6 +248,7 @@ int devfs_register_device(const char *path, mode_t mode, vfs_ops_t *ops) {
             if (!file) return -1;
             file->mode = mode;
             file->ops = ops;
+            devfs_wait_queue_init(&file->wait_queue);
         } else if (is_last && ((mode & S_IFMT) == S_IFDIR)) {
             if (!(child->flags & VFS_FLAG_DIRECTORY)) {
                 return -1;
@@ -258,4 +262,80 @@ int devfs_register_device(const char *path, mode_t mode, vfs_ops_t *ops) {
     }
 
     return 0;
+}
+
+void devfs_wait_queue_init(devfs_wait_queue_t *queue) {
+    if (!queue) return;
+    queue->head = NULL;
+    queue->tail = NULL;
+}
+
+int devfs_wait_enqueue(devfs_wait_queue_t *queue, process_control_block_t *task) {
+    if (!queue || !task) return -1;
+
+    devfs_waiter_t *node = kernel_malloc(sizeof(*node));
+    if (!node) return -1;
+
+    node->task = task;
+    node->next = NULL;
+
+    lock_scheduler();
+    if (queue->tail) {
+        queue->tail->next = node;
+        queue->tail = node;
+    } else {
+        queue->head = queue->tail = node;
+    }
+
+    task->state = PROCESS_STATE_BLOCKED;
+    unlock_scheduler();
+
+    task_yield(1);
+    return 0;
+}
+
+process_control_block_t *devfs_wait_dequeue(devfs_wait_queue_t *queue) {
+    if (!queue || !queue->head) return NULL;
+
+    devfs_waiter_t *node = queue->head;
+    process_control_block_t *task = node->task;
+
+    queue->head = node->next;
+    if (!queue->head) {
+        queue->tail = NULL;
+    }
+
+    kernel_free(node);
+    return task;
+}
+
+void devfs_wait_wake_one(devfs_wait_queue_t *queue) {
+    if (!queue) return;
+
+    lock_scheduler();
+    process_control_block_t *task = devfs_wait_dequeue(queue);
+    if (task) {
+        task_unblock(task);
+    }
+    unlock_scheduler();
+}
+
+void devfs_wait_wake_all(devfs_wait_queue_t *queue) {
+    if (!queue) return;
+
+    lock_scheduler();
+    process_control_block_t *task;
+    while ((task = devfs_wait_dequeue(queue)) != NULL) {
+        task_unblock(task);
+    }
+    unlock_scheduler();
+}
+
+devfs_wait_queue_t *devfs_get_wait_queue(vfs_node_t *node) {
+    if (!node || !(node->flags & VFS_FLAG_FILE)) return NULL;
+
+    devfs_file_t *file = (devfs_file_t *)node->fs_data;
+    if (!file) return NULL;
+
+    return &file->wait_queue;
 }

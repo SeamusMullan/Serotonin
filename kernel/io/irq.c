@@ -5,6 +5,7 @@
 #include "../schedule/schedule.h"
 #include "../video/vbe/vbe.h"
 #include "../kernel.h"
+#include "../device/mouse/dev_mouse.h"
 
 volatile uint64_t timer_ticks = 0;
 volatile uint64_t last_quantum_tick = 0;
@@ -18,6 +19,7 @@ volatile int mouse_y = 0;
 
 static uint8_t ps2_mouse_packet[3];
 static int ps2_mouse_packet_index = 0;
+static uint8_t prev_mouse_buttons = 0;
 
 /**
  * @brief Handle IRQ (Interrupt Request) signals.
@@ -65,9 +67,7 @@ void irq_handler(int irq, processor_context_t *ctx) {
         ps2_mouse_packet[ps2_mouse_packet_index++] = mouse_data;
 
         if (ps2_mouse_packet_index == 3) {
-            int left = ps2_mouse_packet[0] & 0x01;
-            int right = ps2_mouse_packet[0] & 0x02;
-            int middle = ps2_mouse_packet[0] & 0x04;
+            uint8_t buttons = ps2_mouse_packet[0] & 0x07;
 
             int rel_x = ps2_mouse_packet[1];
             if (ps2_mouse_packet[0] & 0x10) { // x sign bit
@@ -86,6 +86,22 @@ void irq_handler(int irq, processor_context_t *ctx) {
             if (mouse_y < 0) mouse_y = 0;
             if (mouse_x >= SCREEN_WIDTH)  mouse_x = SCREEN_WIDTH - 1;
             if (mouse_y >= SCREEN_HEIGHT) mouse_y = SCREEN_HEIGHT - 1;
+
+            uint8_t changed = buttons ^ prev_mouse_buttons;
+            if (changed) {
+                for (int i = 0; i < 3; i++) {
+                    uint8_t mask = (1 << i);
+                    if (changed & mask) {
+                        mouse_event_t ev;
+                        ev.x = (int16_t)mouse_x;
+                        ev.y = (int16_t)mouse_y;
+                        ev.buttons = buttons;
+                        ev.event_type = (buttons & mask) ? MOUSE_EVENT_BUTTON_DOWN : MOUSE_EVENT_BUTTON_UP;
+                        dev_mouse_push_event(&ev);
+                    }
+                }
+                prev_mouse_buttons = buttons;
+            }
 
             ps2_mouse_packet_index = 0;
         }

@@ -454,6 +454,7 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
             return;
         }
 
+    current_task->current_fd_flags = handle->flags;
     int read_bytes = vfs_read(handle->node, handle->offset, buf_size, read_buf);
     if (read_bytes < 0) {
         kernel_free(read_buf);
