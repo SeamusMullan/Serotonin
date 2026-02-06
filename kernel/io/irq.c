@@ -20,6 +20,7 @@ volatile int mouse_y = 0;
 static uint8_t ps2_mouse_packet[3];
 static int ps2_mouse_packet_index = 0;
 static uint8_t prev_mouse_buttons = 0;
+static uint64_t ps2_mouse_last_byte_tick = 0;
 
 /**
  * @brief Handle IRQ (Interrupt Request) signals.
@@ -58,13 +59,31 @@ void irq_handler(int irq, processor_context_t *ctx) {
     } else if (irq == IRQ_MOUSE) {
         uint8_t mouse_data = inb(PS2_DATA_PORT);
 
+        // Filter out PS2 protocol response bytes and resync
+        if (mouse_data == PS2_MOUSE_ACK || mouse_data == PS2_MOUSE_RESEND ||
+            mouse_data == PS2_MOUSE_ERROR || mouse_data == PS2_MOUSE_ERROR2 ||
+            mouse_data == PS2_MOUSE_RESET || mouse_data == PS2_MOUSE_SELFTEST_GOOD) {
+            ps2_mouse_packet_index = 0;
+            goto end_irq;
+        }
+
+        if (ps2_mouse_packet_index > 0 && (timer_ticks - ps2_mouse_last_byte_tick) > 2) {
+            ps2_mouse_packet_index = 0;
+        }
+
         if (ps2_mouse_packet_index == 0) {
+            // Byte 0 must have sync bit (bit 3) set
             if (!(mouse_data & 0x08)) {
+                goto end_irq;
+            }
+            // If both overflow bits (6,7) are set, likely garbage - discard
+            if ((mouse_data & 0xC0) == 0xC0) {
                 goto end_irq;
             }
         }
 
         ps2_mouse_packet[ps2_mouse_packet_index++] = mouse_data;
+        ps2_mouse_last_byte_tick = timer_ticks;
 
         if (ps2_mouse_packet_index == 3) {
             uint8_t buttons = ps2_mouse_packet[0] & 0x07;
@@ -80,7 +99,7 @@ void irq_handler(int irq, processor_context_t *ctx) {
             }
 
             mouse_x += rel_x;
-            mouse_y -= rel_y;
+            mouse_y += rel_y;
 
             if (mouse_x < 0) mouse_x = 0;
             if (mouse_y < 0) mouse_y = 0;
