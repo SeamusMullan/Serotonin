@@ -1,3 +1,12 @@
+/**
+ * @file devfs.c
+ * @brief Device filesystem implementation
+ *
+ * Implements a virtual filesystem for device access. Devices register
+ * themselves and provide custom read/write operations. Supports blocking
+ * I/O through wait queues for devices like input devices.
+ */
+
 #include "devfs.h"
 #include "../vfs.h"
 #include "../../kernel.h"
@@ -5,8 +14,10 @@
 #include "../../string.h"
 #include "../../schedule/schedule.h"
 
+/** Root node of the mounted devfs */
 static vfs_node_t *devfs_root = NULL;
 
+/** VFS operations for devfs nodes */
 static vfs_ops_t devfs_ops = {
     .read = devfs_read,
     .write = devfs_write,
@@ -21,21 +32,32 @@ static vfs_ops_t devfs_ops = {
     .mkdir = NULL
 };
 
+/** Filesystem descriptor for VFS registration */
 static filesystem_t devfs_fs = {
     .name = "devfs",
     .mount = devfs_mount,
     .next = NULL
 };
 
-
+/**
+ * @brief Check if mode allows read access
+ */
 static int devfs_mode_allows_read(mode_t mode) {
     return (mode & 0444) != 0;
 }
 
+/**
+ * @brief Check if mode allows write access
+ */
 static int devfs_mode_allows_write(mode_t mode) {
     return (mode & 0222) != 0;
 }
 
+/**
+ * @brief Create a new directory node
+ * @param name Name of the directory
+ * @return New directory node, or NULL on failure
+ */
 static vfs_node_t *devfs_create_dir_node(const char *name) {
     vfs_node_t *dir_node = kernel_malloc(sizeof(*dir_node));
     if (!dir_node) return NULL;
@@ -59,6 +81,13 @@ static vfs_node_t *devfs_create_dir_node(const char *name) {
     return dir_node;
 }
 
+/**
+ * @brief Create a new device file node
+ * @param name Name of the device
+ * @param mode File mode and permissions
+ * @param ops Device-specific operations
+ * @return New file node, or NULL on failure
+ */
 static vfs_node_t *devfs_create_file_node(const char *name, mode_t mode, vfs_ops_t *ops) {
     vfs_node_t *file_node = kernel_malloc(sizeof(*file_node));
     if (!file_node) return NULL;
@@ -85,6 +114,9 @@ static vfs_node_t *devfs_create_file_node(const char *name, mode_t mode, vfs_ops
     return file_node;
 }
 
+/**
+ * @brief Find a child node by name
+ */
 static vfs_node_t *devfs_find_child(devfs_dir_t *dir, const char *name) {
     devfs_dir_entry_t *entry = dir->entries;
     while (entry) {
@@ -96,6 +128,9 @@ static vfs_node_t *devfs_find_child(devfs_dir_t *dir, const char *name) {
     return NULL;
 }
 
+/**
+ * @brief Add a child node to a directory
+ */
 static int devfs_add_child(devfs_dir_t *dir, vfs_node_t *child) {
     devfs_dir_entry_t *entry = kernel_malloc(sizeof(*entry));
     if (!entry) return -1;
@@ -204,14 +239,17 @@ vfs_node_t *devfs_finddir(vfs_node_t *node, const char *name) {
 int devfs_register_device(const char *path, mode_t mode, vfs_ops_t *ops) {
     if (!devfs_root || !path) return -1;
 
+    // Skip leading slashes
     const char *start = path;
     while (*start == '/') start++;
     if (*start == '\0') return -1;
 
+    // Work with a copy for tokenization
     char temp[256];
     strncpy(temp, start, sizeof(temp));
     temp[sizeof(temp) - 1] = '\0';
 
+    // Walk the path, creating directories as needed
     vfs_node_t *current = devfs_root;
     char *token = strtok(temp, "/");
     while (token) {
@@ -227,6 +265,7 @@ int devfs_register_device(const char *path, mode_t mode, vfs_ops_t *ops) {
 
         vfs_node_t *child = devfs_find_child(dir, token);
         if (!child) {
+            // Create new node
             if (is_last && ((mode & S_IFMT) == S_IFDIR)) {
                 child = devfs_create_dir_node(token);
             } else if (is_last) {
@@ -244,6 +283,7 @@ int devfs_register_device(const char *path, mode_t mode, vfs_ops_t *ops) {
             }
             child->parent = current;
         } else if (is_last && (child->flags & VFS_FLAG_FILE)) {
+            // Update existing device
             devfs_file_t *file = (devfs_file_t *)child->fs_data;
             if (!file) return -1;
             file->mode = mode;
@@ -264,6 +304,10 @@ int devfs_register_device(const char *path, mode_t mode, vfs_ops_t *ops) {
     return 0;
 }
 
+/*
+ * Wait queue operations for blocking device I/O
+ */
+
 void devfs_wait_queue_init(devfs_wait_queue_t *queue) {
     if (!queue) return;
     queue->head = NULL;
@@ -278,6 +322,8 @@ int devfs_wait_enqueue(devfs_wait_queue_t *queue, process_control_block_t *task)
 
     node->task = task;
     node->next = NULL;
+    node->buffer = NULL;
+    node->buffer_size = 0;
 
     lock_scheduler();
     if (queue->tail) {

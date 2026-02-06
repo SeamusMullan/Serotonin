@@ -74,6 +74,7 @@ typedef struct process_control_block {
     uint8_t no_requeue;
     char cwd[256];
     uint32_t current_fd_flags;
+    uint32_t current_user_buf;
 } process_control_block_t;
 
 typedef struct pipe_waiter {
