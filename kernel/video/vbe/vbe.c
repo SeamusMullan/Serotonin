@@ -749,9 +749,9 @@ void vbe_drawglyph(FontGlyph *glyph, uint32_t x, uint32_t y, uint32_t color) {
         uint32_t *dst = dst_buf + (y + row) * stride + x;
 
         for (uint32_t col = 0; col < VBE_FONT_WIDTH; col++) {
+            vbe_mark_pixel_dirty(x + col, y + row);
             if (bits & (uint8_t)(1u << (7u - col))) {
                 dst[col] = color;
-                vbe_mark_pixel_dirty(x + col, y + row);
             }
         }
     }

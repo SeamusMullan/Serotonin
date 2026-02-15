@@ -532,6 +532,8 @@ void task_lock_release(lock_t *lock) {
 }
 
 process_control_block_t* task_fork(process_control_block_t *parent) {
+    lock_scheduler();
+
     if (parent->priv == CPU_KERNEL_MODE) {
         printfs(PRINT_STATUS_ERROR,"Process '%s' attempted fork in kernel mode and will be terminated.\n",current_task->name);
         task_exit(parent,EXIT_SIGILL);
@@ -642,6 +644,8 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     printfs(PRINT_STATUS_DEBUG,"Forking task '%s', esp=%p, esp0=%p\n", pcb->name, pcb->esp,pcb->esp0);
 
     enqueue_task_list(pcb);
+
+    unlock_scheduler();
 
     return pcb;
 }
