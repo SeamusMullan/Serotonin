@@ -54,5 +54,6 @@ extern tss_struct sys_tss;
 void gdt_flush(uint32_t); 
 
 void init_gdt(void);
+void tss_set_esp0(uint32_t esp0);
 
 #endif

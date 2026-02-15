@@ -1564,7 +1564,8 @@ void system_call(processor_context_t *ctx) {
     printfs(PRINT_STATUS_DEBUG, "[SYSCALL] eip=%p Recieved system call from %s (pid=%d): operation:%d, arg2:%p, arg3:%p, arg4:%p\n",
             ctx->eip, current_task->name, current_task->pid, operation, arg2, arg3, arg4);
 
-    enable_interrupts();
+    // bypass the irq_disabled counter, the int 0x80 gate cleared IF but irq_disabled was never incremented
+    asm volatile("sti");
 
     switch (operation) {
         case SYSTEM_CALL_EXIT:
@@ -1689,5 +1690,7 @@ void system_call(processor_context_t *ctx) {
 
     printfs(PRINT_STATUS_DEBUG, "[SYSCALL] exiting kernel\n");
 
+    // irqs must be disabled before dropping the preempt guard
+    asm volatile("cli");
     preempt_enable();
 }

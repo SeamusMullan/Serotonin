@@ -5,7 +5,7 @@
 #include "schedule/schedule.h"
 #include "string.h"
 
-#define KERNEL_ESP 0xF03FFFFF
+#define KERNEL_ESP 0xF0400000
 
 #define BIT(n) (1u << (n))
 

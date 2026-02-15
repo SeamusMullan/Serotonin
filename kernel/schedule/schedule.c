@@ -236,7 +236,6 @@ void task_yield(int irq) {
 
     process_control_block_t* next = dequeue();
     if (next->state == PROCESS_STATE_READY) {
-        lock_scheduler();
         if (next->priv == CPU_USER_MODE) {
             switch_address_space(next->address_space);
             task_ipc_deliver_signals(next, next->processor_context);
@@ -348,14 +347,11 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
     uint8_t *stack;
     uint32_t *stk_top;
     if (priv == CPU_USER_MODE) {
-        //stack = (uint8_t*)alloc_user_stack();
-        //stk_top = (uint32_t*)(stack + USER_STACK_SIZE);
         pcb->processor_context->ds          = USER_MODE_SEGMENT;
         pcb->processor_context->es          = USER_MODE_SEGMENT;
         pcb->processor_context->fs          = USER_MODE_SEGMENT;
         pcb->processor_context->gs          = USER_MODE_SEGMENT;
         pcb->processor_context->ss          = USER_MODE_SEGMENT;
-        //pcb->processor_context->esp_at_trap = (uint32_t)stk_top;
         pcb->processor_context->stub_eflags = INIT_EFLAGS;
         pcb->processor_context->eflags      = INIT_EFLAGS;
         pcb->processor_context->cs          = USER_MODE_CODE_SEGMENT;
@@ -363,17 +359,21 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
         pcb->brk_start                      = USER_HEAP_START;
         pcb->brk_end                        = USER_HEAP_START;
         memcpy(signal_ctx, ctx, sizeof(processor_context_t));
-        //memset(stack, 0, USER_STACK_SIZE);
+
+        uint8_t *kstack = (uint8_t*)alloc_kernel_stack();
+        uint32_t kstack_top = (uint32_t)kstack + KERNEL_STACK_SIZE;
+        memset(kstack, 0, KERNEL_STACK_SIZE);
+        pcb->esp0 = (void*)kstack_top;
     } else {
         stack = (uint8_t*)alloc_kernel_stack();
         stk_top = (uint32_t*)(stack + KERNEL_STACK_SIZE);
         memset(stack, 0, KERNEL_STACK_SIZE);
+        pcb->esp = stk_top;
+        pcb->esp0 = (void*)stk_top;
     }
 
-    pcb->esp = stk_top;
-    pcb->esp0 = get_esp();
-    pcb->esp_max = stack;
-    pcb->esp_min = stk_top;
+    pcb->esp_max = (priv == CPU_USER_MODE) ? NULL : (void*)stack;
+    pcb->esp_min = (priv == CPU_USER_MODE) ? NULL : (void*)stk_top;
     pcb->entry = entry;
 
     printfs(PRINT_STATUS_DEBUG,"Creating task '%s', esp=%p, esp0=%p\n", name, pcb->esp,pcb->esp0);
@@ -634,19 +634,10 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
         }
     }
 
-    /*
-    // create stack
-    uint8_t *stack;
-    uint32_t *stk_top;
-    uint32_t ebp;
-    stack = (uint8_t*)alloc_user_stack();
-    stk_top = (uint32_t*)(stack + USER_STACK_SIZE);
-    memset(stack, 0, USER_STACK_SIZE);
-
-    ebp = (uint32_t)stk_top - bp_offset;
-    stk_top = (uint32_t*)((uint32_t)stk_top - stk_offset);
-
-    */
+    uint8_t *child_kstack = (uint8_t*)alloc_kernel_stack();
+    uint32_t child_kstack_top = (uint32_t)child_kstack + KERNEL_STACK_SIZE;
+    memset(child_kstack, 0, KERNEL_STACK_SIZE);
+    pcb->esp0 = (void*)child_kstack_top;
 
     printfs(PRINT_STATUS_DEBUG,"Forking task '%s', esp=%p, esp0=%p\n", pcb->name, pcb->esp,pcb->esp0);
 

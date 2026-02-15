@@ -5,10 +5,13 @@
 .type   switch_task_iret, @function
 .extern current_task
 .extern kernel_panic
+.extern sys_tss
+.extern lock_count
+.extern irq_disabled
 
 # PCB offsets
 .equ    OFF_ESP,      4
-.equ    OFF_ESP0,     8 
+.equ    OFF_ESP0,     8
 .equ    OFF_CR3,      12
 .equ    OFF_ENTRY,    56
 .equ    OFF_PRIV,     61
@@ -21,10 +24,10 @@
 .equ    OFF_K_FPU,    112
 
 # context offsets
-.equ OFF_GS,            0
-.equ OFF_FS,            4
-.equ OFF_ES,            8
-.equ OFF_DS,           12
+.equ OFF_DS,            0
+.equ OFF_ES,            4
+.equ OFF_FS,            8
+.equ OFF_GS,           12
 .equ OFF_EDI,          16
 .equ OFF_ESI,          20
 .equ OFF_EBP,          24
@@ -85,7 +88,17 @@ switch_user_mode:
     # switch to the new PCB
     movl    %edx, current_task
     movl    OFF_CTX(%edx), %ecx
-    
+
+    # reset scheduler lock state
+    movl    $0, lock_count
+    movl    $0, irq_disabled
+
+    # update TSS.ESP0 to this task's kernel stack top
+    movl    OFF_ESP0(%edx), %eax
+    movl    %eax, sys_tss + 4
+    # switch to the task's kernel stack for the iret frame
+    movl    %eax, %esp
+
     # restore FPU state
     fxrstor OFF_K_FPU(%edx)
 

@@ -51,7 +51,7 @@
  * and segment registers.
  */
 typedef struct processor_context {
-    uint32_t gs, fs, es, ds;
+    uint32_t ds, es, fs, gs;
     uint32_t edi, esi, ebp, esp_at_pushal, ebx, edx, ecx, eax;
     uint32_t stub_eflags;
     uint32_t eip, cs, eflags, esp_at_trap, ss;

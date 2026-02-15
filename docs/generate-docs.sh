@@ -17,14 +17,14 @@ set -e  # Exit on any error
 
 # Project configuration
 PROJECT_NAME="Serotonin"
-PROJECT_VERSION="0.2.2"
-PROJECT_BRIEF="An operating system written with C"
+PROJECT_VERSION="0.4.0"
+PROJECT_BRIEF="Unix-like Operating System"
 
 if [ "$IS_WINDOWS" -eq 1 ]; then
     # Use Windows path resolution
     SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
     PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
-    
+
     # Convert to Windows-style paths for Doxygen
     # Replace /c/ with C:/ and convert forward slashes to backslashes
     PROJECT_ROOT_WIN=$(echo "$PROJECT_ROOT" | sed 's|^/c/|C:/|' | sed 's|/|\\|g')
@@ -32,7 +32,7 @@ if [ "$IS_WINDOWS" -eq 1 ]; then
     USER_PATH_WIN=$(echo "$PROJECT_ROOT/user" | sed 's|^/c/|C:/|' | sed 's|/|\\|g')
     README_PATH_WIN=$(echo "$PROJECT_ROOT/README.md" | sed 's|^/c/|C:/|' | sed 's|/|\\|g')
     DOCS_DIR_WIN="$PROJECT_ROOT_WIN\\docs"
-    
+
     # Keep Unix paths for shell operations
     DOCS_DIR="$PROJECT_ROOT/docs"
     OUTPUT_DIR="$DOCS_DIR/html"
@@ -42,7 +42,7 @@ else
     DOCS_DIR="$PROJECT_ROOT/docs"
     OUTPUT_DIR="$DOCS_DIR/html"
     DOXYFILE="$DOCS_DIR/Doxyfile"
-    
+
     # For non-Windows, use the same paths
     PROJECT_ROOT_WIN="$PROJECT_ROOT"
     KERNEL_PATH_WIN="$PROJECT_ROOT/kernel"
@@ -108,19 +108,19 @@ cat > "$DOXYFILE" << EOF
 PROJECT_NAME           = "$PROJECT_NAME"
 PROJECT_NUMBER         = "$PROJECT_VERSION"
 PROJECT_BRIEF          = "$PROJECT_BRIEF"
-PROJECT_LOGO           = 
+PROJECT_LOGO           =
 OUTPUT_DIRECTORY       = "$DOCS_DIR_WIN"
 CREATE_SUBDIRS         = NO
 ALLOW_UNICODE_NAMES    = NO
 OUTPUT_LANGUAGE        = English
 BRIEF_MEMBER_DESC      = YES
 REPEAT_BRIEF           = YES
-ABBREVIATE_BRIEF       = 
+ABBREVIATE_BRIEF       =
 ALWAYS_DETAILED_SEC    = NO
 INLINE_INHERITED_MEMB  = NO
 FULL_PATH_NAMES        = YES
 STRIP_FROM_PATH        = "$PROJECT_ROOT_WIN"
-STRIP_FROM_INC_PATH    = 
+STRIP_FROM_INC_PATH    =
 SHORT_NAMES            = NO
 JAVADOC_AUTOBRIEF      = YES
 QT_AUTOBRIEF           = NO
@@ -128,13 +128,13 @@ MULTILINE_CPP_IS_BRIEF = NO
 INHERIT_DOCS           = YES
 SEPARATE_MEMBER_PAGES  = NO
 TAB_SIZE               = 4
-ALIASES                = 
-TCL_SUBST              = 
+ALIASES                =
+TCL_SUBST              =
 OPTIMIZE_OUTPUT_FOR_C  = YES
 OPTIMIZE_OUTPUT_JAVA   = NO
 OPTIMIZE_FOR_FORTRAN   = NO
 OPTIMIZE_OUTPUT_VHDL   = NO
-EXTENSION_MAPPING      = 
+EXTENSION_MAPPING      =
 MARKDOWN_SUPPORT       = YES
 TOC_INCLUDE_HEADINGS   = 0
 AUTOLINK_SUPPORT       = YES
@@ -182,14 +182,14 @@ GENERATE_TODOLIST      = YES
 GENERATE_TESTLIST      = YES
 GENERATE_BUGLIST       = YES
 GENERATE_DEPRECATEDLIST= YES
-ENABLED_SECTIONS       = 
+ENABLED_SECTIONS       =
 MAX_INITIALIZER_LINES  = 30
 SHOW_USED_FILES        = YES
 SHOW_FILES             = YES
 SHOW_NAMESPACES        = YES
-FILE_VERSION_FILTER    = 
-LAYOUT_FILE            = 
-CITE_BIB_FILES         = 
+FILE_VERSION_FILTER    =
+LAYOUT_FILE            =
+CITE_BIB_FILES         =
 
 #---------------------------------------------------------------------------
 # Configuration options related to warning and progress messages
@@ -201,13 +201,13 @@ WARN_IF_DOC_ERROR      = YES
 WARN_NO_PARAMDOC       = NO
 WARN_AS_ERROR          = NO
 WARN_FORMAT            = "\$file:\$line: \$text"
-WARN_LOGFILE           = 
+WARN_LOGFILE           =
 
 #---------------------------------------------------------------------------
 # Configuration options related to the input files
 #---------------------------------------------------------------------------
 INPUT                  = "$KERNEL_PATH_WIN" \\
-                         "$USER_PATH_WIN" \\
+               #         "$USER_PATH_WIN" \\
                          "$README_PATH_WIN"
 INPUT_ENCODING         = UTF-8
 FILE_PATTERNS          = *.c \\
@@ -218,19 +218,19 @@ FILE_PATTERNS          = *.c \\
                          *.S \\
                          *.md
 RECURSIVE              = YES
-EXCLUDE                = 
+EXCLUDE                =
 EXCLUDE_SYMLINKS       = NO
 EXCLUDE_PATTERNS       = */build/* \\
                          */.*
-EXCLUDE_SYMBOLS        = 
-EXAMPLE_PATH           = 
+EXCLUDE_SYMBOLS        =
+EXAMPLE_PATH           =
 EXAMPLE_PATTERNS       = *
 EXAMPLE_RECURSIVE      = NO
-IMAGE_PATH             = 
-INPUT_FILTER           = 
-FILTER_PATTERNS        = 
+IMAGE_PATH             =
+INPUT_FILTER           =
+FILTER_PATTERNS        =
 FILTER_SOURCE_FILES    = NO
-FILTER_SOURCE_PATTERNS = 
+FILTER_SOURCE_PATTERNS =
 USE_MDFILE_AS_MAINPAGE = README.md
 
 #---------------------------------------------------------------------------
@@ -251,7 +251,7 @@ VERBATIM_HEADERS       = YES
 #---------------------------------------------------------------------------
 ALPHABETICAL_INDEX     = YES
 COLS_IN_ALPHA_INDEX    = 5
-IGNORE_PREFIX          = 
+IGNORE_PREFIX          =
 
 #---------------------------------------------------------------------------
 # Configuration options related to the HTML output
@@ -259,11 +259,11 @@ IGNORE_PREFIX          =
 GENERATE_HTML          = YES
 HTML_OUTPUT            = html
 HTML_FILE_EXTENSION    = .html
-HTML_HEADER            = 
-HTML_FOOTER            = 
-HTML_STYLESHEET        = 
-HTML_EXTRA_STYLESHEET  = 
-HTML_EXTRA_FILES       = 
+HTML_HEADER            =
+HTML_FOOTER            =
+HTML_STYLESHEET        =
+HTML_EXTRA_STYLESHEET  =
+HTML_EXTRA_FILES       =
 HTML_COLORSTYLE_HUE    = 220
 HTML_COLORSTYLE_SAT    = 100
 HTML_COLORSTYLE_GAMMA  = 80
@@ -276,20 +276,20 @@ DOCSET_BUNDLE_ID       = org.doxygen.Project
 DOCSET_PUBLISHER_ID    = org.doxygen.Publisher
 DOCSET_PUBLISHER_NAME  = Publisher
 GENERATE_HTMLHELP      = NO
-CHM_FILE               = 
-HHC_LOCATION           = 
+CHM_FILE               =
+HHC_LOCATION           =
 GENERATE_CHI           = NO
-CHM_INDEX_ENCODING     = 
+CHM_INDEX_ENCODING     =
 BINARY_TOC             = NO
 TOC_EXPAND             = NO
 GENERATE_QHP           = NO
-QCH_FILE               = 
+QCH_FILE               =
 QHP_NAMESPACE          = org.doxygen.Project
 QHP_VIRTUAL_FOLDER     = doc
-QHP_CUST_FILTER_NAME   = 
-QHP_CUST_FILTER_ATTRS  = 
-QHP_SECT_FILTER_ATTRS  = 
-QHG_LOCATION           = 
+QHP_CUST_FILTER_NAME   =
+QHP_CUST_FILTER_ATTRS  =
+QHP_SECT_FILTER_ATTRS  =
+QHG_LOCATION           =
 GENERATE_ECLIPSEHELP   = NO
 ECLIPSE_DOC_ID         = org.doxygen.Project
 DISABLE_INDEX          = NO
@@ -302,15 +302,15 @@ FORMULA_TRANSPARENT    = YES
 USE_MATHJAX            = NO
 MATHJAX_FORMAT         = HTML-CSS
 MATHJAX_RELPATH        = http://cdn.mathjax.org/mathjax/latest
-MATHJAX_EXTENSIONS     = 
-MATHJAX_CODEFILE       = 
+MATHJAX_EXTENSIONS     =
+MATHJAX_CODEFILE       =
 SEARCHENGINE           = YES
 SERVER_BASED_SEARCH    = NO
 EXTERNAL_SEARCH        = NO
-SEARCHENGINE_URL       = 
+SEARCHENGINE_URL       =
 SEARCHDATA_FILE        = searchdata.xml
-EXTERNAL_SEARCH_ID     = 
-EXTRA_SEARCH_MAPPINGS  = 
+EXTERNAL_SEARCH_ID     =
+EXTRA_SEARCH_MAPPINGS  =
 
 #---------------------------------------------------------------------------
 # Configuration options related to the LaTeX output
@@ -355,16 +355,16 @@ MACRO_EXPANSION        = NO
 EXPAND_ONLY_PREDEF     = NO
 SEARCH_INCLUDES        = YES
 INCLUDE_PATH           = "$KERNEL_PATH_WIN"
-INCLUDE_FILE_PATTERNS  = 
-PREDEFINED             = 
-EXPAND_AS_DEFINED      = 
+INCLUDE_FILE_PATTERNS  =
+PREDEFINED             =
+EXPAND_AS_DEFINED      =
 SKIP_FUNCTION_MACROS   = YES
 
 #---------------------------------------------------------------------------
 # Configuration options related to external references
 #---------------------------------------------------------------------------
-TAGFILES               = 
-GENERATE_TAGFILE       = 
+TAGFILES               =
+GENERATE_TAGFILE       =
 ALLEXTERNALS           = NO
 EXTERNAL_GROUPS        = YES
 EXTERNAL_PAGES         = YES
@@ -374,14 +374,14 @@ PERL_PATH              = /usr/bin/perl
 # Configuration options related to the dot tool
 #---------------------------------------------------------------------------
 CLASS_DIAGRAMS         = YES
-MSCGEN_PATH            = 
-DIA_PATH               = 
+MSCGEN_PATH            =
+DIA_PATH               =
 HIDE_UNDOC_RELATIONS   = YES
 HAVE_DOT               = $DOT_AVAILABLE
 DOT_NUM_THREADS        = 0
 DOT_FONTNAME           = Helvetica
 DOT_FONTSIZE           = 10
-DOT_FONTPATH           = 
+DOT_FONTPATH           =
 CLASS_GRAPH            = YES
 COLLABORATION_GRAPH    = YES
 GROUP_GRAPHS           = YES
@@ -396,13 +396,13 @@ GRAPHICAL_HIERARCHY    = YES
 DIRECTORY_GRAPH        = YES
 DOT_IMAGE_FORMAT       = png
 INTERACTIVE_SVG        = NO
-DOT_PATH               = 
-DOTFILE_DIRS           = 
-MSCFILE_DIRS           = 
-DIAFILE_DIRS           = 
-PLANTUML_JAR_PATH      = 
-PLANTUML_CFG_FILE      = 
-PLANTUML_INCLUDE_PATH  = 
+DOT_PATH               =
+DOTFILE_DIRS           =
+MSCFILE_DIRS           =
+DIAFILE_DIRS           =
+PLANTUML_JAR_PATH      =
+PLANTUML_CFG_FILE      =
+PLANTUML_INCLUDE_PATH  =
 DOT_GRAPH_MAX_NODES    = 50
 MAX_DOT_GRAPH_DEPTH    = 0
 DOT_TRANSPARENT        = NO

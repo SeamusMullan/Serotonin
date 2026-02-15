@@ -108,3 +108,7 @@ __attribute__((section(".identity"))) void init_gdt() {
 
     gdt_flush((uint32_t)&gdtp);
 }
+
+void tss_set_esp0(uint32_t esp0) {
+    sys_tss.esp0 = esp0;
+}
