@@ -7,6 +7,7 @@ build/binutils-user-build
 build/binutils-user-stage
 build-tools/bin
 build-tools/src
+sysroot/
 docs/html
 docs/latex
 docs/Doxyfile

@@ -4,9 +4,23 @@ export TARGET=i686-elf
 export PATH="$PREFIX/bin:$PATH"
 OS_TYPE="$(uname)"
 
+# sysroot
+SYSROOT="$DIR/../sysroot"
+
+if [ ! -d "$SYSROOT/usr/lib" ]; then
+    echo "Error: sysroot not found at $SYSROOT"
+    echo "Run build-sysroot.sh first."
+    exit 1
+fi
+
 # compiler flags
-CFLAGS="-m32 -std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse"
-CXXFLAGS="-m32 -std=c++11 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse -fno-exceptions -fno-rtti -fno-threadsafe-statics"
+CFLAGS="-m32 -std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse --sysroot=$SYSROOT"
+CXXFLAGS="-m32 -std=c++11 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse -fno-exceptions -fno-rtti -fno-threadsafe-statics --sysroot=$SYSROOT"
+
+# linker flags: use sysroot CRT and libraries
+CRT0="$SYSROOT/usr/lib/crt0.o"
+LDFLAGS="-T $SYSROOT/usr/lib/user.ld -nostdlib -L$SYSROOT/usr/lib"
+LDLIBS="-Wl,--start-group -lsyscall -lcxxrt -lc -lm -Wl,--end-group"
 
 # STLport configuration
 STLPORT_DIR="$DIR/../user/cxx/STLport-5.2.1/stlport"
@@ -14,16 +28,10 @@ STLPORT_FLAGS="-I$STLPORT_DIR -D__SEROTONIN__"
 
 cd ../user
 
-i686-elf-as crt0.s -o crt0.o
-
-i686-elf-gcc -c cxx/cxx_init.c -o cxx/cxx_init.o $CFLAGS
-i686-elf-g++ -c cxx/cxx_runtime.cpp -o cxx/cxx_runtime.o $CXXFLAGS
-i686-elf-g++ -c cxx/cxx_new_delete.cpp  -o cxx/cxx_new_delete.o $CXXFLAGS
+# --- C programs ---
 
 i686-elf-gcc -c init/init.c -o init/init.o $CFLAGS
 i686-elf-gcc -c test.c -o test.o $CFLAGS
-i686-elf-gcc -c syscall/syscall.c -o syscall/syscall.o $CFLAGS
-i686-elf-gcc -c syscall/lib5ht/lib5ht.c -o syscall/lib5ht/lib5ht.o $CFLAGS
 i686-elf-gcc -c shell.c -o shell.o $CFLAGS
 i686-elf-gcc -c ls.c -o ls.o $CFLAGS
 i686-elf-gcc -c cat.c -o cat.o $CFLAGS
@@ -38,24 +46,28 @@ i686-elf-gcc -c mouse_cursor.c -o mouse_cursor.o $CFLAGS
 i686-elf-gcc -c listproc/listproc.c -o listproc/listproc.o $CFLAGS
 i686-elf-gcc -c games/sponk/sponk.c -o games/sponk/sponk.o $CFLAGS
 
-i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o init/init.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o init.elf
-i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o test.elf
-i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o listproc/listproc.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o listproc.elf
-i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o shell.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o sh.elf
-i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o ls.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o ls.elf
-i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o cat.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o cat.elf
-i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o pipe_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o pipe_test.elf
-i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o fb_layer_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o fb_layer_test.elf
-i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o fs_syscall_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o fs_syscall_test.elf
-i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o games/sponk/sponk.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o sponk.elf
-i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o receiver.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o receiver.elf
-i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o sender.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o sender.elf
-i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o devfs_example.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o devfs_example.elf
-i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o mouse_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o ps2tst.elf
-i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o mouse_cursor.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o mouse.elf
+# --- Link C programs ---
+
+i686-elf-gcc $LDFLAGS $CRT0 init/init.o $LDLIBS -o init.elf
+i686-elf-gcc $LDFLAGS $CRT0 test.o $LDLIBS -o test.elf
+i686-elf-gcc $LDFLAGS $CRT0 listproc/listproc.o $LDLIBS -o listproc.elf
+i686-elf-gcc $LDFLAGS $CRT0 shell.o $LDLIBS -o sh.elf
+i686-elf-gcc $LDFLAGS $CRT0 ls.o $LDLIBS -o ls.elf
+i686-elf-gcc $LDFLAGS $CRT0 cat.o $LDLIBS -o cat.elf
+i686-elf-gcc $LDFLAGS $CRT0 pipe_test.o $LDLIBS -o pipe_test.elf
+i686-elf-gcc $LDFLAGS $CRT0 fb_layer_test.o $LDLIBS -o fb_layer_test.elf
+i686-elf-gcc $LDFLAGS $CRT0 fs_syscall_test.o $LDLIBS -o fs_syscall_test.elf
+i686-elf-gcc $LDFLAGS $CRT0 games/sponk/sponk.o $LDLIBS -o sponk.elf
+i686-elf-gcc $LDFLAGS $CRT0 receiver.o $LDLIBS -o receiver.elf
+i686-elf-gcc $LDFLAGS $CRT0 sender.o $LDLIBS -o sender.elf
+i686-elf-gcc $LDFLAGS $CRT0 devfs_example.o $LDLIBS -o devfs_example.elf
+i686-elf-gcc $LDFLAGS $CRT0 mouse_test.o $LDLIBS -o ps2tst.elf
+i686-elf-gcc $LDFLAGS $CRT0 mouse_cursor.o $LDLIBS -o mouse.elf
+
+# --- C++ programs ---
 
 i686-elf-g++ -c cxx_test.cpp -o cxx_test.o $CXXFLAGS
-i686-elf-g++ -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o cxx_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o cxxtest.elf
+i686-elf-g++ $LDFLAGS $CRT0 cxx_test.o $LDLIBS -o cxxtest.elf
 
 # Build STLport stubs (provides range error functions for bare-metal)
 echo "Building STLport stubs..."
@@ -67,20 +79,20 @@ STLPORT_LIB="$DIR/../user/cxx/STLport-5.2.1/build-output"
 # Build STL test program (uses STLport containers)
 echo "Building STL test..."
 i686-elf-g++ -c stl_test.cpp -o stl_test.o $CXXFLAGS $STLPORT_FLAGS
-i686-elf-g++ -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o cxx/stlport_stubs.o crt0.o stl_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -Wl,--start-group -lc -lm -Wl,--end-group -o stltest.elf
+i686-elf-g++ $LDFLAGS $CRT0 cxx/stlport_stubs.o stl_test.o $LDLIBS -o stltest.elf
 echo "STL test build complete: stltest.elf"
 
 # Build iostream test program (uses STLport with full iostream)
 # Note: don't link stlport_stubs.o when using libstlport.a (it provides those functions)
 echo "Building iostream test..."
 i686-elf-g++ -c iostream_test.cpp -o iostream_test.o $CXXFLAGS $STLPORT_FLAGS
-i686-elf-g++ -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o iostream_test.o syscall/syscall.o syscall/lib5ht/lib5ht.o -L$STLPORT_LIB -lstlport -Wl,--start-group -lc -lm -Wl,--end-group -o iostr.elf
+i686-elf-g++ $LDFLAGS $CRT0 iostream_test.o -L$STLPORT_LIB -lstlport $LDLIBS -o iostr.elf
 echo "iostream test build complete: iostreamtest.elf"
 
 # Build enhanced C++ shell (shell+)
 echo "Building shell+..."
 i686-elf-g++ -c shell_plus.cpp -o shell_plus.o $CXXFLAGS $STLPORT_FLAGS
-i686-elf-g++ -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o shell_plus.o syscall/syscall.o syscall/lib5ht/lib5ht.o -L$STLPORT_LIB -lstlport -Wl,--start-group -lc -lm -Wl,--end-group -o shplus.elf
+i686-elf-g++ $LDFLAGS $CRT0 shell_plus.o -L$STLPORT_LIB -lstlport $LDLIBS -o shplus.elf
 echo "shell+ build complete: shplus.elf"
 
 # Build Lua
@@ -99,7 +111,7 @@ make CC="i686-elf-gcc" \
      -j $(nproc)
 
 # Build Lua interpreter object file
-i686-elf-gcc -m32 -ffreestanding -O2 -Wall -Wextra -c lua.c -o lua.o
+i686-elf-gcc -m32 -ffreestanding -O2 -Wall -Wextra --sysroot=$SYSROOT -c lua.c -o lua.o
 
 # Link Lua interpreter as ELF binary for Serotonin OS
 cd ../../..
@@ -110,7 +122,7 @@ i686-elf-gcc -c binutils/posix_stubs.c -o binutils/posix_stubs.o $CFLAGS
 i686-elf-gcc -I"$DIR/../build-tools/src/binutils-gdb/include" -c binutils/sframe_stubs.c -o binutils/sframe_stubs.o $CFLAGS
 
 # Link without -lgcc
-i686-elf-gcc -Ttext=0x400100 -nostdlib cxx/cxx_init.o cxx/cxx_new_delete.o cxx/cxx_runtime.o crt0.o lua/lua-5.4.8/src/lua.o lua/lua-5.4.8/src/liblua.a syscall.o lua_stubs.o libgcc_stubs.o -Wl,--start-group -lc -lm -Wl,--end-group -o lua.elf
+i686-elf-gcc $LDFLAGS $CRT0 lua/lua-5.4.8/src/lua.o lua/lua-5.4.8/src/liblua.a lua_stubs.o libgcc_stubs.o $LDLIBS -o lua.elf
 
 echo "Lua build complete: lua.elf"
 
@@ -129,9 +141,9 @@ cat > "$BINUTILS_CC_WRAPPER" <<EOF
 #!/usr/bin/env sh
 set -e
 
-user_objs="$DIR/../user/crt0.o $DIR/../user/cxx/cxx_init.o $DIR/../user/cxx/cxx_runtime.o $DIR/../user/syscall/syscall.o $DIR/../user/syscall/lib5ht/lib5ht.o $DIR/../user/binutils/posix_stubs.o $DIR/../user/binutils/sframe_stubs.o"
-user_ldflags="-nostartfiles -Wl,-Ttext=0x400100"
-user_libs="-Wl,--start-group -lc -lm -Wl,--end-group"
+user_objs="$SYSROOT/usr/lib/crt0.o"
+user_ldflags="-nostartfiles -T $SYSROOT/usr/lib/user.ld --sysroot=$SYSROOT -L$SYSROOT/usr/lib"
+user_libs="-Wl,--start-group -lsyscall -lcxxrt -lc -lm -Wl,--end-group"
 
 for arg in "\$@"; do
     if [ "\$arg" = "-c" ]; then
