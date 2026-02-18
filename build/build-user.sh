@@ -42,6 +42,7 @@ i686-elf-gcc -c sender.c -o sender.o $CFLAGS
 i686-elf-gcc -c fs_syscall_test.c -o fs_syscall_test.o $CFLAGS
 i686-elf-gcc -c devfs_example.c -o devfs_example.o $CFLAGS
 i686-elf-gcc -c mouse_test.c -o mouse_test.o $CFLAGS
+i686-elf-gcc -c kb_test.c -o kb_test.o $CFLAGS
 i686-elf-gcc -c mouse_cursor.c -o mouse_cursor.o $CFLAGS
 i686-elf-gcc -c listproc/listproc.c -o listproc/listproc.o $CFLAGS
 i686-elf-gcc -c games/sponk/sponk.c -o games/sponk/sponk.o $CFLAGS
@@ -63,6 +64,7 @@ i686-elf-gcc $LDFLAGS $CRT0 sender.o $LDLIBS -o sender.elf
 i686-elf-gcc $LDFLAGS $CRT0 devfs_example.o $LDLIBS -o devfs_example.elf
 i686-elf-gcc $LDFLAGS $CRT0 mouse_test.o $LDLIBS -o ps2tst.elf
 i686-elf-gcc $LDFLAGS $CRT0 mouse_cursor.o $LDLIBS -o mouse.elf
+i686-elf-gcc $LDFLAGS $CRT0 kb_test.o $LDLIBS -o kbtest.elf
 
 # --- C++ programs ---
 

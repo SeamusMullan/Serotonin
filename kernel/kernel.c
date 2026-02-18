@@ -27,6 +27,7 @@
 #include "io/serial.h"
 #include "device/devfs_example.h"
 #include "device/mouse/dev_mouse.h"
+#include "device/keyboard/dev_keyboard.h"
 
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 4
@@ -959,6 +960,10 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     vbe_flip();
     ps2_mouse_init();
     dev_mouse_init();
+
+    printfs(PRINT_STATUS_INFO,"devices: keyboard init\n");
+    vbe_flip();
+    dev_keyboard_init();
 
     printfs(PRINT_STATUS_INFO,"scheduler: init\n");
     vbe_flip();

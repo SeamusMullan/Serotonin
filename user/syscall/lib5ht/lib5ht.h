@@ -70,6 +70,31 @@ typedef struct mouse_event {
 /** @} */ /* end of mouse group */
 
 /**
+ * @defgroup keyboard Keyboard Event Interface
+ * @{
+ */
+
+/** Keyboard event flags */
+#define KEY_FLAG_RELEASED (1 << 0)  /**< Key was released (vs pressed) */
+#define KEY_FLAG_SHIFT    (1 << 1)  /**< Shift was held */
+#define KEY_FLAG_CTRL     (1 << 2)  /**< Ctrl was held */
+
+/**
+ * @brief Keyboard event structure
+ *
+ * Returned when reading from /dev/keyboard/event.
+ * Use blocking read to wait for events, or O_NONBLOCK for polling.
+ */
+typedef struct keyboard_event {
+    uint8_t scancode;    /**< Raw PS/2 scancode (without release bit) */
+    uint8_t ascii;       /**< Translated ASCII character (0 if none) */
+    uint8_t flags;       /**< Event flags (KEY_FLAG_*) */
+    uint8_t _pad;        /**< Padding */
+} __attribute__((packed)) keyboard_event_t;
+
+/** @} */ /* end of keyboard group */
+
+/**
  * @brief Framebuffer information structure
  *
  * Contains global framebuffer configuration information.

@@ -5,6 +5,7 @@
 #include "../syscall/sys/errno.h"
 #include "../schedule/schedule.h"
 #include "../vmm/vmm.h"
+#include "../device/keyboard/dev_keyboard.h"
 #include "io.h"
 #include "serial.h"
 #include <stdint.h>
@@ -42,24 +43,13 @@ void handle_scancode(uint8_t scancode) {
     //preempt_disable();
     static uint32_t stdin_idx = 0;
 
-    if (!stdin_lock->held || !stdin_lock->owner) {
-        unlock_scheduler();
-        return;
-    }
-
-    stdio_lck_t *task_stdio = (stdio_lck_t*)stdin_lock->owner->lck_ptr;
-    uint32_t stdio_buf_size = task_stdio->stdin_buf_size;
-    void* stdin_ptr = task_stdio->stdin_ptr;
-
-    if (stdin_idx >= STDIO_INPUT_BUFFER || stdin_idx >= stdio_buf_size) {
-        unlock_scheduler();
-        return;
-    }
-
     if (scancode > 255) {
         unlock_scheduler();
         return;
     }
+
+    // Build devfs event for every scancode, independent of stdin
+    keyboard_event_t ev = {0};
 
     if (scancode & 0x80) {
         uint8_t released = scancode & 0x7F;
@@ -68,54 +58,91 @@ void handle_scancode(uint8_t scancode) {
         } else if (released == 0x1D) {
             ctrl_pressed = 0;
         }
+        ev.scancode = released;
+        ev.ascii = 0;
+        ev.flags = KEY_FLAG_RELEASED;
+        if (shift_pressed) ev.flags |= KEY_FLAG_SHIFT;
+        if (ctrl_pressed) ev.flags |= KEY_FLAG_CTRL;
+        dev_keyboard_push_event(&ev);
     }
     else if (scancode == 0x1C)
     {
-        printf("\n");
+        ev.scancode = scancode;
+        ev.ascii = '\n';
+        if (shift_pressed) ev.flags |= KEY_FLAG_SHIFT;
+        if (ctrl_pressed) ev.flags |= KEY_FLAG_CTRL;
+        dev_keyboard_push_event(&ev);
 
-        stdio_buffer[stdin_idx] = '\n';
-        stdin_idx++;
-        if (copy_to_user(stdin_lock->owner->address_space, (uint32_t)stdin_ptr, stdio_buffer, stdin_idx) != 0) {
-            stdin_lock->owner->processor_context->eax = -EFAULT;
-        } else {
-            stdin_lock->owner->processor_context->eax = stdin_idx;
+        if (stdin_lock->held && stdin_lock->owner) {
+            stdio_lck_t *task_stdio = (stdio_lck_t*)stdin_lock->owner->lck_ptr;
+            void* stdin_ptr = task_stdio->stdin_ptr;
+
+            printf("\n");
+
+            stdio_buffer[stdin_idx] = '\n';
+            stdin_idx++;
+            if (copy_to_user(stdin_lock->owner->address_space, (uint32_t)stdin_ptr, stdio_buffer, stdin_idx) != 0) {
+                stdin_lock->owner->processor_context->eax = -EFAULT;
+            } else {
+                stdin_lock->owner->processor_context->eax = stdin_idx;
+            }
+            stdin_idx = 0;
+
+            task_lock_release(stdin_lock);
         }
-        stdin_idx = 0;
-
-        task_lock_release(stdin_lock);
     }
-    else if (scancode == 0x0E && stdin_idx != 0)
+    else if (scancode == 0x0E)
     {
-        stdio_buffer[stdin_idx] = '\0';
-        stdin_idx--;
-        vbe_terminal_back();
+        ev.scancode = scancode;
+        ev.ascii = '\b';
+        if (shift_pressed) ev.flags |= KEY_FLAG_SHIFT;
+        if (ctrl_pressed) ev.flags |= KEY_FLAG_CTRL;
+        dev_keyboard_push_event(&ev);
+
+        if (stdin_lock->held && stdin_lock->owner && stdin_idx != 0) {
+            stdio_buffer[stdin_idx] = '\0';
+            stdin_idx--;
+            vbe_terminal_back();
+        }
     }
     else
     {
         if (scancode == 0x1D) {
             ctrl_pressed = 1;
-        } else if (ctrl_pressed && scancode == 0x2E) {
-            vbe_terminal_putchar('^');
-            vbe_terminal_putchar('C');
-            vbe_terminal_putchar('\n');
-            serial_putchar(COM1_BASE, '^');
-            serial_putchar(COM1_BASE, 'C');
-            serial_putchar(COM1_BASE, '\n');
-            stdio_buffer[0] = '\0';
-            stdin_idx = 0;
-            stdin_lock->owner->processor_context->eax = -EINTR;
-            task_ipc_break_fid();
-            task_lock_release(stdin_lock);
-        } else {
-            if (scancode == 0x2A || scancode == 0x36) {
-                shift_pressed = 1;
-            }
-            char c = shift_pressed ? scancode_map_shift[scancode] : scancode_map[scancode];
-            if (c) {
-                stdio_buffer[stdin_idx] = (unsigned char)c;
-                stdin_idx++;
-                vbe_terminal_putchar(c);
-                serial_putchar(COM1_BASE, c);
+        } else if (scancode == 0x2A || scancode == 0x36) {
+            shift_pressed = 1;
+        }
+
+        char c = shift_pressed ? scancode_map_shift[scancode] : scancode_map[scancode];
+        ev.scancode = scancode;
+        ev.ascii = (uint8_t)c;
+        if (shift_pressed) ev.flags |= KEY_FLAG_SHIFT;
+        if (ctrl_pressed) ev.flags |= KEY_FLAG_CTRL;
+        dev_keyboard_push_event(&ev);
+
+        if (stdin_lock->held && stdin_lock->owner) {
+            stdio_lck_t *task_stdio = (stdio_lck_t*)stdin_lock->owner->lck_ptr;
+            uint32_t stdio_buf_size = task_stdio->stdin_buf_size;
+
+            if (stdin_idx < STDIO_INPUT_BUFFER && stdin_idx < stdio_buf_size) {
+                if (ctrl_pressed && scancode == 0x2E) {
+                    vbe_terminal_putchar('^');
+                    vbe_terminal_putchar('C');
+                    vbe_terminal_putchar('\n');
+                    serial_putchar(COM1_BASE, '^');
+                    serial_putchar(COM1_BASE, 'C');
+                    serial_putchar(COM1_BASE, '\n');
+                    stdio_buffer[0] = '\0';
+                    stdin_idx = 0;
+                    stdin_lock->owner->processor_context->eax = -EINTR;
+                    task_ipc_break_fid();
+                    task_lock_release(stdin_lock);
+                } else if (c) {
+                    stdio_buffer[stdin_idx] = (unsigned char)c;
+                    stdin_idx++;
+                    vbe_terminal_putchar(c);
+                    serial_putchar(COM1_BASE, c);
+                }
             }
         }
     }
