@@ -213,6 +213,9 @@ void multitasking_init(void) {
     task_ipc_pipe_ops.read = task_ipc_pipe_read;
     task_ipc_pipe_ops.write = task_ipc_pipe_write;
     task_ipc_pipe_ops.close = task_ipc_pipe_close;
+
+    printfs(PRINT_STATUS_INFO,"scheduler: init\n");
+    vbe_flip();
 }
 
 
@@ -246,6 +249,7 @@ void task_yield(int irq) {
 
         // if nothing is pending, switch
         switch_task(next);
+        __builtin_unreachable();
     }
 
     kernel_panic("task_yield: no valid task to switch to");
@@ -376,7 +380,8 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
     pcb->esp_min = (priv == CPU_USER_MODE) ? NULL : (void*)stk_top;
     pcb->entry = entry;
 
-    printfs(PRINT_STATUS_DEBUG,"Creating task '%s', esp=%p, esp0=%p\n", name, pcb->esp,pcb->esp0);
+    printfs(PRINT_STATUS_INFO,"scheduler: spawned new task \"%s\"\n",pcb->name);
+    vbe_flip();
 
     enqueue_task_list(pcb);
 
@@ -457,8 +462,10 @@ void task_block(void) {
  * @param pcb Pointer to the task's process control block.
  */
 void task_unblock(process_control_block_t *pcb) {
+    lock_scheduler();
     pcb->state = PROCESS_STATE_READY;
     enqueue(pcb);
+    unlock_scheduler();
 }
 
 void enqueue_waiter(lock_t *lock, process_control_block_t *pcb) {
