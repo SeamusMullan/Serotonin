@@ -16,6 +16,7 @@
 .extern __run_init_array
 .extern __run_fini_array
 .extern __cxa_finalize
+.extern environ
 
 /**
  * @brief Program entry point
@@ -32,6 +33,9 @@ _start:
     lea  4(%esp), %ebx
     lea  8(%esp,%eax,4), %ecx
 
+    # environ = envp
+    movl %ecx, environ
+
     # main(argc,argv,envp)
     pushl %ecx
     pushl %ebx
@@ -39,7 +43,7 @@ _start:
     call main
 
     # 7 grand dead
-    movl %eax, %ebx   
+    movl %eax, %ebx
     call __run_fini_array
     pushl $0
     call __cxa_finalize
