@@ -44,6 +44,8 @@
 .equ OFF_SS,           68
 
 switch_task:
+    cli
+
     # PIC EOI
     movb $0x20, %al
     outb %al, $0x20

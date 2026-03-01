@@ -1561,8 +1561,8 @@ void system_call(processor_context_t *ctx) {
     uint32_t arg3      = ctx->ecx;
     uint32_t arg4      = ctx->edx;
 
-    printfs(PRINT_STATUS_DEBUG, "[SYSCALL] eip=%p Recieved system call from %s (pid=%d): operation:%d, arg2:%p, arg3:%p, arg4:%p\n",
-            ctx->eip, current_task->name, current_task->pid, operation, arg2, arg3, arg4);
+    printfs(PRINT_STATUS_DEBUG, "[SYSCALL] (eip=%p, esp=%p,pid=%d(%s)): op:%d, arg2:%p, arg3:%p, arg4:%p\n",
+            ctx->eip, ctx->esp_at_trap, current_task->pid, current_task->name, operation, arg2, arg3, arg4);
 
     // bypass the irq_disabled counter, the int 0x80 gate cleared IF but irq_disabled was never incremented
     asm volatile("sti");

@@ -761,6 +761,7 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
         }
     }
 
+    uint32_t entry_point = ehdr->e_entry;
     kernel_free(elf_data);
 
     void *stack_base = (void*)USER_STACK_TOP;
@@ -815,8 +816,8 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
     pcb->address_space                  = as;
     pcb->esp_min                        = stack_base;
     pcb->esp_max                        = (void*)stack_top;
-    pcb->entry                          = (void (*)(void))ehdr->e_entry;
-    pcb->processor_context->eip         = (uint32_t)ehdr->e_entry;
+    pcb->entry                          = (void (*)(void))entry_point;
+    pcb->processor_context->eip         = entry_point;
     pcb->argv                           = argv_user_array;
     pcb->envp                           = envp_user_array;
 

@@ -8,8 +8,8 @@
 
 #define BYTES_PER_PIXEL 4
 
-#define LAYER_WIDTH  800
-#define LAYER_HEIGHT 600
+#define LAYER_WIDTH  1280
+#define LAYER_HEIGHT 800
 #define LAYER_X0     0
 #define LAYER_Y0     0
 
@@ -63,20 +63,20 @@ int parse_mouse_pos(const char *str, int *x, int *y) {
 }
 
 int read_mouse_pos(int fd, int *x, int *y) {
-    char buf[32];
+    mouse_event_t ev;
 
-    lseek(fd, 0, SEEK_SET);
-    int n = read(fd, buf, sizeof(buf) - 1);
+    int n = read(fd, &ev, sizeof(ev));
     if (n <= 0) return -1;
 
-    buf[n] = '\0';
-    return parse_mouse_pos(buf, x, y);
+    *x = ev.x;
+    *y = ev.y;
+    return 0;
 }
 
 int main(void) {
-    int mouse_fd = open("/dev/mouse/pos", O_RDONLY);
+    int mouse_fd = open("/dev/mouse/event", O_RDONLY);
     if (mouse_fd < 0) {
-        printf("Failed to open /dev/mouse/pos\n");
+        printf("Failed to open /dev/mouse/event\n");
         return 1;
     }
 

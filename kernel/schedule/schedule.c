@@ -165,23 +165,38 @@ void *alloc_kernel_stack(void) {
 
 /**
  * @brief Disables interrupts to lock the scheduler.
+ *
+ * Saves the hardware IF state on the outermost lock so that
+ * unlock_scheduler restores it correctly.  This prevents sti
+ * from being called inside an IRQ handler whose interrupt gate
+ * already cleared IF.
  */
+static uint32_t saved_eflags = 0;
+
 void lock_scheduler(void) {
     if (multitasking_ready == 0)
         return;
+    if (lock_count == 0) {
+        uint32_t flags;
+        asm volatile("pushfl; popl %0" : "=r"(flags) : : "memory");
+        saved_eflags = flags;
+    }
     lock_count++;
-    clear_interrupts();
+    asm volatile("cli" ::: "memory");
 }
 
 /**
- * @brief Enables interrupts to unlock the scheduler.
+ * @brief Unlocks the scheduler and restores the interrupt state
+ *        that was active before the outermost lock_scheduler call.
  */
 void unlock_scheduler(void) {
     if (multitasking_ready == 0)
         return;
     lock_count--;
-    if (!lock_count)
-        enable_interrupts();
+    if (!lock_count) {
+        if (saved_eflags & 0x200)
+            asm volatile("sti" ::: "memory");
+    }
 }
 
 void fpu_get_init_state(void) {
