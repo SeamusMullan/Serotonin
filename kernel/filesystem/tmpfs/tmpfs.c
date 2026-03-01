@@ -72,6 +72,8 @@ static vfs_node_t *tmpfs_mount(const char *device) {
     memset(root_dir, 0, sizeof(tmpfs_dir_t));
     root->fs_data = root_dir;
 
+    printfs(PRINT_STATUS_DEBUG,"tmpfs_mount: mounted");
+
     return root;
 }
 

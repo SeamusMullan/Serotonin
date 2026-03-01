@@ -912,6 +912,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 	printfs(PRINT_STATUS_INFO,"Serotonin Kernel %d.%d.%d | Compile Time: %s %s | %d physical pages free | Hypervisor:%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__,buddy_free_pages(), kernel_hypervisor_present());
     kernel_print_cpu_features(&processor_features);
     printfs(PRINT_STATUS_INFO,"Booted with arguments: %s\n",cmdline);
+    printfs(PRINT_STATUS_INFO,"VBE graphics mode framebuffer, resolution %dx%dx%d\n",vbe_info.width,vbe_info.height,vbe_info.bpp);
 
     printfs(PRINT_STATUS_INFO,"vfs: init\n");
     vbe_flip();
@@ -933,6 +934,11 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     devfs_init();
 
+    printfs(PRINT_STATUS_INFO,"tmpfs: init\n");
+    vbe_flip();
+
+    tmpfs_init();
+
     printfs(PRINT_STATUS_INFO,"vfs: mounting root filesystem\n");
     vbe_flip();
 
@@ -951,10 +957,12 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         kernel_panic("unable to mount devfs on /dev");
     }
 
-    printfs(PRINT_STATUS_INFO,"devices: example init\n");
+    printfs(PRINT_STATUS_INFO,"vfs: mounting /tmp\n");
     vbe_flip();
 
-    devfs_example_init();
+    if (vfs_mount("tmpfs", "/tmp", "tmpfs") != 0) {
+        kernel_panic("unable to mount tmpfs on /tmp");
+    }
 
     printfs(PRINT_STATUS_INFO,"devices: mouse init\n");
     vbe_flip();
@@ -965,40 +973,26 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     vbe_flip();
     dev_keyboard_init();
 
-    printfs(PRINT_STATUS_INFO,"scheduler: init\n");
-    vbe_flip();
-
     multitasking_init();
-
-    printfs(PRINT_STATUS_INFO,"scheduler: /bin/init\n");
-    vbe_flip();
 
     char* init_loc = "/bin/init";
 
     process_control_block_t *init = task_create(NULL, init_loc, CPU_USER_MODE, 254);
     const char *argv[1] = {"/bin/init"}; int argc = 1;
-    const char *envp[1] = {"PATH=/bin"}; int envc = 1;
+    const char *envp[3] = {"PATH=/bin","TERM=xterm-256color","COLORTERM=truecolor"}; int envc = 3;
     int init_status = kernel_load_elf(init, init_loc, init_loc, argv, argc, envp, envc);
     if (init_status) {
         kernel_panic("unable to load init process!");
     }
 
-
-    printfs(PRINT_STATUS_INFO,"scheduler: idle\n");
-    vbe_flip();
     process_control_block_t *idle_task = task_create(kernel_idle_task, "kernel: idle", CPU_KERNEL_MODE, 0);
     enqueue(idle_task);
 
-    printfs(PRINT_STATUS_INFO,"scheduler: compositor\n");
-    vbe_flip();
     vbe_worker_task = task_create(vbe_worker, "kernel: compositor", CPU_KERNEL_MODE, 255);
     vbe_worker_task->no_requeue = 1;
 
     enqueue(init);
-    printfs(PRINT_STATUS_INFO,"init complete, entering scheduler\n");
-    vbe_flip();
     multitasking_make_ready();
-
 
     #ifdef KERNEL_TEST_MODE
         extern void ktest_run_all_suites(void);
