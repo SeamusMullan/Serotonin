@@ -25,7 +25,7 @@ uint32_t dirty_max_x = 0;
 uint32_t dirty_max_y = 0;
 static int vbe_any_dirty = 0;
 uint8_t dirty_lines[SCREEN_HEIGHT];
-vbe_mode_info_t vbe_info;
+vbe_mode_info_t vbe_info = {0};
 uint32_t fb_size_bytes;
 uint32_t vbe_palette[256];
 uint8_t init_z = 0;
@@ -84,6 +84,15 @@ static uint32_t ansi_color_table[16] = {
 static uint32_t ansi_fg = 0xFFFFFFFF;
 static uint32_t ansi_bg = 0xFF000000;
 static uint8_t ansi_bold = 0;
+static uint32_t scroll_region_top = 0;
+static uint32_t scroll_region_bottom = 0;
+static uint32_t saved_cursor_col = 0;
+static uint32_t saved_cursor_row = 0;
+static uint8_t cursor_visible = 1;
+static uint32_t *alt_screen_buf = NULL;
+static uint32_t alt_cursor_col = 0;
+static uint32_t alt_cursor_row = 0;
+static uint8_t in_alt_screen = 0;
 
 // dirty bounding box used for rect dirty marking
 dirty_bb_t *dbb;
@@ -285,10 +294,10 @@ inline void vbe_mark_region_dirty(uint16_t x, uint16_t y, uint16_t w, uint16_t h
     else
     {
         if (x < dbb->x0) dbb->x0 = x;
-        if (x >= dbb->x1) dbb->x1 = x + w;
+        if (x + w > dbb->x1) dbb->x1 = x + w;
 
         if (y < dbb->y0) dbb->y0 = y;
-        if (y >= dbb->y1) dbb->y1 = y + h;
+        if (y + h > dbb->y1) dbb->y1 = y + h;
     }
 }
 
@@ -351,7 +360,7 @@ void vbe_fillrect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color
     {
         vbe_fast_draw_hline(vbe_z_layers[0]->bufptr, vbe_info.pitch, x, y + row, w, color);
     }
-    // vbe_fast_mark_dirty(x, y, w, h);
+    vbe_mark_region_dirty(x, y, w, h);
 }
 
 /**
@@ -631,6 +640,9 @@ static void vbe_blend_area_stride(uint32_t *dst, uint32_t dst_pitch, uint32_t *s
  */
 void vbe_flip(void)
 {
+    if (dbb->x0 == (uint16_t)-1 || dbb->y0 == (uint16_t)-1)
+        return;
+
     uint16_t x0 = dbb->x0;
     uint16_t x1 = dbb->x1;
     uint16_t y0 = dbb->y0;
@@ -643,7 +655,7 @@ void vbe_flip(void)
     uint8_t *fb_ptr = (uint8_t *)vbe_info.framebuffer + y0 * vbe_info.pitch;
     uint8_t *buf0_ptr = (uint8_t *)vbe_z_layers[0]->bufptr + y0 * vbe_info.pitch;
 
-    memcpy_nt(bb_ptr, buf0_ptr, rect_bytes);
+    memcpy(bb_ptr, buf0_ptr, rect_bytes);
 
     for (uint8_t z = 1; z < init_z; z++) {
         vbe_z_layer_t *layer = (vbe_z_layer_t*)vbe_z_layers[z];
@@ -675,10 +687,10 @@ void vbe_flip(void)
 
     memcpy_nt(fb_ptr, bb_ptr, rect_bytes);
 
-    dbb->x0 = 0;
-    dbb->x1 = 0;
-    dbb->y0 = 0;
-    dbb->y1 = 0;
+    dbb->x0 = (uint16_t)-1;
+    dbb->x1 = (uint16_t)-1;
+    dbb->y0 = (uint16_t)-1;
+    dbb->y1 = (uint16_t)-1;
     /*
     // OLD IMPLEMENTATION
     // Composite only dirty scanlines from base backbuffer + z-layers into framebuffer.
@@ -720,10 +732,10 @@ void vbe_flip_all(void)
     uint32_t *base_buf = vbe_z_layers[0]->bufptr;
     uint32_t *dst_buf = vbe_info.framebuffer;
     memcpy(dst_buf, base_buf, fb_size_bytes);
-    dbb->x0 = 0;
-    dbb->x1 = 0;
-    dbb->y0 = 0;
-    dbb->y1 = 0;
+    dbb->x0 = (uint16_t)-1;
+    dbb->x1 = (uint16_t)-1;
+    dbb->y0 = (uint16_t)-1;
+    dbb->y1 = (uint16_t)-1;
 }
 
 /**
@@ -784,6 +796,52 @@ void vbe_shift_dirty_bitmap_up(uint32_t num_rows)
     return;
 }
 
+uint32_t scroll_bottom(void) {
+    return scroll_region_bottom ? scroll_region_bottom : (term_max_rows() - 1);
+}
+
+/**
+ * @brief Scroll a region of the screen up by n lines.
+ */
+void vbe_scroll_region_up(uint32_t top, uint32_t bottom, uint32_t n) {
+    if (n == 0 || top >= bottom) return;
+    if (n > bottom - top + 1) n = bottom - top + 1;
+    uint32_t bytes_per_row = vbe_info.pitch * VBE_FONT_HEIGHT;
+    uint8_t *base = (uint8_t *)vbe_z_layers[0]->bufptr;
+
+    uint32_t src_row = top + n;
+    uint32_t dst_row = top;
+    uint32_t rows_to_move = bottom - top + 1 - n;
+
+    if (rows_to_move > 0) {
+        memmove(base + dst_row * bytes_per_row, base + src_row * bytes_per_row, rows_to_move * bytes_per_row);
+        vbe_mark_region_dirty(0, dst_row * VBE_FONT_HEIGHT, vbe_info.width, rows_to_move * VBE_FONT_HEIGHT);
+    }
+    for (uint32_t i = 0; i < n; i++) {
+        vbe_fillrect(0, (bottom - n + 1 + i) * VBE_FONT_HEIGHT, vbe_info.width, VBE_FONT_HEIGHT, ansi_bg);
+    }
+}
+
+/**
+ * @brief Scroll a region of the screen down by n lines.
+ */
+void vbe_scroll_region_down(uint32_t top, uint32_t bottom, uint32_t n) {
+    if (n == 0 || top >= bottom) return;
+    if (n > bottom - top + 1) n = bottom - top + 1;
+    uint32_t bytes_per_row = vbe_info.pitch * VBE_FONT_HEIGHT;
+    uint8_t *base = (uint8_t *)vbe_z_layers[0]->bufptr;
+
+    uint32_t rows_to_move = bottom - top + 1 - n;
+
+    if (rows_to_move > 0) {
+        memmove(base + (top + n) * bytes_per_row, base + top * bytes_per_row, rows_to_move * bytes_per_row);
+        vbe_mark_region_dirty(0, (top + n) * VBE_FONT_HEIGHT, vbe_info.width, rows_to_move * VBE_FONT_HEIGHT);
+    }
+    for (uint32_t i = 0; i < n; i++) {
+        vbe_fillrect(0, (top + i) * VBE_FONT_HEIGHT, vbe_info.width, VBE_FONT_HEIGHT, ansi_bg);
+    }
+}
+
 /**
  * @brief Print a character to the terminal.
  *
@@ -821,19 +879,15 @@ void vbe_terminal_putchar(char c)
         term_cursor_row++;
     }
 
-    if (term_cursor_row >= term_max_rows())
+    if (term_cursor_row > scroll_bottom())
     {
-        uint32_t bytes_per_row = vbe_info.pitch * VBE_FONT_HEIGHT;
-        uint32_t visible_rows = vbe_info.height - VBE_FONT_HEIGHT;
-
-        uint8_t *dst = (uint8_t *)vbe_z_layers[0]->bufptr;
-        uint8_t *src = dst + bytes_per_row;
-
-        memmove(dst, src, visible_rows * vbe_info.pitch);
-        //vbe_shift_dirty_bitmap_up(5);
-        vbe_fillrect(0, visible_rows, vbe_info.width, VBE_FONT_HEIGHT, term_bg_color);
+        vbe_scroll_region_up(scroll_region_top, scroll_bottom(), 1);
+        term_cursor_row = scroll_bottom();
+    }
+    else if (term_cursor_row >= term_max_rows())
+    {
+        vbe_scroll_region_up(0, term_max_rows() - 1, 1);
         term_cursor_row = term_max_rows() - 1;
-        //vbe_fast_mark_dirty(0, 0, vbe_info.width, vbe_info.height);
     }
 }
 
@@ -861,15 +915,52 @@ void vbe_terminal_puts(const char *str, int len) {
             if (esc_len < (int)sizeof(esc_buf) - 1)
                 esc_buf[esc_len++] = c;
 
-            // ansi sequences end with a letter
-            if (isalpha(c)) {
+            /* Handle non-CSI single-char escape sequences: ESC 7, ESC 8, ESC M, ESC c */
+            if (esc_len == 1 && esc_buf[0] != '[') {
+                if (c == '7') {
+                    saved_cursor_col = term_cursor_col;
+                    saved_cursor_row = term_cursor_row;
+                    in_escape = 0;
+                    continue;
+                } else if (c == '8') {
+                    vbe_set_cursor(saved_cursor_col, saved_cursor_row);
+                    in_escape = 0;
+                    continue;
+                } else if (c == 'M') {
+                    /* ESC M: Reverse index */
+                    if (term_cursor_row <= scroll_region_top) {
+                        vbe_scroll_region_down(scroll_region_top, scroll_bottom(), 1);
+                    } else {
+                        term_cursor_row--;
+                    }
+                    in_escape = 0;
+                    continue;
+                } else if (c == 'c') {
+                    /* ESC c: Full reset */
+                    ansi_fg = 0xFFFFFFFF;
+                    ansi_bg = 0xFF000000;
+                    ansi_bold = 0;
+                    scroll_region_top = 0;
+                    scroll_region_bottom = 0;
+                    vbe_setcolor_fg(ansi_fg);
+                    vbe_setcolor_bg(ansi_bg);
+                    vbe_clear_screen(ansi_bg);
+                    vbe_set_cursor(0, 0);
+                    in_escape = 0;
+                    continue;
+                } else if (!isalpha(c) && c != '[') {
+                    /* Unknown non-CSI escape, abort */
+                    in_escape = 0;
+                    continue;
+                }
+                /* If c == '[', continue to CSI parsing */
+            }
+
+            // CSI sequences end with a letter or ~
+            if (esc_buf[0] == '[' && (isalpha(c) || c == '~' || c == '@')) {
                 esc_buf[esc_len] = '\0';
                 in_escape = 0;
-
-                if (esc_buf[0] == '[')
-                {
-                    vbe_handle_ansi_sequence(esc_buf + 1); // skip [
-                }
+                vbe_handle_ansi_sequence(esc_buf + 1); // skip [
             }
         }
     }
@@ -1032,8 +1123,16 @@ void vbe_set_cursor(uint32_t col, uint32_t row)
     {
         return;
     }
+    /* Mark old cursor cell dirty */
+    vbe_mark_region_dirty(term_cursor_col * VBE_FONT_WIDTH,
+                          term_cursor_row * VBE_FONT_HEIGHT,
+                          VBE_FONT_WIDTH, VBE_FONT_HEIGHT);
     term_cursor_col = col;
     term_cursor_row = row;
+    /* Mark new cursor cell dirty */
+    vbe_mark_region_dirty(col * VBE_FONT_WIDTH,
+                          row * VBE_FONT_HEIGHT,
+                          VBE_FONT_WIDTH, VBE_FONT_HEIGHT);
 }
 
 /**
@@ -1175,10 +1274,50 @@ void vbe_handle_ansi_sequence(const char *seq) {
     char cmd = buf[len - 1];
     buf[len - 1] = '\0'; // remove command char for parsing
 
+    // Check for DEC private mode prefix '?'
+    int dec_private = 0;
+    char *param_start = buf;
+    if (buf[0] == '?') {
+        dec_private = 1;
+        param_start = buf + 1;
+    }
+
+    // Handle DEC private sequences (e.g., ?25h, ?25l, ?1049h, ?1049l)
+    if (dec_private) {
+        int code = atoi(param_start);
+        if (cmd == 'h') {
+            if (code == 25) {
+                cursor_visible = 1;
+            } else if (code == 1049) {
+                // Enter alternate screen buffer
+                if (!in_alt_screen) {
+                    alt_cursor_col = term_cursor_col;
+                    alt_cursor_row = term_cursor_row;
+                    in_alt_screen = 1;
+                    vbe_clear_screen(ansi_bg);
+                    vbe_set_cursor(0, 0);
+                }
+            }
+        } else if (cmd == 'l') {
+            if (code == 25) {
+                cursor_visible = 0;
+            } else if (code == 1049) {
+                // Leave alternate screen buffer
+                if (in_alt_screen) {
+                    in_alt_screen = 0;
+                    vbe_clear_screen(ansi_bg);
+                    term_cursor_col = alt_cursor_col;
+                    term_cursor_row = alt_cursor_row;
+                }
+            }
+        }
+        return;
+    }
+
     // split params
     char *params[16];
     int count = 0;
-    char *tok = strtok(buf, ";");
+    char *tok = strtok(param_start, ";");
     while (tok && count < 16) {
         params[count++] = tok;
         tok = strtok(NULL, ";");
@@ -1236,20 +1375,34 @@ void vbe_handle_ansi_sequence(const char *seq) {
                     ansi_bg = ansi_color_table[8 + (code - 100)];
                     vbe_setcolor_bg(ansi_bg);
                 }
-                // 24bit truecolor: 38;2;R;G;B or 48;2;R;G;B
+                // extended color: 38;5;N (256-color) or 38;2;R;G;B (truecolor)
                 else if (code == 38 || code == 48) {
                     uint8_t is_fg = (code == 38);
-                    if (i + 4 < count && atoi(params[i + 1]) == 2)
-                    {
-                        uint8_t r = (uint8_t)atoi(params[i + 2]);
-                        uint8_t g = (uint8_t)atoi(params[i + 3]);
-                        uint8_t b = (uint8_t)atoi(params[i + 4]);
-                        uint32_t color = 0xFF000000 | (r << 16) | (g << 8) | b;
-                        if (is_fg)
-                            vbe_setcolor_fg(color);
-                        else
-                            vbe_setcolor_bg(color);
-                        i += 4;
+                    if (i + 1 < count) {
+                        int sub = atoi(params[i + 1]);
+                        if (sub == 5 && i + 2 < count) {
+                            // 256-color: 38;5;N or 48;5;N
+                            int idx = atoi(params[i + 2]);
+                            if (idx < 0) idx = 0;
+                            if (idx > 255) idx = 255;
+                            uint32_t color = 0xFF000000 | vbe_palette[idx];
+                            if (is_fg)
+                                vbe_setcolor_fg(color);
+                            else
+                                vbe_setcolor_bg(color);
+                            i += 2;
+                        } else if (sub == 2 && i + 4 < count) {
+                            // truecolor: 38;2;R;G;B or 48;2;R;G;B
+                            uint8_t r = (uint8_t)atoi(params[i + 2]);
+                            uint8_t g = (uint8_t)atoi(params[i + 3]);
+                            uint8_t b = (uint8_t)atoi(params[i + 4]);
+                            uint32_t color = 0xFF000000 | (r << 16) | (g << 8) | b;
+                            if (is_fg)
+                                vbe_setcolor_fg(color);
+                            else
+                                vbe_setcolor_bg(color);
+                            i += 4;
+                        }
                     }
                 }
             }
@@ -1268,11 +1421,198 @@ void vbe_handle_ansi_sequence(const char *seq) {
             break;
         }
 
-        case 'J': { // clear screen
+        case 'A': { // cursor up
+            uint32_t n = (count >= 1 && atoi(params[0]) > 0) ? (uint32_t)atoi(params[0]) : 1;
+            uint32_t row = (term_cursor_row >= n) ? term_cursor_row - n : 0;
+            vbe_set_cursor(term_cursor_col, row);
+            break;
+        }
+
+        case 'B': { // cursor down
+            uint32_t n = (count >= 1 && atoi(params[0]) > 0) ? (uint32_t)atoi(params[0]) : 1;
+            uint32_t row = term_cursor_row + n;
+            if (row >= term_max_rows())
+                row = term_max_rows() - 1;
+            vbe_set_cursor(term_cursor_col, row);
+            break;
+        }
+
+        case 'C': { // cursor forward
+            uint32_t n = (count >= 1 && atoi(params[0]) > 0) ? (uint32_t)atoi(params[0]) : 1;
+            uint32_t col = term_cursor_col + n;
+            if (col >= term_max_cols())
+                col = term_max_cols() - 1;
+            vbe_set_cursor(col, term_cursor_row);
+            break;
+        }
+
+        case 'D': { // cursor back
+            uint32_t n = (count >= 1 && atoi(params[0]) > 0) ? (uint32_t)atoi(params[0]) : 1;
+            uint32_t col = (term_cursor_col >= n) ? term_cursor_col - n : 0;
+            vbe_set_cursor(col, term_cursor_row);
+            break;
+        }
+
+        case 'J': { // erase in display
             int mode = (count > 0) ? atoi(params[0]) : 0;
-            if (mode == 2) // clear all
+            if (mode == 0) {
+                // erase from cursor to end of screen
+                uint32_t px = term_cursor_col * VBE_FONT_WIDTH;
+                uint32_t py = term_cursor_row * VBE_FONT_HEIGHT;
+                // clear rest of current line
+                vbe_fillrect(px, py, vbe_info.width - px, VBE_FONT_HEIGHT, ansi_bg);
+                // clear all lines below
+                uint32_t next_y = (term_cursor_row + 1) * VBE_FONT_HEIGHT;
+                if (next_y < vbe_info.height)
+                    vbe_fillrect(0, next_y, vbe_info.width, vbe_info.height - next_y, ansi_bg);
+            } else if (mode == 1) {
+                // erase from start of screen to cursor
+                uint32_t py = term_cursor_row * VBE_FONT_HEIGHT;
+                // clear all lines above
+                if (py > 0)
+                    vbe_fillrect(0, 0, vbe_info.width, py, ansi_bg);
+                // clear current line up to and including cursor
+                uint32_t end_px = (term_cursor_col + 1) * VBE_FONT_WIDTH;
+                vbe_fillrect(0, py, end_px, VBE_FONT_HEIGHT, ansi_bg);
+            } else if (mode == 2) {
+                // clear entire screen
                 vbe_clear_screen(ansi_bg);
-                vbe_set_cursor(0,0);
+                vbe_set_cursor(0, 0);
+            }
+            break;
+        }
+
+        case 'K': { // erase in line
+            int mode = (count > 0) ? atoi(params[0]) : 0;
+            uint32_t py = term_cursor_row * VBE_FONT_HEIGHT;
+            if (mode == 0) {
+                // erase from cursor to end of line
+                uint32_t px = term_cursor_col * VBE_FONT_WIDTH;
+                vbe_fillrect(px, py, vbe_info.width - px, VBE_FONT_HEIGHT, ansi_bg);
+            } else if (mode == 1) {
+                // erase from start of line to cursor
+                uint32_t end_px = (term_cursor_col + 1) * VBE_FONT_WIDTH;
+                vbe_fillrect(0, py, end_px, VBE_FONT_HEIGHT, ansi_bg);
+            } else if (mode == 2) {
+                // erase entire line
+                vbe_fillrect(0, py, vbe_info.width, VBE_FONT_HEIGHT, ansi_bg);
+            }
+            break;
+        }
+
+        case 'r': { // Set scroll region (top;bottom)
+            uint32_t top = (count >= 1) ? (uint32_t)atoi(params[0]) : 1;
+            uint32_t bot = (count >= 2) ? (uint32_t)atoi(params[1]) : term_max_rows();
+            if (top < 1) top = 1;
+            if (bot > term_max_rows()) bot = term_max_rows();
+            if (top >= bot) { top = 1; bot = term_max_rows(); }
+            scroll_region_top = top - 1;
+            scroll_region_bottom = bot - 1;
+            vbe_set_cursor(0, 0); // cursor goes home after setting scroll region
+            break;
+        }
+
+        case 's': { // Save cursor position
+            saved_cursor_col = term_cursor_col;
+            saved_cursor_row = term_cursor_row;
+            break;
+        }
+
+        case 'u': { // Restore cursor position
+            vbe_set_cursor(saved_cursor_col, saved_cursor_row);
+            break;
+        }
+
+        case 'L': { // Insert lines
+            uint32_t n = (count >= 1 && atoi(params[0]) > 0) ? (uint32_t)atoi(params[0]) : 1;
+            uint32_t bot = scroll_bottom();
+            if (term_cursor_row <= bot) {
+                vbe_scroll_region_down(term_cursor_row, bot, n);
+            }
+            break;
+        }
+
+        case 'M': { // Delete lines
+            uint32_t n = (count >= 1 && atoi(params[0]) > 0) ? (uint32_t)atoi(params[0]) : 1;
+            uint32_t bot = scroll_bottom();
+            if (term_cursor_row <= bot) {
+                vbe_scroll_region_up(term_cursor_row, bot, n);
+            }
+            break;
+        }
+
+        case '@': { // Insert characters (shift right)
+            uint32_t n = (count >= 1 && atoi(params[0]) > 0) ? (uint32_t)atoi(params[0]) : 1;
+            uint32_t py = term_cursor_row * VBE_FONT_HEIGHT;
+            uint32_t src_px = term_cursor_col * VBE_FONT_WIDTH;
+            uint32_t max_cols = term_max_cols();
+            if (term_cursor_col + n < max_cols) {
+                uint32_t dst_px = (term_cursor_col + n) * VBE_FONT_WIDTH;
+                uint32_t move_w = (max_cols - term_cursor_col - n) * VBE_FONT_WIDTH;
+                uint8_t *base = (uint8_t *)vbe_z_layers[0]->bufptr;
+                for (uint32_t row = 0; row < VBE_FONT_HEIGHT; row++) {
+                    uint8_t *line = base + (py + row) * vbe_info.pitch;
+                    memmove(line + dst_px * 4, line + src_px * 4, move_w * 4);
+                }
+                vbe_mark_region_dirty(dst_px, py, move_w, VBE_FONT_HEIGHT);
+            }
+            vbe_fillrect(src_px, py, n * VBE_FONT_WIDTH, VBE_FONT_HEIGHT, ansi_bg);
+            break;
+        }
+
+        case 'P': { // Delete characters (shift left)
+            uint32_t n = (count >= 1 && atoi(params[0]) > 0) ? (uint32_t)atoi(params[0]) : 1;
+            uint32_t py = term_cursor_row * VBE_FONT_HEIGHT;
+            uint32_t cur_px = term_cursor_col * VBE_FONT_WIDTH;
+            uint32_t max_cols = term_max_cols();
+            if (term_cursor_col + n < max_cols) {
+                uint32_t src_px = (term_cursor_col + n) * VBE_FONT_WIDTH;
+                uint32_t move_w = (max_cols - term_cursor_col - n) * VBE_FONT_WIDTH;
+                uint8_t *base = (uint8_t *)vbe_z_layers[0]->bufptr;
+                for (uint32_t row = 0; row < VBE_FONT_HEIGHT; row++) {
+                    uint8_t *line = base + (py + row) * vbe_info.pitch;
+                    memmove(line + cur_px * 4, line + src_px * 4, move_w * 4);
+                }
+                vbe_mark_region_dirty(cur_px, py, move_w, VBE_FONT_HEIGHT);
+            }
+            uint32_t clear_start = (max_cols - n) * VBE_FONT_WIDTH;
+            vbe_fillrect(clear_start, py, n * VBE_FONT_WIDTH, VBE_FONT_HEIGHT, ansi_bg);
+            break;
+        }
+
+        case 'S': { // Scroll up
+            uint32_t n = (count >= 1 && atoi(params[0]) > 0) ? (uint32_t)atoi(params[0]) : 1;
+            vbe_scroll_region_up(scroll_region_top, scroll_bottom(), n);
+            break;
+        }
+
+        case 'T': { // Scroll down
+            uint32_t n = (count >= 1 && atoi(params[0]) > 0) ? (uint32_t)atoi(params[0]) : 1;
+            vbe_scroll_region_down(scroll_region_top, scroll_bottom(), n);
+            break;
+        }
+
+        case 'X': { // Erase characters (replace with spaces, don't move cursor)
+            uint32_t n = (count >= 1 && atoi(params[0]) > 0) ? (uint32_t)atoi(params[0]) : 1;
+            uint32_t px = term_cursor_col * VBE_FONT_WIDTH;
+            uint32_t py = term_cursor_row * VBE_FONT_HEIGHT;
+            vbe_fillrect(px, py, n * VBE_FONT_WIDTH, VBE_FONT_HEIGHT, ansi_bg);
+            break;
+        }
+
+        case 'd': { // Cursor to absolute row (VPA)
+            uint32_t row = (count >= 1) ? (uint32_t)atoi(params[0]) : 1;
+            if (row < 1) row = 1;
+            if (row > term_max_rows()) row = term_max_rows();
+            vbe_set_cursor(term_cursor_col, row - 1);
+            break;
+        }
+
+        case 'G': { // Cursor to absolute column (CHA)
+            uint32_t col = (count >= 1) ? (uint32_t)atoi(params[0]) : 1;
+            if (col < 1) col = 1;
+            if (col > term_max_cols()) col = term_max_cols();
+            vbe_set_cursor(col - 1, term_cursor_row);
             break;
         }
 
