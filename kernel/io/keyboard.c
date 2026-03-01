@@ -51,6 +51,9 @@ void handle_scancode(uint8_t scancode) {
     // Build devfs event for every scancode, independent of stdin
     keyboard_event_t ev = {0};
 
+    // is stdin consuming?
+    int stdin_active = (stdin_lock->held && stdin_lock->owner);
+
     if (scancode & 0x80) {
         uint8_t released = scancode & 0x7F;
         if (released == 0x2A || released == 0x36) {
@@ -63,7 +66,7 @@ void handle_scancode(uint8_t scancode) {
         ev.flags = KEY_FLAG_RELEASED;
         if (shift_pressed) ev.flags |= KEY_FLAG_SHIFT;
         if (ctrl_pressed) ev.flags |= KEY_FLAG_CTRL;
-        dev_keyboard_push_event(&ev);
+        if (!stdin_active) dev_keyboard_push_event(&ev);
     }
     else if (scancode == 0x1C)
     {
@@ -71,9 +74,8 @@ void handle_scancode(uint8_t scancode) {
         ev.ascii = '\n';
         if (shift_pressed) ev.flags |= KEY_FLAG_SHIFT;
         if (ctrl_pressed) ev.flags |= KEY_FLAG_CTRL;
-        dev_keyboard_push_event(&ev);
 
-        if (stdin_lock->held && stdin_lock->owner) {
+        if (stdin_active) {
             stdio_lck_t *task_stdio = (stdio_lck_t*)stdin_lock->owner->lck_ptr;
             void* stdin_ptr = task_stdio->stdin_ptr;
 
@@ -89,6 +91,8 @@ void handle_scancode(uint8_t scancode) {
             stdin_idx = 0;
 
             task_lock_release(stdin_lock);
+        } else {
+            dev_keyboard_push_event(&ev);
         }
     }
     else if (scancode == 0x0E)
@@ -97,12 +101,13 @@ void handle_scancode(uint8_t scancode) {
         ev.ascii = '\b';
         if (shift_pressed) ev.flags |= KEY_FLAG_SHIFT;
         if (ctrl_pressed) ev.flags |= KEY_FLAG_CTRL;
-        dev_keyboard_push_event(&ev);
 
-        if (stdin_lock->held && stdin_lock->owner && stdin_idx != 0) {
+        if (stdin_active && stdin_idx != 0) {
             stdio_buffer[stdin_idx] = '\0';
             stdin_idx--;
             vbe_terminal_back();
+        } else if (!stdin_active) {
+            dev_keyboard_push_event(&ev);
         }
     }
     else
@@ -118,9 +123,8 @@ void handle_scancode(uint8_t scancode) {
         ev.ascii = (uint8_t)c;
         if (shift_pressed) ev.flags |= KEY_FLAG_SHIFT;
         if (ctrl_pressed) ev.flags |= KEY_FLAG_CTRL;
-        dev_keyboard_push_event(&ev);
 
-        if (stdin_lock->held && stdin_lock->owner) {
+        if (stdin_active) {
             stdio_lck_t *task_stdio = (stdio_lck_t*)stdin_lock->owner->lck_ptr;
             uint32_t stdio_buf_size = task_stdio->stdin_buf_size;
 
@@ -144,6 +148,8 @@ void handle_scancode(uint8_t scancode) {
                     serial_putchar(COM1_BASE, c);
                 }
             }
+        } else {
+            dev_keyboard_push_event(&ev);
         }
     }
     preempt_enable();
