@@ -59,14 +59,7 @@ void irq_handler(int irq, processor_context_t *ctx) {
     } else if (irq == IRQ_MOUSE) {
         uint8_t mouse_data = inb(PS2_DATA_PORT);
 
-        // Filter out PS2 protocol response bytes and resync
-        if (mouse_data == PS2_MOUSE_ACK || mouse_data == PS2_MOUSE_RESEND ||
-            mouse_data == PS2_MOUSE_ERROR || mouse_data == PS2_MOUSE_ERROR2 ||
-            mouse_data == PS2_MOUSE_RESET || mouse_data == PS2_MOUSE_SELFTEST_GOOD) {
-            ps2_mouse_packet_index = 0;
-            goto end_irq;
-        }
-
+        // Timeout-based resync: if too long between bytes, restart packet
         if (ps2_mouse_packet_index > 0 && (timer_ticks - ps2_mouse_last_byte_tick) > 2) {
             ps2_mouse_packet_index = 0;
         }
@@ -99,7 +92,7 @@ void irq_handler(int irq, processor_context_t *ctx) {
             }
 
             mouse_x += rel_x;
-            mouse_y += rel_y;
+            mouse_y -= rel_y;  // PS/2 Y is inverted: positive = up, screen Y = down
 
             if (mouse_x < 0) mouse_x = 0;
             if (mouse_y < 0) mouse_y = 0;
@@ -120,6 +113,16 @@ void irq_handler(int irq, processor_context_t *ctx) {
                     }
                 }
                 prev_mouse_buttons = buttons;
+            }
+
+            // Always emit a move event so userspace can track cursor position
+            if (rel_x != 0 || rel_y != 0) {
+                mouse_event_t ev;
+                ev.x = (int16_t)mouse_x;
+                ev.y = (int16_t)mouse_y;
+                ev.buttons = buttons;
+                ev.event_type = MOUSE_EVENT_MOVE;
+                dev_mouse_push_event(&ev);
             }
 
             ps2_mouse_packet_index = 0;

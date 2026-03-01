@@ -45,7 +45,7 @@ typedef struct mouse_event {
  * @brief Mouse event types
  */
 enum {
-    MOUSE_EVENT_MOVE = 0,        /**< Mouse moved (not currently generated) */
+    MOUSE_EVENT_MOVE = 0,        /**< Mouse moved */
     MOUSE_EVENT_BUTTON_DOWN = 1, /**< Button was pressed */
     MOUSE_EVENT_BUTTON_UP = 2    /**< Button was released */
 };

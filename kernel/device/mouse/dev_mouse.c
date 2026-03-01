@@ -167,6 +167,15 @@ void dev_mouse_push_event(mouse_event_t *event) {
     }
 
     // No waiting task - add event to ring buffer
+    // Coalesce consecutive move events: only the latest position matters
+    if (event->event_type == MOUSE_EVENT_MOVE && event_count > 0) {
+        uint32_t last = (event_head + MOUSE_EVENT_BUFFER_SIZE - 1) % MOUSE_EVENT_BUFFER_SIZE;
+        if (event_buffer[last].event_type == MOUSE_EVENT_MOVE) {
+            memcpy(&event_buffer[last], event, sizeof(mouse_event_t));
+            return;
+        }
+    }
+
     if (event_count >= MOUSE_EVENT_BUFFER_SIZE) {
         // Buffer full - drop oldest event
         event_tail = (event_tail + 1) % MOUSE_EVENT_BUFFER_SIZE;
