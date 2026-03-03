@@ -14,7 +14,7 @@ while getopts "g" opt; do
 done
 
 # compiler flags
-CFLAGS="-std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse"
+CFLAGS="-std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse -fstack-protector-strong"
 [ "$DEBUG" -eq 1 ] && CFLAGS="$CFLAGS -g"
 [ -n "$TEST_MODE" ] && CFLAGS="$CFLAGS -DKERNEL_TEST_MODE"
 

@@ -39,6 +39,10 @@
 #define HEAP_GUARD  0xDEADC0DEU
 #define HEAP_GUARD_SIZE 4U
 
+#define STACK_CHK_GUARD 0xe2dee396
+
+uintptr_t __stack_chk_guard = STACK_CHK_GUARD;
+
 extern char __kernel_start[];
 extern char __kernel_end[];
 extern char __kernel_load_base[];
@@ -67,6 +71,10 @@ extern uint8_t signal_trampoline[];
 extern uint8_t signal_trampoline_end[];
 
 #define CHECK_FLAG(flags,bit)   ((flags) & (1 << (bit)))
+
+__attribute__((noreturn)) void __stack_chk_fail(void) {
+	kernel_panic("stack smashing detected");
+}
 
 /**
  * @brief Align a size to the next block boundary.
