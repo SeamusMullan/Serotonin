@@ -37,6 +37,25 @@
 #define S_IFLNK  0xA000   /* Symbolic link */
 #define S_IFSOCK 0xC000   /* Socket */
 
+#define S_ISUID  0x0800   /* Set user ID on execution */
+#define S_ISGID  0x0400   /* Set group ID on execution */
+#define S_ISVTX  0x0200   /* Sticky bit */
+
+#define S_IRWXU  0x01C0   /* Owner: rwx */
+#define S_IRUSR  0x0100   /* Owner: read */
+#define S_IWUSR  0x0080   /* Owner: write */
+#define S_IXUSR  0x0040   /* Owner: execute */
+
+#define S_IRWXG  0x0038   /* Group: rwx */
+#define S_IRGRP  0x0020   /* Group: read */
+#define S_IWGRP  0x0010   /* Group: write */
+#define S_IXGRP  0x0008   /* Group: execute */
+
+#define S_IRWXO  0x0007   /* Other: rwx */
+#define S_IROTH  0x0004   /* Other: read */
+#define S_IWOTH  0x0002   /* Other: write */
+#define S_IXOTH  0x0001   /* Other: execute */
+
 #define	O_RDONLY	0		/* +1 == FREAD */
 #define	O_WRONLY	1		/* +1 == FWRITE */
 #define	O_RDWR		2		/* +1 == FREAD|FWRITE */

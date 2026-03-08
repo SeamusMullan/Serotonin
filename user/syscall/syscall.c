@@ -366,11 +366,58 @@ int listdir(const char *path, char *buf, size_t size) {
     return do_syscall(SYSTEM_CALL_LISTDIR, (uint32_t)path, (uint32_t)buf, (uint32_t)size);
 }
 
-/**
- * @brief Initialize function (called before main)
- *
- * Empty initialization function for runtime setup.
- */
+uid_t getuid(void) {
+    return do_syscall(SYSTEM_CALL_GETUID, 0, 0, 0);
+}
+
+gid_t getgid(void) {
+    return do_syscall(SYSTEM_CALL_GETGID, 0, 0, 0);
+}
+
+uid_t geteuid(void) {
+    return do_syscall(SYSTEM_CALL_GETEUID, 0, 0, 0);
+}
+
+gid_t getegid(void) {
+    return do_syscall(SYSTEM_CALL_GETEGID, 0, 0, 0);
+}
+
+int setuid(uid_t uid) {
+    return do_syscall(SYSTEM_CALL_SETUID, uid, 0, 0);
+}
+
+int setgid(gid_t gid) {
+    return do_syscall(SYSTEM_CALL_SETGID, gid, 0, 0);
+}
+
+int seteuid(uid_t euid) {
+    return do_syscall(SYSTEM_CALL_SETEUID, euid, 0, 0);
+}
+
+int setegid(gid_t egid) {
+    return do_syscall(SYSTEM_CALL_SETEGID, egid, 0, 0);
+}
+
+int getgroups(int size, gid_t list[]) {
+    return do_syscall(SYSTEM_CALL_GETGROUPS, (uint32_t)size, (uint32_t)list, 0);
+}
+
+int setgroups(int size, const gid_t list[]) {
+    return do_syscall(SYSTEM_CALL_SETGROUPS, (uint32_t)size, (uint32_t)list, 0);
+}
+
+int chmod(const char *path, mode_t mode) {
+    return do_syscall(SYSTEM_CALL_CHMOD, (uint32_t)path, (uint32_t)mode, 0);
+}
+
+int chown(const char *path, uid_t owner, gid_t group) {
+    return do_syscall(SYSTEM_CALL_CHOWN, (uint32_t)path, (uint32_t)owner, (uint32_t)group);
+}
+
+mode_t umask(mode_t mask) {
+    return (mode_t)do_syscall(SYSTEM_CALL_UMASK, (uint32_t)mask, 0, 0);
+}
+
 void _init(void) {}
 
 /**

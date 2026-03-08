@@ -31,6 +31,7 @@ cd ../user
 # --- C programs ---
 
 i686-elf-gcc -c init/init.c -o init/init.o $CFLAGS
+i686-elf-gcc -c login/login.c -o login/login.o $CFLAGS
 i686-elf-gcc -c test.c -o test.o $CFLAGS
 i686-elf-gcc -c shell.c -o shell.o $CFLAGS
 i686-elf-gcc -c ls.c -o ls.o $CFLAGS
@@ -51,6 +52,7 @@ i686-elf-gcc -c opl2_editor/opl2_editor.c -o opl2_editor/opl2_editor.o $CFLAGS
 # --- Link C programs ---
 
 i686-elf-gcc $LDFLAGS $CRT0 init/init.o $LDLIBS -o init.elf
+i686-elf-gcc $LDFLAGS $CRT0 login/login.o $LDLIBS -o login.elf
 i686-elf-gcc $LDFLAGS $CRT0 test.o $LDLIBS -o test.elf
 i686-elf-gcc $LDFLAGS $CRT0 listproc/listproc.o $LDLIBS -o listproc.elf
 i686-elf-gcc $LDFLAGS $CRT0 shell.o $LDLIBS -o sh.elf

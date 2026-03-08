@@ -8,6 +8,7 @@
 #include "../vmm/vmm.h"
 #include "../string.h"
 #include "../filesystem/vfs.h"
+#include "../filesystem/vfs_perm.h"
 #include "../filesystem/user_fs/user_fs.h"
 #include "../video/vbe/vbe.h"
 #include "../io/serial.h"
@@ -241,7 +242,9 @@ static void layer_fill_info(uint16_t id, fb_layer_info_t *info) {
 static void fill_stat_from_node(vfs_node_t *node, struct stat *k_statbuf) {
     memset(k_statbuf, 0, sizeof(*k_statbuf));
 
-    if (node->flags & VFS_FLAG_PIPE) {
+    if (node->mode != 0) {
+        k_statbuf->st_mode = node->mode;
+    } else if (node->flags & VFS_FLAG_PIPE) {
         k_statbuf->st_mode = S_IFIFO | 0666;
     } else if (node->flags & VFS_FLAG_DIRECTORY) {
         k_statbuf->st_mode = S_IFDIR | 0755;
@@ -251,6 +254,8 @@ static void fill_stat_from_node(vfs_node_t *node, struct stat *k_statbuf) {
         k_statbuf->st_mode = S_IFREG | 0644;
     }
 
+    k_statbuf->st_uid = node->uid;
+    k_statbuf->st_gid = node->gid;
     k_statbuf->st_dev = (dev_t)(uintptr_t)node->fs;
     k_statbuf->st_ino = node->inode;
     k_statbuf->st_size = node->size;
@@ -540,6 +545,13 @@ static void sys_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
     vfs_node_t *node = vfs_open(abs_path);
     if (!node) {
         if (flags & O_CREAT) {
+            char parent_path[256], child_name[256];
+            split_path(abs_path, parent_path, child_name);
+            vfs_node_t *parent_node = vfs_resolve_path(parent_path);
+            if (parent_node && vfs_check_dir_write(parent_node, current_task) != 0) {
+                errno = -EACCES;
+                return;
+            }
             node = vfs_create(abs_path);
             goto nodeCreated;
         }
@@ -550,6 +562,18 @@ static void sys_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
         vfs_close(node);
         errno = -EEXIST;
         return;
+    }
+
+    {
+        int want = 0;
+        int acc = flags & 0x3;
+        if (acc == O_RDONLY || acc == O_RDWR) want |= PERM_READ;
+        if (acc == O_WRONLY || acc == O_RDWR) want |= PERM_WRITE;
+        if (want && vfs_check_permission(node, current_task, want) != 0) {
+            vfs_close(node);
+            errno = -EACCES;
+            return;
+        }
     }
 
 nodeCreated:
@@ -659,6 +683,12 @@ static void sys_pipe(uint32_t arg2) {
     write_node->ops = &task_ipc_pipe_ops;
     read_node->fs_data = read_ep;
     write_node->fs_data = write_ep;
+    read_node->uid = current_task->euid;
+    read_node->gid = current_task->egid;
+    read_node->mode = S_IFIFO | 0600;
+    write_node->uid = current_task->euid;
+    write_node->gid = current_task->egid;
+    write_node->mode = S_IFIFO | 0600;
 
     memset(read_handle, 0, sizeof(*read_handle));
     memset(write_handle, 0, sizeof(*write_handle));
@@ -760,6 +790,16 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
         return;
     }
 
+    if (vfs_check_permission(node, current_task, PERM_EXEC) != 0) {
+        kernel_free(path);
+        errno = -EACCES;
+        return;
+    }
+
+    uint32_t exec_mode = node->mode;
+    uint16_t exec_uid = node->uid;
+    uint16_t exec_gid = node->gid;
+
     const char **argv_temp = (const char**)arg3;
     const char **envp_temp = (const char**)arg4;
 
@@ -803,6 +843,8 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
     int execve_stat = kernel_load_elf(current_task, path, path, argv, argc, envp, envc);
     if (!execve_stat) {
         destroy_address_space(oldas);
+        if (exec_mode & S_ISUID) current_task->euid = exec_uid;
+        if (exec_mode & S_ISGID) current_task->egid = exec_gid;
         printfs(PRINT_STATUS_DEBUG, "execve: executing %s, pid=%d\n", path, current_task->pid);
         kernel_free(argv);
         kernel_free(envp);
@@ -1013,6 +1055,13 @@ static void sys_kill(uint32_t arg2, uint32_t arg3) {
         return;
     }
 
+    if (current_task->euid != 0 &&
+        current_task->euid != task->uid &&
+        current_task->uid != task->uid) {
+        errno = -EPERM;
+        return;
+    }
+
     task_ipc_signal_raise(task, sig);
     return;
 }
@@ -1091,6 +1140,14 @@ static void sys_mkdir(uint32_t arg2) {
         return;
     }
 
+    char parent_path[256], child_name[256];
+    split_path(abs_path, parent_path, child_name);
+    vfs_node_t *parent_node = vfs_resolve_path(parent_path);
+    if (parent_node && vfs_check_dir_write(parent_node, current_task) != 0) {
+        errno = -EACCES;
+        return;
+    }
+
     if (vfs_mkdir(abs_path) != 0) {
         errno = -EIO;
         return;
@@ -1116,6 +1173,21 @@ static void sys_unlink(uint32_t arg2) {
     if (node->flags & VFS_FLAG_DIRECTORY) {
         errno = -EISDIR;
         return;
+    }
+
+    char parent_path[256], child_name[256];
+    split_path(abs_path, parent_path, child_name);
+    vfs_node_t *parent_node = vfs_resolve_path(parent_path);
+    if (parent_node) {
+        if (vfs_check_dir_write(parent_node, current_task) != 0) {
+            errno = -EACCES;
+            return;
+        }
+        if ((parent_node->mode & S_ISVTX) && current_task->euid != 0 &&
+            current_task->euid != node->uid && current_task->euid != parent_node->uid) {
+            errno = -EACCES;
+            return;
+        }
     }
 
     if (vfs_unlink(abs_path) != 0) {
@@ -1150,6 +1222,21 @@ static void sys_rmdir(uint32_t arg2) {
         return;
     }
 
+    char parent_path[256], child_name[256];
+    split_path(abs_path, parent_path, child_name);
+    vfs_node_t *parent_node = vfs_resolve_path(parent_path);
+    if (parent_node) {
+        if (vfs_check_dir_write(parent_node, current_task) != 0) {
+            errno = -EACCES;
+            return;
+        }
+        if ((parent_node->mode & S_ISVTX) && current_task->euid != 0 &&
+            current_task->euid != node->uid && current_task->euid != parent_node->uid) {
+            errno = -EACCES;
+            return;
+        }
+    }
+
     if (dir_has_entries(node)) {
         errno = -ENOTEMPTY;
         return;
@@ -1179,6 +1266,11 @@ static void sys_chdir(uint32_t arg2) {
     }
     if (!(node->flags & VFS_FLAG_DIRECTORY)) {
         errno = -ENOTDIR;
+        return;
+    }
+
+    if (vfs_check_permission(node, current_task, PERM_EXEC) != 0) {
+        errno = -EACCES;
         return;
     }
 
@@ -1531,6 +1623,170 @@ static void sys_5ht_rcfg_layer(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
     errno = 0;
 }
 
+static void sys_getuid(void) {
+    errno = current_task->uid;
+}
+
+static void sys_getgid(void) {
+    errno = current_task->gid;
+}
+
+static void sys_geteuid(void) {
+    errno = current_task->euid;
+}
+
+static void sys_getegid(void) {
+    errno = current_task->egid;
+}
+
+static void sys_setuid(uint32_t arg2) {
+    uint16_t uid = (uint16_t)arg2;
+    if (current_task->euid == 0) {
+        current_task->uid = uid;
+        current_task->euid = uid;
+        errno = 0;
+    } else if (uid == current_task->uid) {
+        current_task->euid = uid;
+        errno = 0;
+    } else {
+        errno = -EPERM;
+    }
+}
+
+static void sys_setgid(uint32_t arg2) {
+    uint16_t gid = (uint16_t)arg2;
+    if (current_task->euid == 0) {
+        current_task->gid = gid;
+        current_task->egid = gid;
+        errno = 0;
+    } else if (gid == current_task->gid) {
+        current_task->egid = gid;
+        errno = 0;
+    } else {
+        errno = -EPERM;
+    }
+}
+
+static void sys_seteuid(uint32_t arg2) {
+    uint16_t euid = (uint16_t)arg2;
+    if (current_task->euid == 0 || euid == current_task->uid) {
+        current_task->euid = euid;
+        errno = 0;
+    } else {
+        errno = -EPERM;
+    }
+}
+
+static void sys_setegid(uint32_t arg2) {
+    uint16_t egid = (uint16_t)arg2;
+    if (current_task->euid == 0 || egid == current_task->gid) {
+        current_task->egid = egid;
+        errno = 0;
+    } else {
+        errno = -EPERM;
+    }
+}
+
+static void sys_getgroups(uint32_t arg2, uint32_t arg3) {
+    int size = (int)arg2;
+    uint16_t *list = (uint16_t *)arg3;
+
+    if (size == 0) {
+        errno = current_task->ngroups;
+        return;
+    }
+    if (size < current_task->ngroups) {
+        errno = -EINVAL;
+        return;
+    }
+    for (uint8_t i = 0; i < current_task->ngroups; i++) {
+        list[i] = current_task->groups[i];
+    }
+    errno = current_task->ngroups;
+}
+
+static void sys_setgroups(uint32_t arg2, uint32_t arg3) {
+    int size = (int)arg2;
+    uint16_t *list = (uint16_t *)arg3;
+
+    if (current_task->euid != 0) {
+        errno = -EPERM;
+        return;
+    }
+    if (size < 0 || size > NGROUPS_MAX) {
+        errno = -EINVAL;
+        return;
+    }
+    for (int i = 0; i < size; i++) {
+        current_task->groups[i] = list[i];
+    }
+    current_task->ngroups = (uint8_t)size;
+    errno = 0;
+}
+
+static void sys_chmod(uint32_t arg2, uint32_t arg3) {
+    char *path = (char *)arg2;
+    uint32_t new_mode = arg3;
+    char abs_path[256];
+
+    if (build_abs_path(path, abs_path, sizeof(abs_path)) != 0) {
+        errno = -ENAMETOOLONG;
+        return;
+    }
+
+    vfs_node_t *node = vfs_resolve_path(abs_path);
+    if (!node) {
+        errno = -ENOENT;
+        return;
+    }
+
+    if (current_task->euid != 0 && current_task->euid != node->uid) {
+        errno = -EPERM;
+        return;
+    }
+
+    node->mode = (node->mode & S_IFMT) | (new_mode & ~S_IFMT);
+    errno = 0;
+}
+
+static void sys_chown(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+    char *path = (char *)arg2;
+    uint16_t new_uid = (uint16_t)arg3;
+    uint16_t new_gid = (uint16_t)arg4;
+    char abs_path[256];
+
+    if (build_abs_path(path, abs_path, sizeof(abs_path)) != 0) {
+        errno = -ENAMETOOLONG;
+        return;
+    }
+
+    vfs_node_t *node = vfs_resolve_path(abs_path);
+    if (!node) {
+        errno = -ENOENT;
+        return;
+    }
+
+    if (current_task->euid == 0) {
+        if (new_uid != (uint16_t)-1) node->uid = new_uid;
+        if (new_gid != (uint16_t)-1) node->gid = new_gid;
+        node->mode &= ~(S_ISUID | S_ISGID);
+        errno = 0;
+    } else if (current_task->euid == node->uid && new_uid == (uint16_t)-1 &&
+               new_gid != (uint16_t)-1 && proc_in_group(current_task, new_gid)) {
+        node->gid = new_gid;
+        node->mode &= ~(S_ISUID | S_ISGID);
+        errno = 0;
+    } else {
+        errno = -EPERM;
+    }
+}
+
+static void sys_umask(uint32_t arg2) {
+    uint32_t old = current_task->umask;
+    current_task->umask = arg2 & 0777;
+    errno = old;
+}
+
 void sys_5ht_set_fid(uint32_t arg2) {
     process_control_block_t *fid_task = task_lookup_by_pid((int)arg2);
 
@@ -1678,6 +1934,45 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_PIPE:
             sys_pipe(arg2);
+            break;
+        case SYSTEM_CALL_GETUID:
+            sys_getuid();
+            break;
+        case SYSTEM_CALL_GETGID:
+            sys_getgid();
+            break;
+        case SYSTEM_CALL_GETEUID:
+            sys_geteuid();
+            break;
+        case SYSTEM_CALL_GETEGID:
+            sys_getegid();
+            break;
+        case SYSTEM_CALL_SETUID:
+            sys_setuid(arg2);
+            break;
+        case SYSTEM_CALL_SETGID:
+            sys_setgid(arg2);
+            break;
+        case SYSTEM_CALL_SETEUID:
+            sys_seteuid(arg2);
+            break;
+        case SYSTEM_CALL_SETEGID:
+            sys_setegid(arg2);
+            break;
+        case SYSTEM_CALL_GETGROUPS:
+            sys_getgroups(arg2, arg3);
+            break;
+        case SYSTEM_CALL_SETGROUPS:
+            sys_setgroups(arg2, arg3);
+            break;
+        case SYSTEM_CALL_CHMOD:
+            sys_chmod(arg2, arg3);
+            break;
+        case SYSTEM_CALL_CHOWN:
+            sys_chown(arg2, arg3, arg4);
+            break;
+        case SYSTEM_CALL_UMASK:
+            sys_umask(arg2);
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);

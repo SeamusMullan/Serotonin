@@ -67,6 +67,7 @@ static uint32_t heap_end = (uint32_t)(KERNEL_HEAP_VMA + KERNEL_HEAP_SIZE);
 static uint32_t current_heap = (uint32_t)KERNEL_HEAP_VMA;
 static block_header_t *heap_list = NULL;
 static uint8_t debug_mode = 0;
+static uint8_t quiet_mode = 0;
 extern uint8_t signal_trampoline[];
 extern uint8_t signal_trampoline_end[];
 
@@ -910,6 +911,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
             );
         } else if (strcmp(token, "quiet") == 0) {
             printfs_set_mask(0);
+            quiet_mode = 1;
         }
     }
 
@@ -918,7 +920,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     cpu_features_t processor_features = {0};
     kernel_get_cpu_features(&processor_features);
 
-	printfs(PRINT_STATUS_INFO,"Serotonin Kernel %d.%d.%d | Compile Time: %s %s | %d physical pages free | Hypervisor:%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__,buddy_free_pages(), kernel_hypervisor_present());
+	printfs(PRINT_STATUS_INFO,"Serotonin Kernel %d.%d.%d | Compile Time: %s %s | %d physical pages free (%d MB) | Hypervisor:%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__,buddy_free_pages(), (buddy_total_pages()*4000)/1000000, kernel_hypervisor_present());
     kernel_print_cpu_features(&processor_features);
     printfs(PRINT_STATUS_INFO,"Booted with arguments: %s\n",cmdline);
     printfs(PRINT_STATUS_INFO,"VBE graphics mode framebuffer, resolution %dx%dx%d\n",vbe_info.width,vbe_info.height,vbe_info.bpp);
@@ -987,6 +989,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     char* init_loc = "/bin/init";
 
     process_control_block_t *init = task_create(NULL, init_loc, CPU_USER_MODE, 254);
+    init->umask = 022;
     const char *argv[1] = {"/bin/init"}; int argc = 1;
     const char *envp[3] = {"PATH=/bin","TERM=xterm-256color","COLORTERM=truecolor"}; int envc = 3;
     int init_status = kernel_load_elf(init, init_loc, init_loc, argv, argc, envp, envc);

@@ -4,6 +4,8 @@
 #include "../../stdio/stdio.h"
 #include "../../string.h"
 #include "../../kernel.h"
+#include "../../schedule/schedule.h"
+#include "../../syscall/sys/file.h"
 
 // Forward declarations
 static vfs_node_t *tmpfs_mount(const char *device);
@@ -67,6 +69,9 @@ static vfs_node_t *tmpfs_mount(const char *device) {
     root->size = 0;
     root->refcount = 1;
     root->ops = &tmpfs_ops;
+    root->uid = 0;
+    root->gid = 0;
+    root->mode = S_IFDIR | 0755;
 
     tmpfs_dir_t *root_dir = kernel_malloc(sizeof(tmpfs_dir_t));
     memset(root_dir, 0, sizeof(tmpfs_dir_t));
@@ -353,6 +358,15 @@ vfs_node_t *tmpfs_create_file(vfs_node_t *parent, const char *name) {
     file->size = 0;
     file->refcount = 1;
     file->ops = &tmpfs_ops;
+    if (current_task) {
+        file->uid = current_task->euid;
+        file->gid = current_task->egid;
+        file->mode = S_IFREG | (0666 & ~current_task->umask);
+    } else {
+        file->uid = 0;
+        file->gid = 0;
+        file->mode = S_IFREG | 0644;
+    }
 
     tmpfs_file_t *file_data = kernel_malloc(sizeof(tmpfs_file_t));
     memset(file_data, 0, sizeof(tmpfs_file_t));
@@ -389,6 +403,15 @@ vfs_node_t *tmpfs_create_dir(vfs_node_t *parent, const char *name) {
     dir_node->size = 0;
     dir_node->refcount = 1;
     dir_node->ops = &tmpfs_ops;
+    if (current_task) {
+        dir_node->uid = current_task->euid;
+        dir_node->gid = current_task->egid;
+        dir_node->mode = S_IFDIR | (0777 & ~current_task->umask);
+    } else {
+        dir_node->uid = 0;
+        dir_node->gid = 0;
+        dir_node->mode = S_IFDIR | 0755;
+    }
 
     tmpfs_dir_t *dir_data = kernel_malloc(sizeof(tmpfs_dir_t));
     memset(dir_data, 0, sizeof(tmpfs_dir_t));

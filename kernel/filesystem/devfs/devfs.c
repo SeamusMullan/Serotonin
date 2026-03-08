@@ -13,6 +13,7 @@
 #include "../../stdlib/stdlib.h"
 #include "../../string.h"
 #include "../../schedule/schedule.h"
+#include "../../syscall/sys/file.h"
 
 /** Root node of the mounted devfs */
 static vfs_node_t *devfs_root = NULL;
@@ -69,6 +70,9 @@ static vfs_node_t *devfs_create_dir_node(const char *name) {
     dir_node->size = 0;
     dir_node->refcount = 1;
     dir_node->ops = &devfs_ops;
+    dir_node->uid = 0;
+    dir_node->gid = 0;
+    dir_node->mode = S_IFDIR | 0755;
 
     devfs_dir_t *dir_data = kernel_malloc(sizeof(*dir_data));
     if (!dir_data) {
@@ -99,6 +103,9 @@ static vfs_node_t *devfs_create_file_node(const char *name, mode_t mode, vfs_ops
     file_node->size = 0;
     file_node->refcount = 1;
     file_node->ops = &devfs_ops;
+    file_node->uid = 0;
+    file_node->gid = 0;
+    file_node->mode = mode;
 
     devfs_file_t *file_data = kernel_malloc(sizeof(*file_data));
     if (!file_data) {

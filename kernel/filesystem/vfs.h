@@ -27,6 +27,9 @@ typedef struct vfs_node {
     uint32_t inode;              // Inode number (if applicable)
     uint32_t size;               // File size
     uint32_t flags;              // File / directory / device / symlink
+    uint16_t uid;                // Owner user ID
+    uint16_t gid;                // Owner group ID
+    uint32_t mode;               // File type and permission bits
     uint32_t refcount;           // For resource tracking
 
     struct filesystem *fs;       // Filesystem driver owning this node

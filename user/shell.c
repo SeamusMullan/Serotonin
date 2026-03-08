@@ -12,10 +12,71 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <signal.h>
+#include <fcntl.h>
 #include "syscall/lib5ht/lib5ht.h"
 
 void sigint_handle(int sig) {
     return;
+}
+
+/**
+ * @brief Look up a username by uid from /etc/passwd
+ *
+ * Reads /etc/passwd and finds the entry matching the given uid.
+ * Falls back to "?" if the file can't be read or uid isn't found.
+ */
+static void get_username(uid_t uid, char *out, size_t outsize) {
+    int fd = open("/etc/passwd", 0);
+    if (fd < 0) {
+        strncpy(out, "?", outsize);
+        return;
+    }
+
+    char buf[1024];
+    int n = read(fd, buf, sizeof(buf) - 1);
+    close(fd);
+    if (n <= 0) {
+        strncpy(out, "?", outsize);
+        return;
+    }
+    buf[n] = '\0';
+
+    // Parse each line: username:x:uid:gid:gecos:home:shell
+    char *line = buf;
+    while (line < buf + n) {
+        char *nl = strchr(line, '\n');
+        if (nl) *nl = '\0';
+
+        if (line[0] != '\0' && line[0] != '#') {
+            // Find first ':' -> username
+            char *colon1 = strchr(line, ':');
+            if (colon1) {
+                // Skip password field
+                char *colon2 = strchr(colon1 + 1, ':');
+                if (colon2) {
+                    // Parse uid field
+                    int entry_uid = 0;
+                    char *p = colon2 + 1;
+                    while (*p >= '0' && *p <= '9') {
+                        entry_uid = entry_uid * 10 + (*p - '0');
+                        p++;
+                    }
+                    if (entry_uid == (int)uid) {
+                        size_t ulen = (size_t)(colon1 - line);
+                        if (ulen >= outsize) ulen = outsize - 1;
+                        memcpy(out, line, ulen);
+                        out[ulen] = '\0';
+                        return;
+                    }
+                }
+            }
+        }
+
+        if (!nl) break;
+        line = nl + 1;
+    }
+
+    strncpy(out, "?", outsize);
 }
 
 /**
@@ -44,10 +105,13 @@ int main(int argc, char **argv, char **envp)
 	const char *exec_error = "Error: failed to execute command\n";
 	const char *empty_cmd = "Error: empty command\n";
 
+	char username[32];
+	get_username(getuid(), username, sizeof(username));
+
 	for (;;) {
     	char cwd[256];
     	if (getcwd(cwd, sizeof(cwd))) {
-    		if (write(1, cwd, strlen(cwd)) < 0 ||
+    		if (write(1, username, strlen(username)) < 0 || write(1, " ", 1) < 0 || write(1, cwd, strlen(cwd)) < 0 ||
     		    write(1, " # ", 3) < 0) {
     			// If we can't write to stdout, we're fuckin cooked
     			_exit(1);

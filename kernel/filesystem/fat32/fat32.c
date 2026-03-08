@@ -7,6 +7,7 @@
 #include "../../string.h"
 #include "../vfs.h"
 #include "../ide.h"
+#include "../../syscall/sys/file.h"
 
 filesystem_t fat32_fs = {
     .name = "fat32",
@@ -150,6 +151,9 @@ vfs_node_t *fat32_mount(const char *device) {
     root->flags    = VFS_FLAG_DIRECTORY;
     root->refcount = 1;
     root->ops      = &fat32_ops;
+    root->uid      = 0;
+    root->gid      = 0;
+    root->mode     = S_IFDIR | 0755;
 
     // 5: Store fs_info + root cluster in fs_data
     fat32_node_info_t *ni = kernel_malloc(sizeof(*ni));
@@ -262,6 +266,13 @@ vfs_node_t *fat32_readdir(vfs_node_t *node, uint32_t index) {
                 child->size = entries[i].file_size;
                 child->refcount = 1;
                 child->ops = node->ops; // reuse ops
+                child->uid = 0;
+                child->gid = 0;
+                if (entries[i].attr & FAT32_ATTR_DIRECTORY) {
+                    child->mode = S_IFDIR | 0755;
+                } else {
+                    child->mode = S_IFREG | ((entries[i].attr & 0x01) ? 0444 : 0644);
+                }
 
                 // Setup fs_data
                 fat32_node_info_t *child_info = kernel_malloc(sizeof(fat32_node_info_t));
@@ -430,6 +441,13 @@ static vfs_node_t *fat32_finddir(vfs_node_t *dir, const char *name) {
                 child->size     = ents[i].file_size;
                 child->ops      = &fat32_ops;
                 child->refcount = 1;
+                child->uid      = 0;
+                child->gid      = 0;
+                if (ents[i].attr & FAT32_ATTR_DIRECTORY) {
+                    child->mode = S_IFDIR | 0755;
+                } else {
+                    child->mode = S_IFREG | ((ents[i].attr & 0x01) ? 0444 : 0644);
+                }
 
                 fat32_node_info_t *cni = kernel_malloc(sizeof(*cni));
                 cni->fs_info        = fs;
@@ -902,6 +920,9 @@ got_slot:
     child->flags = VFS_FLAG_FILE;
     child->refcount = 1;
     child->ops  = &fat32_ops;
+    child->uid  = 0;
+    child->gid  = 0;
+    child->mode = S_IFREG | 0644;
     fat32_node_info_t *cni = kernel_malloc(sizeof(*cni));
     cni->fs_info        = fs;
     cni->cluster_number = newcl;
@@ -1008,6 +1029,9 @@ static vfs_node_t *fat32_mkdir(vfs_node_t *parent, const char *name) {
     child->flags    = VFS_FLAG_DIRECTORY;
     child->refcount = 1;
     child->ops      = &fat32_ops;
+    child->uid      = 0;
+    child->gid      = 0;
+    child->mode     = S_IFDIR | 0755;
 
     fat32_node_info_t *cni = kernel_malloc(sizeof(*cni));
     cni->fs_info        = fs;

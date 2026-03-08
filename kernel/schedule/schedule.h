@@ -10,6 +10,7 @@
 #define USER_MODE_CODE_SEGMENT 0x1B
 #define INIT_EFLAGS            0x00000202 // RSVD, IF
 #define MAX_TASKS              256
+#define NGROUPS_MAX            16
 #define PCB_ALIGNMENT          16
 #define MAX_PRIORITY           256
 #define PRIORITY_DECAY_RATE    10
@@ -73,6 +74,10 @@ typedef struct process_control_block {
     uint8_t in_signal_handler;
     uint8_t no_requeue;
     char cwd[256];
+    uint16_t uid, gid, euid, egid;
+    uint16_t groups[NGROUPS_MAX];
+    uint8_t ngroups;
+    uint32_t umask;
     uint32_t current_fd_flags;
     uint32_t current_user_buf;
 } process_control_block_t;
