@@ -65,7 +65,9 @@ enum {
     SYSTEM_CALL_SETGROUPS  = 48,
     SYSTEM_CALL_CHMOD      = 49,
     SYSTEM_CALL_CHOWN      = 50,
-    SYSTEM_CALL_UMASK      = 51
+    SYSTEM_CALL_UMASK      = 51,
+    SYSTEM_CALL_UNAME      = 52,
+    SYSTEM_CALL_SETHOSTNAME = 53
 };
 
 /**

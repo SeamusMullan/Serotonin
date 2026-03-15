@@ -11,8 +11,19 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <string.h>
 #include "syscall_table.h"
 #include "lib5ht/lib5ht.h"
+
+#define HOST_NAME_MAX 64
+
+struct utsname {
+    char sysname[65];
+    char nodename[HOST_NAME_MAX + 1];
+    char release[65];
+    char version[65];
+    char machine[65];
+};
 
 int errno;
 
@@ -416,6 +427,27 @@ int chown(const char *path, uid_t owner, gid_t group) {
 
 mode_t umask(mode_t mask) {
     return (mode_t)do_syscall(SYSTEM_CALL_UMASK, (uint32_t)mask, 0, 0);
+}
+
+int uname(struct utsname *buf) {
+    return do_syscall(SYSTEM_CALL_UNAME, (uint32_t)buf, 0, 0);
+}
+
+int sethostname(const char *name, size_t len) {
+    return do_syscall(SYSTEM_CALL_SETHOSTNAME, (uint32_t)name, (uint32_t)len, 0);
+}
+
+int gethostname(char *name, size_t len) {
+    struct utsname buf;
+    if (uname(&buf) < 0)
+        return -1;
+    size_t nlen = strlen(buf.nodename);
+    if (nlen + 1 > len) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    memcpy(name, buf.nodename, nlen + 1);
+    return 0;
 }
 
 void _init(void) {}

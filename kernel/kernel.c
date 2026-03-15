@@ -29,9 +29,6 @@
 #include "device/mouse/dev_mouse.h"
 #include "device/keyboard/dev_keyboard.h"
 
-#define KERNEL_VERSION_HIGH 0
-#define KERNEL_VERSION_MID 4
-#define KERNEL_VERSION_LOW 0
 
 #define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
 #define HEAP_SIZE   (KERNEL_HEAP_SIZE)

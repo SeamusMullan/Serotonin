@@ -23,6 +23,17 @@
 static uint32_t next_fd = FIRST_FD;
 static int errno = 0;
 #define PIPE_BUFFER_SIZE 4096
+#define HOST_NAME_MAX 64
+
+struct utsname {
+    char sysname[65];
+    char nodename[HOST_NAME_MAX + 1];
+    char release[65];
+    char version[65];
+    char machine[65];
+};
+
+static char kernel_hostname[HOST_NAME_MAX + 1] = "serotonin";
 
 typedef struct layer_state {
     uint8_t allocated;
@@ -1787,6 +1798,46 @@ static void sys_umask(uint32_t arg2) {
     errno = old;
 }
 
+static void sys_uname(uint32_t arg2) {
+    struct utsname buf;
+    char version[16];
+    snprintf(version, sizeof(version), "%d.%d.%d",KERNEL_VERSION_LOW, KERNEL_VERSION_MID, KERNEL_VERSION_HIGH);
+    strncpy(buf.sysname, "Serotonin", sizeof(buf.sysname));
+    strncpy(buf.nodename, kernel_hostname, sizeof(buf.nodename));
+    strncpy(buf.release, (const char *)version, sizeof(buf.release));
+    strncpy(buf.version, __DATE__ " " __TIME__, sizeof(buf.version));
+    strncpy(buf.machine, "i686", sizeof(buf.machine));
+
+    if (copy_to_user(current_task->address_space, arg2, &buf, sizeof(buf)) != 0) {
+        errno = -EFAULT;
+        return;
+    }
+    errno = 0;
+}
+
+static void sys_sethostname(uint32_t arg2, uint32_t arg3) {
+    const char *name = (const char *)arg2;
+    size_t len = (size_t)arg3;
+
+    if (current_task->euid != 0) {
+        errno = -EPERM;
+        return;
+    }
+    if (len > HOST_NAME_MAX) {
+        errno = -EINVAL;
+        return;
+    }
+
+    char kbuf[HOST_NAME_MAX + 1];
+    if (copy_from_user(current_task->address_space, kbuf, arg2, len) != 0) {
+        errno = -EFAULT;
+        return;
+    }
+    kbuf[len] = '\0';
+    strncpy(kernel_hostname, kbuf, HOST_NAME_MAX + 1);
+    errno = 0;
+}
+
 void sys_5ht_set_fid(uint32_t arg2) {
     process_control_block_t *fid_task = task_lookup_by_pid((int)arg2);
 
@@ -1973,6 +2024,12 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_UMASK:
             sys_umask(arg2);
+            break;
+        case SYSTEM_CALL_UNAME:
+            sys_uname(arg2);
+            break;
+        case SYSTEM_CALL_SETHOSTNAME:
+            sys_sethostname(arg2, arg3);
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);
