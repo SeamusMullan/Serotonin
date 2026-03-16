@@ -7,6 +7,7 @@
 #include "../font.h"
 
 #define VBE_TICKS_PER_FRAME 17
+#define VBE_CURSOR_BLINK_MS 500
 
 #define VBE_FONT_WIDTH  8
 #define VBE_FONT_HEIGHT 16

@@ -14,6 +14,7 @@
 #include "../../vmm/paging_init.h"
 #include "../font.h"
 #include "../../pty/pty.h"
+#include "../../io/io.h"
 
 #include <xmmintrin.h>
 #include <emmintrin.h>
@@ -92,6 +93,8 @@ uint32_t scroll_region_bottom = 0;
 uint32_t saved_cursor_col = 0;
 uint32_t saved_cursor_row = 0;
 uint8_t cursor_visible = 1;
+static uint64_t cursor_last_blink_tick = 0;
+static uint8_t  cursor_blink_on = 1;
 static uint32_t *alt_screen_buf = NULL;
 uint32_t alt_cursor_col = 0;
 uint32_t alt_cursor_row = 0;
@@ -686,6 +689,22 @@ void vbe_flip(void)
         vbe_blend_area_stride(vbe_info.backbuffer, vbe_info.pitch, layer->bufptr, layer->pitch, ix0, iy0, src_x, src_y, w, h);
     }
 
+    if (cursor_visible && cursor_blink_on) {
+        uint32_t cx = term_cursor_col * VBE_FONT_WIDTH;
+        uint32_t cy = term_cursor_row * VBE_FONT_HEIGHT;
+        if (cx + VBE_FONT_WIDTH <= SCREEN_WIDTH && cy + VBE_FONT_HEIGHT <= SCREEN_HEIGHT) {
+            uint32_t stride = vbe_info.pitch / sizeof(uint32_t);
+            uint32_t *bb = vbe_info.backbuffer;
+            for (uint32_t row = 0; row < VBE_FONT_HEIGHT; row++) {
+                if (cy + row >= y0 && cy + row < y1) {
+                    uint32_t *px = bb + (cy + row) * stride + cx;
+                    for (uint32_t col = 0; col < VBE_FONT_WIDTH; col++)
+                        px[col] ^= 0x00FFFFFF;
+                }
+            }
+        }
+    }
+
     memcpy_nt(fb_ptr, bb_ptr, rect_bytes);
 
     dbb->x0 = (uint16_t)-1;
@@ -823,6 +842,11 @@ void vbe_scroll_region_down(uint32_t top, uint32_t bottom, uint32_t n) {
  */
 void vbe_terminal_putchar(char c)
 {
+    /* Mark old cursor cell dirty so the blink overlay gets cleared */
+    vbe_mark_region_dirty(term_cursor_col * VBE_FONT_WIDTH,
+                          term_cursor_row * VBE_FONT_HEIGHT,
+                          VBE_FONT_WIDTH, VBE_FONT_HEIGHT);
+
     if (c == '\n')
     {
         term_cursor_col = 0;
@@ -876,6 +900,9 @@ void vbe_terminal_putchar(char c)
  * @param str The string to print.
  */
 void vbe_terminal_puts(const char *str, int len) {
+    cursor_blink_on = 1;
+    cursor_last_blink_tick = timer_ticks;
+
     uint8_t in_escape = 0;
     char esc_buf[32];
     int esc_len = 0;
@@ -954,6 +981,11 @@ void vbe_terminal_back(void)
     {
         return;
     }
+
+    /* Mark old cursor cell dirty so the blink overlay gets cleared */
+    vbe_mark_region_dirty(term_cursor_col * VBE_FONT_WIDTH,
+                          term_cursor_row * VBE_FONT_HEIGHT,
+                          VBE_FONT_WIDTH, VBE_FONT_HEIGHT);
 
     if (term_cursor_col == 0)
     {
@@ -1102,16 +1134,16 @@ void vbe_set_cursor(uint32_t col, uint32_t row)
     {
         return;
     }
-    /* Mark old cursor cell dirty */
     vbe_mark_region_dirty(term_cursor_col * VBE_FONT_WIDTH,
                           term_cursor_row * VBE_FONT_HEIGHT,
                           VBE_FONT_WIDTH, VBE_FONT_HEIGHT);
     term_cursor_col = col;
     term_cursor_row = row;
-    /* Mark new cursor cell dirty */
     vbe_mark_region_dirty(col * VBE_FONT_WIDTH,
                           row * VBE_FONT_HEIGHT,
                           VBE_FONT_WIDTH, VBE_FONT_HEIGHT);
+    cursor_blink_on = 1;
+    cursor_last_blink_tick = timer_ticks;
 }
 
 /**
@@ -1649,6 +1681,18 @@ void vbe_handle_ansi_sequence_ctx(term_state_t *ts, const char *seq) {
 void vbe_worker(void) {
     while (1) {
         clear_interrupts();
+
+        if (cursor_visible) {
+            uint64_t now = timer_ticks;
+            if (now - cursor_last_blink_tick >= VBE_CURSOR_BLINK_MS) {
+                cursor_blink_on ^= 1;
+                cursor_last_blink_tick = now;
+                vbe_mark_region_dirty(term_cursor_col * VBE_FONT_WIDTH,
+                                      term_cursor_row * VBE_FONT_HEIGHT,
+                                      VBE_FONT_WIDTH, VBE_FONT_HEIGHT);
+            }
+        }
+
         for (uint8_t z = 1; z < VBE_NUM_Z_LAYERS; z++) {
             if (!vbe_z_layers[z] || !vbe_z_layers[z]->active)
                 continue;
