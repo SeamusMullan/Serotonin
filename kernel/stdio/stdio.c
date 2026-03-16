@@ -6,12 +6,11 @@
 #include "../string.h"
 #include "../video/vbe/vbe.h"
 #include "../schedule/schedule.h"
-#include "../io/serial.h"
 #include "../vmm/vmm.h"
 #include "../vmm/paging_init.h"
 #include "../io/io.h"
 
-static uint32_t printfs_status_mask = 0xFFFFFFFF; 
+static uint32_t printfs_status_mask = 0xFFFFFFFF;
 
 static int copy_user_string(char *dst, size_t dst_size, const char *src) {
     if (!dst || dst_size == 0 || !src || !current_task || !current_task->address_space) {
@@ -47,7 +46,7 @@ static int copy_user_string(char *dst, size_t dst_size, const char *src) {
 
 /**
  * @brief Internal printf function.
- * 
+ *
  * @param p Format string.
  * @param arg_ptr Pointer to the argument list.
  */
@@ -133,7 +132,6 @@ void printf_internal(const char* p, void** arg_ptr) {
                     int len = strlen(buffer);
                     while (len < width) {
                         vbe_terminal_putchar(pad_char);
-                        serial_putchar(COM1_BASE, pad_char);
                         width--;
                     }
                     break;
@@ -146,40 +144,33 @@ void printf_internal(const char* p, void** arg_ptr) {
                         char tmp[256];
                         if (copy_user_string(tmp, sizeof(tmp), str_arg) != 0) {
                             const char *bad = "<badptr>";
-                            serial_puts(COM1_BASE, bad);
                             vbe_terminal_puts(bad, 0);
                         } else {
-                            serial_puts(COM1_BASE, tmp);
                             vbe_terminal_puts(tmp, 0);
                         }
                     } else {
-                        serial_puts(COM1_BASE, str_arg);
                         vbe_terminal_puts(str_arg, 0);
                     }
                     break;
 
                 case 'c':
                     vbe_terminal_putchar((char)(intptr_t)*arg_ptr++);
-                    serial_putchar(COM1_BASE, (char)(intptr_t)*arg_ptr++);
                     break;
 
                 case 'p': {
                     void* ptr = *arg_ptr++;
                     uintptr_t addr = (uintptr_t)ptr;
                     vbe_terminal_puts("0x", 0);
-                    serial_puts(COM1_BASE, "0x");
 
                     utoa_hex(addr, buffer);
 
                     int len = strlen(buffer);
                     while (len < width) {
                         vbe_terminal_putchar(pad_char);
-                        serial_putchar(COM1_BASE, pad_char);
                         width--;
                     }
 
                     vbe_terminal_puts(buffer, 0);
-                    serial_puts(COM1_BASE, buffer);
                     break;
                 }
 
@@ -189,27 +180,22 @@ void printf_internal(const char* p, void** arg_ptr) {
 
                     ftoa(val, buffer, 6); // 6 decimal places
                     vbe_terminal_puts(buffer, 0);
-                    serial_puts(COM1_BASE, buffer);
                     break;
                 }
 
                 default:
                     vbe_terminal_putchar('%');
                     vbe_terminal_putchar(*p);
-                    serial_putchar(COM1_BASE, '%');
-                    serial_putchar(COM1_BASE, *p);
                     break;
             }
 
             if (*p == 'x' || *p == 'u' || *p == 'd') {
                 vbe_terminal_puts(buffer, 0);
-                serial_puts(COM1_BASE, buffer);
             }
 
         } else {
             char ps[2] = {*p, 0};
             vbe_terminal_puts(ps, 0);
-            serial_putchar(COM1_BASE, *p);
         }
         p++;
     }
@@ -221,7 +207,7 @@ void printf_internal(const char* p, void** arg_ptr) {
  * @param fmt Format string.
  * @param ... Variable arguments.
  */
-void printf(const char* fmt, ...) 
+void printf(const char* fmt, ...)
 {
     const char* p = fmt;
 
@@ -246,44 +232,36 @@ int printfs_masked(enum print_status_types status_type) {
  */
 void printfs_write_status(enum print_status_types status_type) {
     vbe_terminal_puts("[", 0);
-    serial_puts(COM1_BASE, "[");
     switch (status_type) {
         case PRINT_STATUS_DEBUG:
             vbe_setcolor_bg_palette(VBE_COLOR_LIGHT_BLUE);
             vbe_terminal_puts("DDD", 0);
-            serial_puts(COM1_BASE, "DDD");
             break;
         case PRINT_STATUS_INFO:
             vbe_setcolor_bg_palette(VBE_COLOR_BLUE);
             vbe_terminal_puts("III", 0);
-            serial_puts(COM1_BASE, "III");
             break;
         case PRINT_STATUS_WARNING:
             vbe_setcolor_bg_palette(VBE_COLOR_BROWN);
             vbe_terminal_puts("WWW", 0);
-            serial_puts(COM1_BASE, "WWW");
             break;
         case PRINT_STATUS_ERROR:
             vbe_setcolor_bg_palette(VBE_COLOR_RED);
             vbe_terminal_puts("EEE", 0);
-            serial_puts(COM1_BASE, "EEE");
             break;
         case PRINT_STATUS_FATAL:
             vbe_setcolor_bg_palette(VBE_COLOR_RED);
             vbe_terminal_puts("!!!", 0);
-            serial_puts(COM1_BASE, "!!!");
             break;
         case PRINT_STATUS_SUCCESS:
             vbe_setcolor_bg_palette(VBE_COLOR_GREEN);
             vbe_setcolor_fg_palette(VBE_COLOR_BLACK);
             vbe_terminal_puts("SSS", 0);
-            serial_puts(COM1_BASE, "SSS");
             break;
     }
     vbe_setcolor_bg_palette(VBE_COLOR_BLACK);
     vbe_setcolor_fg_palette(VBE_COLOR_WHITE);
     vbe_terminal_puts("] ", 0);
-    serial_puts(COM1_BASE, "] ");
 }
 
 /**

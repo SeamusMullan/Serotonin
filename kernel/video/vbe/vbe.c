@@ -13,10 +13,13 @@
 #include "../../multiboot.h"
 #include "../../vmm/paging_init.h"
 #include "../font.h"
+#include "../../pty/pty.h"
 
 #include <xmmintrin.h>
 #include <emmintrin.h>
 
+uint32_t term_cursor_col = 0;
+uint32_t term_cursor_row = 0;
 uint32_t term_fg_color = 0xFFFFFFFF;
 uint32_t term_bg_color = 0xFF000000;
 uint32_t dirty_min_x = 0;
@@ -81,18 +84,18 @@ static uint32_t ansi_color_table[16] = {
     0x00FFFFFF  // bright white
 };
 
-static uint32_t ansi_fg = 0xFFFFFFFF;
-static uint32_t ansi_bg = 0xFF000000;
-static uint8_t ansi_bold = 0;
-static uint32_t scroll_region_top = 0;
-static uint32_t scroll_region_bottom = 0;
-static uint32_t saved_cursor_col = 0;
-static uint32_t saved_cursor_row = 0;
-static uint8_t cursor_visible = 1;
+uint32_t ansi_fg = 0xFFFFFFFF;
+uint32_t ansi_bg = 0xFF000000;
+uint8_t ansi_bold = 0;
+uint32_t scroll_region_top = 0;
+uint32_t scroll_region_bottom = 0;
+uint32_t saved_cursor_col = 0;
+uint32_t saved_cursor_row = 0;
+uint8_t cursor_visible = 1;
 static uint32_t *alt_screen_buf = NULL;
-static uint32_t alt_cursor_col = 0;
-static uint32_t alt_cursor_row = 0;
-static uint8_t in_alt_screen = 0;
+uint32_t alt_cursor_col = 0;
+uint32_t alt_cursor_row = 0;
+uint8_t in_alt_screen = 0;
 
 // dirty bounding box used for rect dirty marking
 dirty_bb_t *dbb;
@@ -680,9 +683,7 @@ void vbe_flip(void)
         uint32_t src_x = ix0 - layer_x0;
         uint32_t src_y = iy0 - layer_y0;
 
-        vbe_blend_area_stride(vbe_info.backbuffer, vbe_info.pitch,
-                              layer->bufptr, layer->pitch,
-                              ix0, iy0, src_x, src_y, w, h);
+        vbe_blend_area_stride(vbe_info.backbuffer, vbe_info.pitch, layer->bufptr, layer->pitch, ix0, iy0, src_x, src_y, w, h);
     }
 
     memcpy_nt(fb_ptr, bb_ptr, rect_bytes);
@@ -691,33 +692,6 @@ void vbe_flip(void)
     dbb->x1 = (uint16_t)-1;
     dbb->y0 = (uint16_t)-1;
     dbb->y1 = (uint16_t)-1;
-    /*
-    // OLD IMPLEMENTATION
-    // Composite only dirty scanlines from base backbuffer + z-layers into framebuffer.
-    uint32_t stride = vbe_info.pitch / sizeof(uint32_t);
-    uint32_t *base_buf = vbe_info.backbuffer; // base layer
-    uint32_t *dst_buf = vbe_info.framebuffer;
-
-    for (uint32_t y = 0; y < SCREEN_HEIGHT; y++)
-    {
-        if (!dirty_lines[y])
-            continue;
-        uint32_t *dst_row = &dst_buf[y * stride];
-        uint32_t *base_row = &base_buf[y * stride];
-        // Start with base
-        memcpy(dst_row, base_row, SCREEN_WIDTH * sizeof(uint32_t));
-        // Blend each z layer on top
-        for (uint32_t z = 1; z < VBE_NUM_Z_LAYERS; z++)
-        {
-            uint32_t *layer_row = vbe_z_layers[z] ? &vbe_z_layers[z][y * stride] : 0;
-            if (!layer_row)
-                continue;
-            vbe_blend_row(dst_row, layer_row, SCREEN_WIDTH);
-        }
-        dirty_lines[y] = 0;
-    }
-    vbe_clear_dirty_bitmap();
-    */
 }
 
 /**
@@ -857,6 +831,11 @@ void vbe_terminal_putchar(char c)
     else if (c == '\r')
     {
         term_cursor_col = 0;
+    }
+    else if (c == '\b')
+    {
+        if (term_cursor_col > 0)
+            term_cursor_col--;
     }
     else
     {
@@ -1620,6 +1599,51 @@ void vbe_handle_ansi_sequence(const char *seq) {
             // unsupported sequence
             break;
     }
+}
+
+void vbe_set_layer0_bufptr(uint32_t *bufptr) {
+    vbe_z_layers[0]->bufptr = bufptr;
+    vbe_mark_region_dirty(0, 0, vbe_info.width, vbe_info.height);
+}
+
+uint32_t *vbe_get_layer0_bufptr(void) {
+    return vbe_z_layers[0]->bufptr;
+}
+
+void vbe_terminal_putchar_ctx(term_state_t *ts, char c) {
+    term_state_t saved;
+    pty_save_term_state(&saved);
+    pty_restore_term_state(ts);
+    vbe_terminal_putchar(c);
+    pty_save_term_state(ts);
+    pty_restore_term_state(&saved);
+}
+
+void vbe_terminal_puts_ctx(term_state_t *ts, const char *str, int len) {
+    term_state_t saved;
+    pty_save_term_state(&saved);
+    pty_restore_term_state(ts);
+    vbe_terminal_puts(str, len);
+    pty_save_term_state(ts);
+    pty_restore_term_state(&saved);
+}
+
+void vbe_terminal_back_ctx(term_state_t *ts) {
+    term_state_t saved;
+    pty_save_term_state(&saved);
+    pty_restore_term_state(ts);
+    vbe_terminal_back();
+    pty_save_term_state(ts);
+    pty_restore_term_state(&saved);
+}
+
+void vbe_handle_ansi_sequence_ctx(term_state_t *ts, const char *seq) {
+    term_state_t saved;
+    pty_save_term_state(&saved);
+    pty_restore_term_state(ts);
+    vbe_handle_ansi_sequence(seq);
+    pty_save_term_state(ts);
+    pty_restore_term_state(&saved);
 }
 
 void vbe_worker(void) {

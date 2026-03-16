@@ -48,6 +48,8 @@ i686-elf-gcc -c mouse_cursor.c -o mouse_cursor.o $CFLAGS
 i686-elf-gcc -c listproc/listproc.c -o listproc/listproc.o $CFLAGS
 i686-elf-gcc -c games/sponk/sponk.c -o games/sponk/sponk.o $CFLAGS
 i686-elf-gcc -c opl2_editor/opl2_editor.c -o opl2_editor/opl2_editor.o $CFLAGS
+i686-elf-gcc -c getty/getty.c -o getty/getty.o $CFLAGS
+i686-elf-gcc -c fetch.c -o fetch.o $CFLAGS
 
 # --- Link C programs ---
 
@@ -69,6 +71,8 @@ i686-elf-gcc $LDFLAGS $CRT0 mouse_test.o $LDLIBS -o ps2tst.elf
 i686-elf-gcc $LDFLAGS $CRT0 mouse_cursor.o $LDLIBS -o mouse.elf
 i686-elf-gcc $LDFLAGS $CRT0 kb_test.o $LDLIBS -o kbtest.elf
 i686-elf-gcc $LDFLAGS $CRT0 opl2_editor/opl2_editor.o $LDLIBS -o opl2edit.elf
+i686-elf-gcc $LDFLAGS $CRT0 getty/getty.o $LDLIBS -o getty.elf
+i686-elf-gcc $LDFLAGS $CRT0 fetch.o $LDLIBS -o fetch.elf
 
 # --- C++ programs ---
 

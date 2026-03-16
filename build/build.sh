@@ -71,6 +71,8 @@ i686-elf-gcc -c device/devfs_example.c -o device/devfs_example.o $CFLAGS
 i686-elf-gcc -c device/mouse/dev_mouse.c -o device/mouse/dev_mouse.o $CFLAGS
 i686-elf-gcc -c device/keyboard/dev_keyboard.c -o device/keyboard/dev_keyboard.o $CFLAGS
 
+i686-elf-gcc -c pty/pty.c -o pty/pty.o $CFLAGS
+
 # Conditionally build test objects if TEST_MODE is enabled
 TEST_OBJS=""
 if [ -n "$TEST_MODE" ]; then
@@ -79,7 +81,7 @@ if [ -n "$TEST_MODE" ]; then
 fi
 
 # da linker
-i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt.o idt.o isr.o fault.o io/irq.o io/pic.o io/keyboard.o vmm/paging_init.o vmm/vmm.o video/vbe/vbe.o video/font.o filesystem/vfs.o filesystem/devfs/devfs.o filesystem/tmpfs/tmpfs.o filesystem/ide.o filesystem/fat32/fat32.o schedule/schedule.o schedule/switch_task.o audio/pcspeaker/pcspeaker.o audio/opl2/opl2.o syscall/isr_syscall.o syscall/syscall.o audio/startup/opl2_sound/opl2_startup.o schedule/kernel_yield.o schedule/signal_trampoline.o filesystem/vfs_perm.o filesystem/user_fs/user_fs.o device/devfs_example.o io/rtc.o io/serial.o device/mouse/dev_mouse.o device/keyboard/dev_keyboard.o $TEST_OBJS
+i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt.o idt.o isr.o fault.o io/irq.o io/pic.o io/keyboard.o vmm/paging_init.o vmm/vmm.o video/vbe/vbe.o video/font.o filesystem/vfs.o filesystem/devfs/devfs.o filesystem/tmpfs/tmpfs.o filesystem/ide.o filesystem/fat32/fat32.o schedule/schedule.o schedule/switch_task.o audio/pcspeaker/pcspeaker.o audio/opl2/opl2.o syscall/isr_syscall.o syscall/syscall.o audio/startup/opl2_sound/opl2_startup.o schedule/kernel_yield.o schedule/signal_trampoline.o filesystem/vfs_perm.o filesystem/user_fs/user_fs.o device/devfs_example.o io/rtc.o io/serial.o device/mouse/dev_mouse.o device/keyboard/dev_keyboard.o pty/pty.o $TEST_OBJS
 
 cd ../build
 

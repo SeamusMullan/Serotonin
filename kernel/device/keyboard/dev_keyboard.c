@@ -148,7 +148,7 @@ void dev_keyboard_push_event(keyboard_event_t *event) {
 
 void dev_keyboard_init(void) {
     // Register device file
-    devfs_register_device("keyboard/event", S_IFREG | 0400, &dev_keyboard_event_ops);
+    devfs_register_device("keyboard/event", S_IFREG | 0400, &dev_keyboard_event_ops, NULL);
 
     // Cache the event node for direct access from IRQ handler
     vfs_node_t *devfs_root = vfs_lookup_mount("/dev");

@@ -15,6 +15,9 @@
 #include <fcntl.h>
 #include "syscall/lib5ht/lib5ht.h"
 
+int gethostname(char *name, size_t len);
+int snprintf(char *str, size_t size, const char *fmt, ...);
+
 void sigint_handle(int sig) {
     return;
 }
@@ -108,25 +111,25 @@ int main(int argc, char **argv, char **envp)
 	char username[32];
 	get_username(getuid(), username, sizeof(username));
 
+	char hostname[65];
+	if (gethostname(hostname, sizeof(hostname)) < 0)
+		strcpy(hostname, "serotonin");
+
 	for (;;) {
     	char cwd[256];
+    	char prompt_buf[512];
     	if (getcwd(cwd, sizeof(cwd))) {
-    		if (write(1, username, strlen(username)) < 0 || write(1, " ", 1) < 0 || write(1, cwd, strlen(cwd)) < 0 ||
-    		    write(1, " # ", 3) < 0) {
-    			// If we can't write to stdout, we're fuckin cooked
+    		int len = snprintf(prompt_buf, sizeof(prompt_buf),
+    			"\033[1;32m%s@%s\033[0m \033[1;34m%s\033[0m # ", username, hostname, cwd);
+    		if (write(1, prompt_buf, len) < 0)
     			_exit(1);
-    		}
     	} else {
-    		if (write(1, prompt, strlen(prompt)) < 0) {
-    			// If we can't write to stdout, we're fuckin cooked
+    		if (write(1, prompt, strlen(prompt)) < 0)
     			_exit(1);
-    		}
     	}
 
+    	errno = 0;
     	int count = read(0, command, sizeof(command) - 1);
-
-        if (errno)
-            continue;
 
 		if (count < 0) {
 			write(2, read_error, 28);

@@ -15,9 +15,6 @@
 #define SCREEN_WIDTH 1280
 #define SCREEN_HEIGHT 800
 
-static uint32_t term_cursor_col = 0;
-static uint32_t term_cursor_row = 0;
-
 extern uint32_t vbe_palette[256];
 
 /**
@@ -48,9 +45,7 @@ typedef enum {
 extern uint32_t vbe_colors[16];
 extern process_control_block_t *vbe_worker_task;
 
-static uint32_t term_color = 0xFFFFFF;
-
-static int vbe_any_dirty;
+struct term_state;
 
 // We only need width, height, pitch, bpp, and backbuffer pointer here:
 typedef struct {
@@ -125,5 +120,17 @@ fb_layer_metadata_t *vbe_layer_get_metadata(uint8_t z);
 void vbe_mark_region_dirty(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
 void vbe_handle_ansi_sequence(const char *seq);
 void vbe_worker(void);
+
+void vbe_terminal_putchar_ctx(struct term_state *ts, char c);
+void vbe_terminal_puts_ctx(struct term_state *ts, const char *str, int len);
+void vbe_terminal_back_ctx(struct term_state *ts);
+void vbe_handle_ansi_sequence_ctx(struct term_state *ts, const char *seq);
+void vbe_set_layer0_bufptr(uint32_t *bufptr);
+uint32_t *vbe_get_layer0_bufptr(void);
+
+extern uint32_t term_cursor_col;
+extern uint32_t term_cursor_row;
+extern uint32_t term_fg_color;
+extern uint32_t term_bg_color;
 
 #endif

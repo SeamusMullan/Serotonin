@@ -64,6 +64,7 @@ typedef struct devfs_file {
     mode_t mode;                    /**< File permissions */
     vfs_ops_t *ops;                 /**< Device-specific operations */
     devfs_wait_queue_t wait_queue;  /**< Queue for blocked readers */
+    void *device_data;              /**< Opaque data passed to device ops via node->fs_data */
 } devfs_file_t;
 
 /**
@@ -94,12 +95,13 @@ vfs_node_t *devfs_finddir(vfs_node_t *node, const char *name);
  * @param path Path relative to /dev (e.g., "mouse/event")
  * @param mode File mode and permissions
  * @param ops Device-specific VFS operations
+ * @param device_data Opaque pointer passed to device ops via node->fs_data (can be NULL)
  * @return 0 on success, -1 on failure
  *
  * Creates intermediate directories as needed. If the device already
  * exists, updates its mode and operations.
  */
-int devfs_register_device(const char *path, mode_t mode, vfs_ops_t *ops);
+int devfs_register_device(const char *path, mode_t mode, vfs_ops_t *ops, void *device_data);
 
 /**
  * @brief Initialize a wait queue

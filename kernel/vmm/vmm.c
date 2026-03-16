@@ -1026,8 +1026,10 @@ address_space_t *create_address_space(void) {
  */
 void destroy_address_space(address_space_t *as) {
     if (!as) return;
-    // THIS IS FUCKING HORRENDOUS
-    // BUT IT WORKS
+
+    uint32_t shmem_pdi_start = vmm_pdi(SHMEM_START);
+    uint32_t shmem_pdi_end   = vmm_pdi(SHMEM_END);
+
     for (uint32_t pdi = 1; pdi < KERNEL_PDE_BASE; ++pdi) {
         vmm_page_directory_t *pd = (vmm_page_directory_t*)kmap(as->phys_pdir);
         uint32_t pde = pd[pdi];
@@ -1035,12 +1037,16 @@ void destroy_address_space(address_space_t *as) {
         if (!(pde & PAGE_PRESENT)) continue;
         uint32_t pt_phys = pde & PAGE_MASK;
 
+        int in_shmem = (pdi >= shmem_pdi_start && pdi <= shmem_pdi_end);
+
         vmm_page_table_t *pt = (vmm_page_table_t*)kmap(pt_phys);
         for (uint32_t i = 0; i < PAGE_ENTRIES; ++i) {
             uint32_t pti = pt[i];
             if (!(pti & PAGE_PRESENT)) continue;
-            uint32_t p = pt[i] & PAGE_MASK;
-            free_frame((void*)p);
+            if (!in_shmem) {
+                uint32_t p = pt[i] & PAGE_MASK;
+                free_frame((void*)p);
+            }
             pt[i] = 0;
         }
 
@@ -1131,6 +1137,42 @@ uint32_t shm_map(process_control_block_t* pcb, shm_object_t *shm) {
     shm->refcount++;
 
     return va;
+}
+
+void shm_unmap(address_space_t *as, uint32_t vaddr) {
+    shmem_map_t **pp = &as->shmem_list;
+    while (*pp) {
+        if ((*pp)->start == vaddr) {
+            shmem_map_t *m = *pp;
+            shm_object_t *shm = m->shm;
+
+            for (uint32_t i = 0; i < shm->npages; i++) {
+                unmap_page(as, vaddr + i * PAGE_SIZE, 0);
+            }
+
+            *pp = m->next;
+            kernel_free(m);
+
+            shm->refcount--;
+            if (shm->refcount == 0) {
+                for (uint32_t i = 0; i < shm->npages; i++) {
+                    free_frame((void*)shm->phys_pages[i]);
+                }
+                kernel_free(shm->phys_pages);
+
+                for (int i = 0; i < MAX_SHM_OBJECTS; i++) {
+                    if (shm_table[i] == shm) {
+                        shm_table[i] = NULL;
+                        break;
+                    }
+                }
+
+                kernel_free(shm);
+            }
+            return;
+        }
+        pp = &(*pp)->next;
+    }
 }
 
 int shm_alloc_id(void) {

@@ -17,6 +17,8 @@
 #include <stdlib.h>
 
 int listdir(const char *path, char *buf, size_t size);
+int snprintf(char *str, size_t size, const char *fmt, ...);
+int uname(void *buf);
 
 /* Parsed /etc/passwd entry */
 struct passwd_entry {
@@ -135,13 +137,35 @@ static void ensure_dir(const char *path, int mode) {
 }
 
 int main(int argc, char **argv, char **envp) {
-    (void)argc;
+    /* Determine PTY name from argv[1] (passed by getty) */
+    const char *tty_name = "tty?";
+    if (argc >= 2 && argv[1]) {
+        /* Show just the basename, e.g. "pts/0" from "/dev/pts/0" */
+        if (strncmp(argv[1], "/dev/", 5) == 0)
+            tty_name = argv[1] + 5;
+        else
+            tty_name = argv[1];
+    }
+
+    /* Get system info via uname */
+    struct {
+        char sysname[65];
+        char nodename[65];
+        char release[65];
+        char version[65];
+        char machine[65];
+    } uts;
+    memset(&uts, 0, sizeof(uts));
+
+    uname(&uts);
 
     for (;;) {
         char username[64];
-        printf("\033[2J\033[H\033[1mSerotonin\033[0m Operating System (0.4.0)\n");
+        printf("\033[2J\033[H");
+        printf("%s %s %s (%s)\n", uts.sysname, uts.release, uts.machine, tty_name);
 
-        const char *prompt = "\nserotonin login: ";
+        char prompt[128];
+        snprintf(prompt, sizeof(prompt), "\n%s login: ", uts.nodename);
         write(1, prompt, strlen(prompt));
 
         int n = read(0, username, sizeof(username) - 1);

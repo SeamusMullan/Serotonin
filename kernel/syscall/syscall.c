@@ -17,6 +17,7 @@
 #include "sys/timespec.h"
 #include "sys/file.h"
 #include "sys/lib5ht.h"
+#include "../pty/pty.h"
 #include <stdint.h>
 
 
@@ -391,51 +392,29 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
         return;
     }
 
-    switch (arg2) {
-        case WRITE_STDOUT:
-            if (buf_size) {
-                char *kbuf = (char*)kernel_malloc(buf_size);
-                if (!kbuf) {
-                    errno = -ENOMEM;
-                    return;
-                }
-                if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
-                    kernel_free(kbuf);
-                    errno = -EFAULT;
-                    return;
-                }
-                vbe_terminal_puts(kbuf, buf_size);
-                for (uint32_t i = 0; i < buf_size; i++) {
-                    serial_putchar(COM1_BASE, kbuf[i]);
-                }
-                kernel_free(kbuf);
+    // fd 1 (stdout) or fd 2 (stderr) without file handle, write thru PTY slave
+    if (fd == WRITE_STDOUT || fd == WRITE_STDERR) {
+        if (buf_size) {
+            char *kbuf = (char*)kernel_malloc(buf_size);
+            if (!kbuf) {
+                errno = -ENOMEM;
+                return;
             }
-            errno = (int)buf_size;
-            break;
-        case WRITE_STDERR:
-            if (buf_size) {
-                char *kbuf = (char*)kernel_malloc(buf_size);
-                if (!kbuf) {
-                    errno = -ENOMEM;
-                    return;
-                }
-                if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
-                    kernel_free(kbuf);
-                    errno = -EFAULT;
-                    return;
-                }
-                for (uint32_t i = 0; i < buf_size; i++) {
-                    vbe_terminal_putchar(kbuf[i]);
-                    serial_putchar(COM1_BASE, kbuf[i]);
-                }
+            if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
                 kernel_free(kbuf);
+                errno = -EFAULT;
+                return;
             }
-            errno = (int)buf_size;
-            break;
-        default:
-            errno = -EBADF;
-            break;
+            // route thru PTY slave write
+            pty_t *pty = &pty_table[active_vty];
+            pty_slave_write(pty->slave_node, 0, buf_size, kbuf);
+            kernel_free(kbuf);
+        }
+        errno = (int)buf_size;
+        return;
     }
+
+    errno = -EBADF;
 }
 
 /**
@@ -502,11 +481,30 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
             errno = -EFAULT;
             return;
         }
-        stdio_lck_t *syscall_stdio = (stdio_lck_t *)kernel_malloc(sizeof(stdio_lck_t));
-        syscall_stdio->stdin_ptr = read_ptr;
-        syscall_stdio->stdin_buf_size = buf_size;
-        current_task->lck_ptr = (void*)syscall_stdio;
-        task_lock_acquire(stdin_lock);
+
+        // route thru PTY slave read
+        pty_t *pty = &pty_table[active_vty];
+        pty->foreground_pid = (int)current_task->pid;
+        current_task->current_user_buf = (uint32_t)read_ptr;
+
+        char *read_buf = kernel_malloc(buf_size);
+        if (!read_buf) {
+            errno = -ENOMEM;
+            return;
+        }
+        int read_bytes = pty_slave_read(pty->slave_node, 0, buf_size, read_buf);
+        if (read_bytes < 0) {
+            kernel_free(read_buf);
+            errno = read_bytes;
+            return;
+        }
+        if (copy_to_user(current_task->address_space, (uint32_t)read_ptr, read_buf, (size_t)read_bytes) != 0) {
+            kernel_free(read_buf);
+            errno = -EFAULT;
+            return;
+        }
+        kernel_free(read_buf);
+        errno = read_bytes;
         return;
     }
 
@@ -903,8 +901,16 @@ static void sys_sbrk(uint32_t arg2, processor_context_t *ctx) {
 
 static void sys_waitpid(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) {
     lock_scheduler();
-    int pid = arg2;
+    int pid = (int)arg2;
     int* status_ptr = (int*)arg3;
+
+    if (pid == -1) {
+        current_task->waiting_on = pid;
+        current_task->status_ptr = status_ptr;
+        task_block();
+        return;
+    }
+
     process_control_block_t *target = task_lookup_by_pid(pid);
 
     if (!target) {
@@ -1037,11 +1043,20 @@ static void sys_stat(uint32_t arg2, uint32_t arg3) {
 
 static void sys_isatty(uint32_t arg2) {
     uint32_t fd = arg2;
+    /* fd 0/1/2 without file handle = connected to PTY = is a tty */
     if (fd < 3 && current_task->fd_table[fd] == NULL) {
         errno = 1;
-    } else {
-        errno = 0;
+        return;
     }
+    /* Check if fd's node is a PTY (direct or via devfs) */
+    if (fd < FD_MAX && current_task->fd_table[fd] != NULL) {
+        file_handle_t *handle = current_task->fd_table[fd];
+        if (handle->node && pty_from_node(handle->node)) {
+            errno = 1;
+            return;
+        }
+    }
+    errno = 0;
 }
 
 static void sys_gettimeofday(uint32_t arg2) {
@@ -1133,8 +1148,14 @@ static void sys_shm_map(uint32_t arg2) {
 }
 
 static void sys_shm_unmap(uint32_t arg2) {
-    //shm_unmap(current_task, arg2);
-    errno = -ENOSYS;
+    uint32_t vaddr = arg2;
+    if (vaddr < SHMEM_START || vaddr >= SHMEM_END) {
+        errno = -EINVAL;
+        return;
+    }
+
+    shm_unmap(current_task->address_space, vaddr);
+    errno = 0;
 }
 
 static void sys_mkdir(uint32_t arg2) {
@@ -1851,6 +1872,156 @@ void sys_5ht_set_fid(uint32_t arg2) {
     errno = 0;
 }
 
+static void sys_5ht_pty_open(uint32_t arg2) {
+    uint32_t out_ptr = arg2;
+    if (out_ptr < USER_SPACE_START || out_ptr + sizeof(int) * 2 - 1 > USER_SPACE_END) {
+        errno = -EFAULT;
+        return;
+    }
+
+    pty_t *pty = pty_alloc();
+    if (!pty) {
+        errno = -ENOMEM;
+        return;
+    }
+
+    file_handle_t *master_handle = (file_handle_t *)kernel_malloc(sizeof(file_handle_t));
+    file_handle_t *slave_handle  = (file_handle_t *)kernel_malloc(sizeof(file_handle_t));
+    if (!master_handle || !slave_handle) {
+        if (master_handle) kernel_free(master_handle);
+        if (slave_handle)  kernel_free(slave_handle);
+        pty_free(pty);
+        errno = -ENOMEM;
+        return;
+    }
+
+    memset(master_handle, 0, sizeof(*master_handle));
+    master_handle->node  = pty->master_node;
+    master_handle->flags = O_RDWR;
+
+    memset(slave_handle, 0, sizeof(*slave_handle));
+    slave_handle->node  = pty->slave_node;
+    slave_handle->flags = O_RDWR;
+
+    int master_fd = alloc_fd(current_task, master_handle);
+    if (master_fd < 0) {
+        kernel_free(master_handle);
+        kernel_free(slave_handle);
+        pty_free(pty);
+        errno = -EMFILE;
+        return;
+    }
+
+    int slave_fd = alloc_fd(current_task, slave_handle);
+    if (slave_fd < 0) {
+        close_fd(current_task, master_fd);
+        kernel_free(slave_handle);
+        pty_free(pty);
+        errno = -EMFILE;
+        return;
+    }
+
+    int fds[2] = { master_fd, slave_fd };
+    if (copy_to_user(current_task->address_space, out_ptr, (char *)fds, sizeof(fds)) != 0) {
+        close_fd(current_task, master_fd);
+        close_fd(current_task, slave_fd);
+        errno = -EFAULT;
+        return;
+    }
+
+    errno = 0;
+}
+
+static void sys_5ht_pty_setattr(uint32_t arg2, uint32_t arg3) {
+    uint32_t fd = arg2;
+    uint32_t attr_ptr = arg3;
+
+    pty_t *pty = NULL;
+    if (fd < 3 && current_task->fd_table[fd] == NULL) {
+        pty = &pty_table[active_vty];
+    } else if (fd < FD_MAX && current_task->fd_table[fd]) {
+        vfs_node_t *node = current_task->fd_table[fd]->node;
+        if (node) pty = pty_from_node(node);
+    }
+
+    if (!pty) { errno = -ENOTTY; return; }
+
+    pty_attr_t attr;
+    if (copy_from_user(current_task->address_space, (char *)&attr, attr_ptr, sizeof(attr)) != 0) {
+        errno = -EFAULT;
+        return;
+    }
+    pty->attr = attr;
+    errno = 0;
+}
+
+static void sys_5ht_pty_getattr(uint32_t arg2, uint32_t arg3) {
+    uint32_t fd = arg2;
+    uint32_t attr_ptr = arg3;
+
+    pty_t *pty = NULL;
+    if (fd < 3 && current_task->fd_table[fd] == NULL) {
+        pty = &pty_table[active_vty];
+    } else if (fd < FD_MAX && current_task->fd_table[fd]) {
+        vfs_node_t *node = current_task->fd_table[fd]->node;
+        if (node) pty = pty_from_node(node);
+    }
+
+    if (!pty) { errno = -ENOTTY; return; }
+
+    if (copy_to_user(current_task->address_space, attr_ptr, (char *)&pty->attr, sizeof(pty->attr)) != 0) {
+        errno = -EFAULT;
+        return;
+    }
+    errno = 0;
+}
+
+static void sys_5ht_pty_winsize(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+    uint32_t fd = arg2;
+    uint32_t ws_ptr = arg3;
+    uint32_t get_flag = arg4; // 1 = get, 0 = set
+
+    pty_t *pty = NULL;
+    if (fd < 3 && current_task->fd_table[fd] == NULL) {
+        pty = &pty_table[active_vty];
+    } else if (fd < FD_MAX && current_task->fd_table[fd]) {
+        vfs_node_t *node = current_task->fd_table[fd]->node;
+        if (node) pty = pty_from_node(node);
+    }
+
+    if (!pty) { errno = -ENOTTY; return; }
+
+    if (get_flag) {
+        if (copy_to_user(current_task->address_space, ws_ptr, (char *)&pty->winsize, sizeof(pty->winsize)) != 0) {
+            errno = -EFAULT;
+            return;
+        }
+    } else {
+        if (copy_from_user(current_task->address_space, (char *)&pty->winsize, ws_ptr, sizeof(pty->winsize)) != 0) {
+            errno = -EFAULT;
+            return;
+        }
+    }
+    errno = 0;
+}
+
+static void sys_5ht_pty_setpgrp(uint32_t arg2) {
+    uint32_t fd = arg2;
+
+    pty_t *pty = NULL;
+    if (fd < 3 && current_task->fd_table[fd] == NULL) {
+        pty = &pty_table[active_vty];
+    } else if (fd < FD_MAX && current_task->fd_table[fd]) {
+        vfs_node_t *node = current_task->fd_table[fd]->node;
+        if (node) pty = pty_from_node(node);
+    }
+
+    if (!pty) { errno = -ENOTTY; return; }
+
+    pty->foreground_pid = (int)current_task->pid;
+    errno = 0;
+}
+
 /**
  * @brief Handle system calls.
  *
@@ -2030,6 +2201,21 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_SETHOSTNAME:
             sys_sethostname(arg2, arg3);
+            break;
+        case SYSTEM_CALL_5HT_PTY_OPEN:
+            sys_5ht_pty_open(arg2);
+            break;
+        case SYSTEM_CALL_5HT_PTY_SETATTR:
+            sys_5ht_pty_setattr(arg2, arg3);
+            break;
+        case SYSTEM_CALL_5HT_PTY_GETATTR:
+            sys_5ht_pty_getattr(arg2, arg3);
+            break;
+        case SYSTEM_CALL_5HT_PTY_WINSIZE:
+            sys_5ht_pty_winsize(arg2, arg3, arg4);
+            break;
+        case SYSTEM_CALL_5HT_PTY_SETPGRP:
+            sys_5ht_pty_setpgrp(arg2);
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);

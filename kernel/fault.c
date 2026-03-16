@@ -208,7 +208,9 @@ static void handle_kernel_exception(const char *name, const exception_frame_t *f
         dump_exception_registers(frame, 0);
         dump_kernel_bytes(frame->eip);
     }
-    kernel_panic(name);
+    char panic_msg[64];
+    snprintf(panic_msg, sizeof(panic_msg),"unhandled kernel exception - %s",name);
+    kernel_panic(panic_msg);
 }
 
 static void handle_exception_common(const char *name, isr_vector_t vector, uint32_t *stack, int has_error_code, uint8_t user_signal) {

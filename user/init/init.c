@@ -4,7 +4,7 @@
  *
  * This is the first user-space program executed by the kernel.
  * It sets up filesystem permissions, creates home directories,
- * ensures /etc/passwd exists, and launches the login program.
+ * ensures /etc/passwd exists, and launches getty on each VTY.
  */
 
 #include <signal.h>
@@ -16,6 +16,9 @@
 #include <errno.h>
 
 int listdir(const char *path, char *buf, size_t size);
+int waitpid(pid_t pid, int *status);
+
+#define NUM_KERNEL_VTYS 4
 
 /**
  * @brief Set all files in /bin to executable (0755)
@@ -106,18 +109,31 @@ static void setup_etc_passwd(void) {
 }
 
 /**
+ * @brief Spawn a getty on a given VTY
+ */
+static void spawn_getty(int vty_id, char **envp) {
+    pid_t pid = fork();
+    if (pid == 0) {
+        /* Child: exec getty with pts path */
+        char pts_path[32];
+        snprintf(pts_path, sizeof(pts_path), "/dev/pts/%d", vty_id);
+        char *argv[] = { "/bin/getty", pts_path, NULL };
+        execve("/bin/getty", argv, envp);
+        /* If getty not found, exit quietly */
+        _exit(127);
+    }
+    /* Parent continues */
+}
+
+/**
  * @brief Init process entry point
  *
  * Sets up filesystem permissions, creates home directories,
- * ensures /etc/passwd exists, and executes the login program.
- *
- * @param argc Argument count (unused)
- * @param argv Argument vector (passed to login)
- * @param envp Environment variables (passed to login)
- * @return 1 on error (login failed to load)
+ * ensures /etc/passwd exists, and spawns getty on each VTY.
  */
 int main(int argc, char **argv, char **envp) {
     (void)argc;
+    (void)argv;
 
     printf("Welcome to \033[1m\033[38;2;122;152;255mSerotonin\033[0m!\n");
 
@@ -125,13 +141,16 @@ int main(int argc, char **argv, char **envp) {
     setup_home_directories();
     setup_etc_passwd();
 
-    execve("/bin/login", argv, envp);
+    /* Spawn getty on all VTYs */
+    for (int i = 0; i < NUM_KERNEL_VTYS; i++) {
+        spawn_getty(i, envp);
+    }
 
-    // Fallback to shell if login is not available
-    printf("init: /bin/login not found, falling back to shell\n");
-    execve("/bin/sh", argv, envp);
+    /* Init must stay alive — reap children forever */
+    for (;;) {
+        int status;
+        waitpid(-1, &status);
+    }
 
-    printf("init: failed to load shell!\n");
-
-    return 1;
+    return 0;
 }

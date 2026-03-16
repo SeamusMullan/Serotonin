@@ -43,3 +43,47 @@ int sys_5ht_query_layer(uint16_t id, fb_layer_info_t *out) {
 int sys_5ht_set_fid(pid_t pid) {
     return do_syscall(SYSTEM_CALL_5HT_SET_FID, (uint32_t)pid, 0, 0);
 }
+
+int sys_5ht_pty_open(int fds[2]) {
+    return do_syscall(SYSTEM_CALL_5HT_PTY_OPEN, (uint32_t)fds, 0, 0);
+}
+
+int sys_5ht_pty_setattr(int fd, const pty_attr_t *attr) {
+    return do_syscall(SYSTEM_CALL_5HT_PTY_SETATTR, (uint32_t)fd, (uint32_t)attr, 0);
+}
+
+int sys_5ht_pty_getattr(int fd, pty_attr_t *attr) {
+    return do_syscall(SYSTEM_CALL_5HT_PTY_GETATTR, (uint32_t)fd, (uint32_t)attr, 0);
+}
+
+int sys_5ht_pty_winsize(int fd, pty_winsize_t *ws, int get) {
+    return do_syscall(SYSTEM_CALL_5HT_PTY_WINSIZE, (uint32_t)fd, (uint32_t)ws, (uint32_t)get);
+}
+
+int sys_5ht_pty_setpgrp(int fd) {
+    return do_syscall(SYSTEM_CALL_5HT_PTY_SETPGRP, (uint32_t)fd, 0, 0);
+}
+
+int ioctl(int fd, unsigned long request, void *arg) {
+    switch (request) {
+        case TCGETS:
+            return sys_5ht_pty_getattr(fd, (pty_attr_t *)arg);
+        case TCSETS:
+        case TCSETSW:
+        case TCSETSF:
+            return sys_5ht_pty_setattr(fd, (const pty_attr_t *)arg);
+        case TIOCGWINSZ:
+            return sys_5ht_pty_winsize(fd, (pty_winsize_t *)arg, 1);
+        case TIOCSWINSZ:
+            return sys_5ht_pty_winsize(fd, (pty_winsize_t *)arg, 0);
+        case TIOCSPGRP:
+            return sys_5ht_pty_setpgrp(fd);
+        case TIOCGPGRP:
+            /* Not directly supported — return ENOSYS */
+            errno = ENOSYS;
+            return -1;
+        default:
+            errno = ENOSYS;
+            return -1;
+    }
+}

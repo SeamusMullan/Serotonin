@@ -154,6 +154,33 @@ typedef struct fb_layer_metadata {
     uint32_t frame_id;  /**< Frame sequence number */
 } fb_layer_metadata_t;
 
+typedef struct pty_attr {
+    unsigned char echo;
+    unsigned char icanon;
+    unsigned char isig;
+    unsigned char onlcr;
+    char cc_vintr;
+    char cc_veof;
+    char cc_verase;
+    char cc_vkill;
+} pty_attr_t;
+
+typedef struct pty_winsize {
+    unsigned short ws_row;
+    unsigned short ws_col;
+    unsigned short ws_xpixel;
+    unsigned short ws_ypixel;
+} pty_winsize_t;
+
+#define TCGETS      0x5401
+#define TCSETS      0x5402
+#define TCSETSW     0x5403
+#define TCSETSF     0x5404
+#define TIOCGPGRP   0x540F
+#define TIOCSPGRP   0x5410
+#define TIOCGWINSZ  0x5413
+#define TIOCSWINSZ  0x5414
+
 /**
  * @brief Execute a system call via interrupt 0x80
  *
@@ -240,6 +267,12 @@ int sys_5ht_query_info(fb_info_t *out);
  */
 int sys_5ht_query_layer(uint16_t id, fb_layer_info_t *out);
 int sys_5ht_set_fid(pid_t pid);
+int sys_5ht_pty_open(int fds[2]);
+int sys_5ht_pty_setattr(int fd, const pty_attr_t *attr);
+int sys_5ht_pty_getattr(int fd, pty_attr_t *attr);
+int sys_5ht_pty_winsize(int fd, pty_winsize_t *ws, int get);
+int sys_5ht_pty_setpgrp(int fd);
+int ioctl(int fd, unsigned long request, void *arg);
 
 /** @} */ /* end of lib5ht group */
 

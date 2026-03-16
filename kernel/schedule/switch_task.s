@@ -8,6 +8,7 @@
 .extern sys_tss
 .extern lock_count
 .extern irq_disabled
+.extern preempt_count
 
 # PCB offsets
 .equ    OFF_ESP,      4
@@ -94,6 +95,7 @@ switch_user_mode:
     # reset scheduler lock state
     movl    $0, lock_count
     movl    $0, irq_disabled
+    movl    $0, preempt_count
 
     # update TSS.ESP0 to this task's kernel stack top
     movl    OFF_ESP0(%edx), %eax

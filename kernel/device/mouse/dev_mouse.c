@@ -189,8 +189,8 @@ void dev_mouse_push_event(mouse_event_t *event) {
 
 void dev_mouse_init(void) {
     // Register device files
-    devfs_register_device("mouse/pos", S_IFREG | 0400, &dev_mouse_read_pos_ops);
-    devfs_register_device("mouse/event", S_IFREG | 0400, &dev_mouse_event_ops);
+    devfs_register_device("mouse/pos", S_IFREG | 0400, &dev_mouse_read_pos_ops, NULL);
+    devfs_register_device("mouse/event", S_IFREG | 0400, &dev_mouse_event_ops, NULL);
 
     // Cache the event node for direct access from IRQ handler
     vfs_node_t *devfs_root = vfs_lookup_mount("/dev");

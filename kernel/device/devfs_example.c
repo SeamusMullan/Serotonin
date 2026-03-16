@@ -64,6 +64,6 @@ static vfs_ops_t devfs_example_write_ops = {
 };
 
 void devfs_example_init(void) {
-    devfs_register_device("example/number", S_IFREG | 0400, &devfs_example_number_ops);
-    devfs_register_device("example/write", S_IFREG | 0200, &devfs_example_write_ops);
+    devfs_register_device("example/number", S_IFREG | 0400, &devfs_example_number_ops, NULL);
+    devfs_register_device("example/write", S_IFREG | 0200, &devfs_example_write_ops, NULL);
 }

@@ -243,7 +243,7 @@ vfs_node_t *devfs_finddir(vfs_node_t *node, const char *name) {
     return devfs_find_child(dir, name);
 }
 
-int devfs_register_device(const char *path, mode_t mode, vfs_ops_t *ops) {
+int devfs_register_device(const char *path, mode_t mode, vfs_ops_t *ops, void *device_data) {
     if (!devfs_root || !path) return -1;
 
     // Skip leading slashes
@@ -277,6 +277,10 @@ int devfs_register_device(const char *path, mode_t mode, vfs_ops_t *ops) {
                 child = devfs_create_dir_node(token);
             } else if (is_last) {
                 child = devfs_create_file_node(token, mode, ops);
+                if (child && device_data) {
+                    devfs_file_t *f = (devfs_file_t *)child->fs_data;
+                    if (f) f->device_data = device_data;
+                }
             } else {
                 child = devfs_create_dir_node(token);
             }
@@ -295,6 +299,7 @@ int devfs_register_device(const char *path, mode_t mode, vfs_ops_t *ops) {
             if (!file) return -1;
             file->mode = mode;
             file->ops = ops;
+            file->device_data = device_data;
             devfs_wait_queue_init(&file->wait_queue);
         } else if (is_last && ((mode & S_IFMT) == S_IFDIR)) {
             if (!(child->flags & VFS_FLAG_DIRECTORY)) {

@@ -20,9 +20,8 @@
  */
 int main(void) {
 
-    proc_5ht_t procs[10];
+    proc_5ht_t procs[128];
     sys_5ht_list_processes(procs, 128);
-
 
     printf("%-5s | %-20s | %-8s | %-12s\n", "PID", "NAME", "PRIORITY", "PRIVILEGE");
     printf("-----------------------------------------------------------\n");

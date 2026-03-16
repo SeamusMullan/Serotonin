@@ -6,6 +6,7 @@
 #include "../schedule/schedule.h"
 #include "../vmm/vmm.h"
 #include "../device/keyboard/dev_keyboard.h"
+#include "../pty/pty.h"
 #include "io.h"
 #include "serial.h"
 #include <stdint.h>
@@ -28,131 +29,88 @@ static const char scancode_map_shift[128] = {
 char stdio_buffer[STDIO_INPUT_BUFFER];
 static uint8_t shift_pressed = 0;
 static uint8_t ctrl_pressed = 0;
+static uint8_t alt_pressed = 0;
 
 /**
  * @brief Handle keyboard scancodes.
  *
- * This function processes the scancode received from the keyboard.
- * It translates the scancode into a character and handles special keys
- * like Enter and Backspace.
- *
- * @param scancode The scancode received from the keyboard.
+ * Routes input through PTY line discipline for the active VTY.
+ * Handles Alt+F1-F4 for VTY switching.
  */
 void handle_scancode(uint8_t scancode) {
     lock_scheduler();
-    //preempt_disable();
-    static uint32_t stdin_idx = 0;
 
     if (scancode > 255) {
         unlock_scheduler();
         return;
     }
 
-    // Build devfs event for every scancode, independent of stdin
+    // build devfs event for every scancode
     keyboard_event_t ev = {0};
 
-    // is stdin consuming?
-    int stdin_active = (stdin_lock->held && stdin_lock->owner);
-
     if (scancode & 0x80) {
+        // key release
         uint8_t released = scancode & 0x7F;
         if (released == 0x2A || released == 0x36) {
             shift_pressed = 0;
         } else if (released == 0x1D) {
             ctrl_pressed = 0;
+        } else if (released == 0x38) {
+            alt_pressed = 0;
         }
         ev.scancode = released;
         ev.ascii = 0;
         ev.flags = KEY_FLAG_RELEASED;
         if (shift_pressed) ev.flags |= KEY_FLAG_SHIFT;
         if (ctrl_pressed) ev.flags |= KEY_FLAG_CTRL;
-        if (!stdin_active) dev_keyboard_push_event(&ev);
+        dev_keyboard_push_event(&ev);
     }
-    else if (scancode == 0x1C)
-    {
-        ev.scancode = scancode;
-        ev.ascii = '\n';
-        if (shift_pressed) ev.flags |= KEY_FLAG_SHIFT;
-        if (ctrl_pressed) ev.flags |= KEY_FLAG_CTRL;
-
-        if (stdin_active) {
-            stdio_lck_t *task_stdio = (stdio_lck_t*)stdin_lock->owner->lck_ptr;
-            void* stdin_ptr = task_stdio->stdin_ptr;
-
-            printf("\n");
-
-            stdio_buffer[stdin_idx] = '\n';
-            stdin_idx++;
-            if (copy_to_user(stdin_lock->owner->address_space, (uint32_t)stdin_ptr, stdio_buffer, stdin_idx) != 0) {
-                stdin_lock->owner->processor_context->eax = -EFAULT;
-            } else {
-                stdin_lock->owner->processor_context->eax = stdin_idx;
-            }
-            stdin_idx = 0;
-
-            task_lock_release(stdin_lock);
+    else if (scancode == 0x38) {
+        // Alt press
+        alt_pressed = 1;
+    }
+    else if (alt_pressed && scancode >= 0x3B && scancode <= 0x3E) {
+        // Alt+F1-F4: VTY switching
+        uint32_t vty_id = (uint32_t)(scancode - 0x3B);
+        pty_switch_vty(vty_id);
+    }
+    else if (scancode == 0x2A || scancode == 0x36) {
+        // shift press
+        shift_pressed = 1;
+    }
+    else if (scancode == 0x1D) {
+        // ctrl press
+        ctrl_pressed = 1;
+    }
+    else {
+        // regular key press, route through PTY line discipline
+        char c;
+        if (scancode == 0x1C) {
+            c = '\n';
+        } else if (scancode == 0x0E) {
+            c = '\b';
         } else {
-            dev_keyboard_push_event(&ev);
-        }
-    }
-    else if (scancode == 0x0E)
-    {
-        ev.scancode = scancode;
-        ev.ascii = '\b';
-        if (shift_pressed) ev.flags |= KEY_FLAG_SHIFT;
-        if (ctrl_pressed) ev.flags |= KEY_FLAG_CTRL;
-
-        if (stdin_active && stdin_idx != 0) {
-            stdio_buffer[stdin_idx] = '\0';
-            stdin_idx--;
-            vbe_terminal_back();
-        } else if (!stdin_active) {
-            dev_keyboard_push_event(&ev);
-        }
-    }
-    else
-    {
-        if (scancode == 0x1D) {
-            ctrl_pressed = 1;
-        } else if (scancode == 0x2A || scancode == 0x36) {
-            shift_pressed = 1;
+            c = shift_pressed ? scancode_map_shift[scancode] : scancode_map[scancode];
         }
 
-        char c = shift_pressed ? scancode_map_shift[scancode] : scancode_map[scancode];
         ev.scancode = scancode;
         ev.ascii = (uint8_t)c;
         if (shift_pressed) ev.flags |= KEY_FLAG_SHIFT;
         if (ctrl_pressed) ev.flags |= KEY_FLAG_CTRL;
 
-        if (stdin_active) {
-            stdio_lck_t *task_stdio = (stdio_lck_t*)stdin_lock->owner->lck_ptr;
-            uint32_t stdio_buf_size = task_stdio->stdin_buf_size;
-
-            if (stdin_idx < STDIO_INPUT_BUFFER && stdin_idx < stdio_buf_size) {
-                if (ctrl_pressed && scancode == 0x2E) {
-                    vbe_terminal_putchar('^');
-                    vbe_terminal_putchar('C');
-                    vbe_terminal_putchar('\n');
-                    serial_putchar(COM1_BASE, '^');
-                    serial_putchar(COM1_BASE, 'C');
-                    serial_putchar(COM1_BASE, '\n');
-                    stdio_buffer[0] = '\0';
-                    stdin_idx = 0;
-                    stdin_lock->owner->processor_context->eax = -EINTR;
-                    task_ipc_break_fid();
-                    task_lock_release(stdin_lock);
-                } else if (c) {
-                    stdio_buffer[stdin_idx] = (unsigned char)c;
-                    stdin_idx++;
-                    vbe_terminal_putchar(c);
-                    serial_putchar(COM1_BASE, c);
-                }
-            }
-        } else {
-            dev_keyboard_push_event(&ev);
+        // generate ctrl+letter for line discipline
+        if (ctrl_pressed && c >= 'a' && c <= 'z') {
+            c = (char)(c - 'a' + 1);
         }
+
+        if (c) {
+            pty_ldisc_input(&pty_table[active_vty], c);
+        }
+
+        // always push to /dev/keyboard for raw consumers
+        dev_keyboard_push_event(&ev);
     }
-    preempt_enable();
+
     unlock_scheduler();
 }
 

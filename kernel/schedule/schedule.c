@@ -54,6 +54,7 @@ static void reap_zombies(void) {
             zombie_list = next;
         }
 
+        destroy_address_space(task->address_space);
         kernel_free_align(task->processor_context);
         kernel_free_align(task->signal_processor_context);
         kernel_free_align(task);
@@ -322,6 +323,13 @@ void task_exit(process_control_block_t* task_exited, uint8_t exit) {
         prev_task = task;
         task = task->next;
     }
+    address_space_t *as = task_exited->address_space;
+    if (as) {
+        while (as->shmem_list) {
+            shm_unmap(as, as->shmem_list->start);
+        }
+    }
+
     task_exited->next = zombie_list;
     zombie_list = task_exited;
 

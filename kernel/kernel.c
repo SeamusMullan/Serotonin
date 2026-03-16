@@ -28,6 +28,7 @@
 #include "device/devfs_example.h"
 #include "device/mouse/dev_mouse.h"
 #include "device/keyboard/dev_keyboard.h"
+#include "pty/pty.h"
 
 
 #define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
@@ -983,10 +984,25 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     multitasking_init();
 
+    printfs(PRINT_STATUS_INFO,"pty: init\n");
+    vbe_flip();
+    pty_init();
+
     char* init_loc = "/bin/init";
 
     process_control_block_t *init = task_create(NULL, init_loc, CPU_USER_MODE, 254);
     init->umask = 022;
+
+    // assign PTY 0 slave as stdin/stdout/stderr for init
+    for (int fd = 0; fd < 3; fd++) {
+        file_handle_t *h = (file_handle_t *)kernel_malloc(sizeof(file_handle_t));
+        memset(h, 0, sizeof(*h));
+        h->node = pty_table[0].slave_node;
+        h->flags = (fd == 0) ? O_RDONLY : O_WRONLY;
+        h->refcount = 1;
+        init->fd_table[fd] = h;
+    }
+    pty_table[0].foreground_pid = (int)init->pid;
     const char *argv[1] = {"/bin/init"}; int argc = 1;
     const char *envp[3] = {"PATH=/bin","TERM=xterm-256color","COLORTERM=truecolor"}; int envc = 3;
     int init_status = kernel_load_elf(init, init_loc, init_loc, argv, argc, envp, envc);
