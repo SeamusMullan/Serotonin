@@ -5,6 +5,7 @@
 #include "../schedule/schedule.h"
 #include "../video/vbe/vbe.h"
 #include "../kernel.h"
+#include "../device/mouse/dev_mouse.h"
 
 volatile uint64_t timer_ticks = 0;
 volatile uint64_t last_quantum_tick = 0;
@@ -12,11 +13,14 @@ volatile int multitasking_ready = 0;
 volatile int irq_disabled = 1;
 volatile rtc_time_t last_rtc_time;
 volatile uint32_t unix_timestamp = 0;
+volatile uint32_t vbe_ticks = 0;
+volatile int mouse_x = 0;
+volatile int mouse_y = 0;
 
 static uint8_t ps2_mouse_packet[3];
 static int ps2_mouse_packet_index = 0;
-static int mouse_x = 0;
-static int mouse_y = 0;
+static uint8_t prev_mouse_buttons = 0;
+static uint64_t ps2_mouse_last_byte_tick = 0;
 
 /**
  * @brief Handle IRQ (Interrupt Request) signals.
@@ -26,12 +30,21 @@ static int mouse_y = 0;
 void irq_handler(int irq, processor_context_t *ctx) {
     if (irq == IRQ_PIT) {
         timer_ticks++;
+        vbe_ticks++;
+
         if (multitasking_ready == 0)
             goto end_irq;
-        
+
+        if (vbe_ticks >= VBE_TICKS_PER_FRAME) {
+            vbe_ticks = 0;
+            enqueue(vbe_worker_task);
+        }
+
         if (preempt_count == 0 && current_task->priv == CPU_USER_MODE && current_task->state == PROCESS_STATE_RUNNING) {
             last_quantum_tick++;
             if (last_quantum_tick >= SCHEDULE_QUANTUM) {
+                if (ctx->cs != USER_MODE_CODE_SEGMENT)
+                    goto end_irq;
                 current_task->quanta_used++;
                 current_task->priority = task_priority_decay(current_task);
                 memcpy(current_task->processor_context, ctx, sizeof(processor_context_t));
@@ -48,20 +61,27 @@ void irq_handler(int irq, processor_context_t *ctx) {
     } else if (irq == IRQ_MOUSE) {
         uint8_t mouse_data = inb(PS2_DATA_PORT);
 
+        // Timeout-based resync: if too long between bytes, restart packet
+        if (ps2_mouse_packet_index > 0 && (timer_ticks - ps2_mouse_last_byte_tick) > 2) {
+            ps2_mouse_packet_index = 0;
+        }
+
         if (ps2_mouse_packet_index == 0) {
+            // Byte 0 must have sync bit (bit 3) set
             if (!(mouse_data & 0x08)) {
+                goto end_irq;
+            }
+            // If both overflow bits (6,7) are set, likely garbage - discard
+            if ((mouse_data & 0xC0) == 0xC0) {
                 goto end_irq;
             }
         }
 
         ps2_mouse_packet[ps2_mouse_packet_index++] = mouse_data;
+        ps2_mouse_last_byte_tick = timer_ticks;
 
         if (ps2_mouse_packet_index == 3) {
-            vbe_z_fillrect(1, mouse_x, mouse_y, 50, 50, 0x00000000);
-
-            int left = ps2_mouse_packet[0] & 0x01;
-            int right = ps2_mouse_packet[0] & 0x02;
-            int middle = ps2_mouse_packet[0] & 0x04;
+            uint8_t buttons = ps2_mouse_packet[0] & 0x07;
 
             int rel_x = ps2_mouse_packet[1];
             if (ps2_mouse_packet[0] & 0x10) { // x sign bit
@@ -74,67 +94,78 @@ void irq_handler(int irq, processor_context_t *ctx) {
             }
 
             mouse_x += rel_x;
-            mouse_y -= rel_y;
+            mouse_y -= rel_y;  // PS/2 Y is inverted: positive = up, screen Y = down
 
             if (mouse_x < 0) mouse_x = 0;
             if (mouse_y < 0) mouse_y = 0;
             if (mouse_x >= SCREEN_WIDTH)  mouse_x = SCREEN_WIDTH - 1;
             if (mouse_y >= SCREEN_HEIGHT) mouse_y = SCREEN_HEIGHT - 1;
 
+            uint8_t changed = buttons ^ prev_mouse_buttons;
+            if (changed) {
+                for (int i = 0; i < 3; i++) {
+                    uint8_t mask = (1 << i);
+                    if (changed & mask) {
+                        mouse_event_t ev;
+                        ev.x = (int16_t)mouse_x;
+                        ev.y = (int16_t)mouse_y;
+                        ev.buttons = buttons;
+                        ev.event_type = (buttons & mask) ? MOUSE_EVENT_BUTTON_DOWN : MOUSE_EVENT_BUTTON_UP;
+                        dev_mouse_push_event(&ev);
+                    }
+                }
+                prev_mouse_buttons = buttons;
+            }
+
+            // Always emit a move event so userspace can track cursor position
+            if (rel_x != 0 || rel_y != 0) {
+                mouse_event_t ev;
+                ev.x = (int16_t)mouse_x;
+                ev.y = (int16_t)mouse_y;
+                ev.buttons = buttons;
+                ev.event_type = MOUSE_EVENT_MOVE;
+                dev_mouse_push_event(&ev);
+            }
+
             ps2_mouse_packet_index = 0;
-
-            int r = map_range(mouse_x, 0, SCREEN_WIDTH, 127, 255);
-            int g = map_range(mouse_y, 0, SCREEN_HEIGHT, 127, 255);
-            int b = abs(r - g);
-            if (b > 255) b = 255;
-            if (b < 127) b=127;
-
-            int a = 0xAA;
-            int col = (a << 24) | (r << 16) | (g << 8) | b;
-
-            vbe_z_fillrect(1, mouse_x, mouse_y, 50, 50, col);
-
-            vbe_set_cursor(0,0);
-            printf("Mouse abs: x=%d y=%d (dx=%d dy=%d) L=%d R=%d M=%d       \n", mouse_x, mouse_y, rel_x, rel_y, left, right, middle);
         }
         goto end_irq;
     } else if (irq == IRQ_RTC) {
         outb(CMOS_STATUS_REGISTER_A, CMOS_RTC_STATUS_C);
         inb(CMOS_STATUS_REGISTER_B);
 
-        rtc_time_t *t = (rtc_time_t*)kernel_malloc(sizeof(rtc_time_t));
+        rtc_time_t t = {0};
         uint8_t status_b = cmos_read(0x0B);
         uint8_t binary_mode = status_b & 0x04;
         uint8_t hour_24 = status_b & 0x02;
 
-        t->second = cmos_read(CMOS_RTC_SECONDS);
-        t->minute = cmos_read(CMOS_RTC_MINUTES);
-        t->hour   = cmos_read(CMOS_RTC_HOURS);
-        t->day    = cmos_read(CMOS_RTC_DAY);
-        t->month  = cmos_read(CMOS_RTC_MONTH);
-        t->year   = cmos_read(CMOS_RTC_YEAR);
+        t.second = cmos_read(CMOS_RTC_SECONDS);
+        t.minute = cmos_read(CMOS_RTC_MINUTES);
+        t.hour   = cmos_read(CMOS_RTC_HOURS);
+        t.day    = cmos_read(CMOS_RTC_DAY);
+        t.month  = cmos_read(CMOS_RTC_MONTH);
+        t.year   = cmos_read(CMOS_RTC_YEAR);
 
         if (!binary_mode) {
-            t->second = bcd_to_bin(t->second);
-            t->minute = bcd_to_bin(t->minute);
-            t->hour   = bcd_to_bin(t->hour);
-            t->day    = bcd_to_bin(t->day);
-            t->month  = bcd_to_bin(t->month);
-            t->year   = bcd_to_bin(t->year);
+            t.second = bcd_to_bin(t.second);
+            t.minute = bcd_to_bin(t.minute);
+            t.hour   = bcd_to_bin(t.hour);
+            t.day    = bcd_to_bin(t.day);
+            t.month  = bcd_to_bin(t.month);
+            t.year   = bcd_to_bin(t.year);
         }
 
-        t->century = 20; // sure look its fine until 2099
+        t.century = 20; // sure look its fine until 2099
 
         if (!hour_24) {
-            uint8_t pm = t->hour & 0x80;
-            t->hour &= 0x7F;
-            if (pm && t->hour != 12) t->hour += 12;
-            else if (!pm && t->hour == 12) t->hour = 0;
+            uint8_t pm = t.hour & 0x80;
+            t.hour &= 0x7F;
+            if (pm && t.hour != 12) t.hour += 12;
+            else if (!pm && t.hour == 12) t.hour = 0;
         }
 
         //printf("time: %d:%d:%d %d/%d/%d%d \n", t.hour,t.minute,t.second,t.day,t.month,t.century,t.year);
-        unix_timestamp = rtc_to_unix_timestamp(t);
-        kernel_free(t);
+        unix_timestamp = rtc_to_unix_timestamp(&t);
     }
 
 end_irq:

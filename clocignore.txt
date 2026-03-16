@@ -1,0 +1,5 @@
+newlib/
+build/
+build-tools/
+docs/
+kernel/video/splash.c

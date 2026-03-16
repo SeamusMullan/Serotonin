@@ -5,6 +5,11 @@
 #include "schedule/schedule.h"
 #include "string.h"
 
+#define KERNEL_ESP 0xF0400000
+#define KERNEL_VERSION_HIGH 0
+#define KERNEL_VERSION_MID 4
+#define KERNEL_VERSION_LOW 0
+
 #define BIT(n) (1u << (n))
 
 /* ELF identification indexes */

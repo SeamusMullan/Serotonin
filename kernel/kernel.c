@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <cpuid.h>
 #include "kernel.h"
+#include "device/mouse/dev_mouse.h"
 #include "tty.h"
 #include "string.h"
 #include "stdio/stdio.h"
@@ -14,24 +15,31 @@
 #include "vmm/vmm.h"
 #include "video/vbe/vbe.h"
 #include "video/font.h"
-#include "video/splash.h"
 #include "filesystem/vfs.h"
 #include "filesystem/ide.h"
 #include "filesystem/tmpfs/tmpfs.h"
+#include "filesystem/devfs/devfs.h"
 #include "filesystem/fat32/fat32.h"
 #include "schedule/schedule.h"
 #include "audio/pcspeaker/pcspeaker.h"
 #include "gdt.h"
 #include "audio/startup/opl2_sound/opl2_startup.h"
-#include "video/pipes.h"
 #include "io/serial.h"
+#include "device/devfs_example.h"
+#include "device/mouse/dev_mouse.h"
+#include "device/keyboard/dev_keyboard.h"
+#include "pty/pty.h"
 
-#define KERNEL_VERSION_HIGH 0
-#define KERNEL_VERSION_MID 3
-#define KERNEL_VERSION_LOW 1
 
 #define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
 #define HEAP_SIZE   (KERNEL_HEAP_SIZE)
+#define HEAP_MAGIC  0x48454150U
+#define HEAP_GUARD  0xDEADC0DEU
+#define HEAP_GUARD_SIZE 4U
+
+#define STACK_CHK_GUARD 0xe2dee396
+
+uintptr_t __stack_chk_guard = STACK_CHK_GUARD;
 
 extern char __kernel_start[];
 extern char __kernel_end[];
@@ -45,8 +53,10 @@ extern char __kernel_virtual_base[];
  *
  */
 typedef struct block_header {
+    uint32_t magic;
     uint32_t size;
     uint8_t free;
+    uint8_t guard;
     struct block_header *next;
 } block_header_t;
 
@@ -55,8 +65,15 @@ static uint32_t heap_end = (uint32_t)(KERNEL_HEAP_VMA + KERNEL_HEAP_SIZE);
 static uint32_t current_heap = (uint32_t)KERNEL_HEAP_VMA;
 static block_header_t *heap_list = NULL;
 static uint8_t debug_mode = 0;
+static uint8_t quiet_mode = 0;
+extern uint8_t signal_trampoline[];
+extern uint8_t signal_trampoline_end[];
 
 #define CHECK_FLAG(flags,bit)   ((flags) & (1 << (bit)))
+
+__attribute__((noreturn)) void __stack_chk_fail(void) {
+	kernel_panic("stack smashing detected");
+}
 
 /**
  * @brief Align a size to the next block boundary.
@@ -65,6 +82,65 @@ static uint8_t debug_mode = 0;
  */
 uint32_t align(uint32_t size) {
     return (size + BLOCK_ALIGN - 1) & ~(BLOCK_ALIGN - 1);
+}
+
+static inline uint32_t kernel_heap_guard_size(void) {
+    return debug_mode ? HEAP_GUARD_SIZE : 0;
+}
+
+static inline void kernel_heap_set_guard(block_header_t *block) {
+    if (!block->guard) return;
+    uint32_t *guard = (uint32_t *)((uint8_t *)(block + 1) + block->size);
+    *guard = HEAP_GUARD;
+}
+
+static inline void kernel_heap_init_guard(block_header_t *block) {
+    block->guard = debug_mode ? 1 : 0;
+    kernel_heap_set_guard(block);
+}
+
+static void kernel_heap_check_block(const block_header_t *block, const char *where) {
+    uintptr_t block_addr = (uintptr_t)block;
+    uintptr_t heap_start_addr = (uintptr_t)heap_start;
+    uintptr_t heap_end_addr = (uintptr_t)heap_end;
+    if (block_addr < heap_start_addr || block_addr + sizeof(*block) > heap_end_addr) {
+        printfs(PRINT_STATUS_FATAL,
+            "heap check failed at %s: block=0x%08x heap=[0x%08x..0x%08x)\n",
+            where, (unsigned int)block_addr, (unsigned int)heap_start_addr, (unsigned int)heap_end_addr);
+        kernel_panic("heap block out of range");
+    }
+    uint32_t guard_size = block->guard ? HEAP_GUARD_SIZE : 0;
+    if (block->magic != HEAP_MAGIC) {
+        printfs(PRINT_STATUS_FATAL,
+            "heap check failed at %s: block=0x%08x magic=0x%08x\n",
+            where, (unsigned int)block_addr, (unsigned int)block->magic);
+        kernel_panic("heap block corrupted");
+    }
+    if (block->size > HEAP_SIZE ||
+        block_addr + sizeof(*block) + block->size + guard_size > heap_end_addr) {
+        printfs(PRINT_STATUS_FATAL,
+            "heap check failed at %s: block=0x%08x size=0x%08x\n",
+            where, (unsigned int)block_addr, (unsigned int)block->size);
+        kernel_panic("heap block size corrupted");
+    }
+    if (block->guard) {
+        const uint32_t *guard = (const uint32_t *)((const uint8_t *)(block + 1) + block->size);
+        if (*guard != HEAP_GUARD) {
+            printfs(PRINT_STATUS_FATAL,
+                "heap check failed at %s: block=0x%08x guard=0x%08x size=0x%08x\n",
+                where, (unsigned int)block_addr, (unsigned int)(*guard), (unsigned int)block->size);
+            kernel_panic("heap block overflow");
+        }
+    }
+    if (block->next) {
+        uintptr_t next_addr = (uintptr_t)block->next;
+        if (next_addr < heap_start_addr || next_addr + sizeof(*block) > heap_end_addr) {
+            printfs(PRINT_STATUS_FATAL,
+                "heap check failed at %s: block=0x%08x next=0x%08x\n",
+                where, (unsigned int)block_addr, (unsigned int)next_addr);
+            kernel_panic("heap next pointer corrupted");
+        }
+    }
 }
 
 /**
@@ -504,7 +580,7 @@ void kernel_panic(char* str) {
     printf("EFLAGS: 0x%08x  CS: 0x%04x  DS: 0x%04x  SS: 0x%04x\n",(unsigned int)eflags, (unsigned int)cs, (unsigned int)ds, (unsigned int)ss);
     printf("CR0: 0x%08x  CR2 (fault addr): 0x%08x  CR3 (page directory base): 0x%08x  CR4: 0x%08x\n",
             (unsigned int)cr0, (unsigned int)cr2, (unsigned int)cr3, (unsigned int)cr4);
-    printf("TSS.ESP0: 0x%08x,  TSS.SS0: 0x%04x, TR: 0x%04x\n", sys_tss.esp0, sys_tss.ss0,tr);
+    printf("TSS: 0x%08x, TSS.ESP0: 0x%08x,  TSS.SS0: 0x%04x, TSS.IOMAP:0x%08x TR: 0x%08x\n", sys_tss, sys_tss.esp0, sys_tss.ss0, sys_tss.iomap, tr);
 
     vbe_flip_all();
 
@@ -518,22 +594,32 @@ void kernel_panic(char* str) {
  */
 void *kernel_malloc(uint32_t size) {
     size = align(size);
+    uint32_t guard_size = kernel_heap_guard_size();
+    uint32_t alloc_size = size + guard_size;
     block_header_t *curr = heap_list;
 
     // First allocation
     if (!heap_list) {
         heap_list = (block_header_t *)current_heap;
+        heap_list->magic = HEAP_MAGIC;
         heap_list->size = size;
         heap_list->free = 0;
         heap_list->next = NULL;
-        current_heap += sizeof(block_header_t) + size;
+        current_heap += sizeof(block_header_t) + alloc_size;
+        if (current_heap > heap_end) {
+            kernel_panic("out of kernel heap memory");
+            return NULL;
+        }
+        kernel_heap_init_guard(heap_list);
         return (void *)(heap_list + 1);
     }
 
     // Look for a free block
     while (curr) {
+        kernel_heap_check_block(curr, "kernel_malloc");
         if (curr->free && curr->size >= size) {
             curr->free = 0;
+            kernel_heap_set_guard(curr);
             return (void *)(curr + 1);
         }
         if (!curr->next) break;
@@ -546,16 +632,18 @@ void *kernel_malloc(uint32_t size) {
 
     // Allocate new block
     block_header_t *new_block = (block_header_t *)current_heap;
-    current_heap += sizeof(block_header_t) + size;
-    if (current_heap >= heap_end) {
+    current_heap += sizeof(block_header_t) + alloc_size;
+    if (current_heap > heap_end) {
         kernel_panic("out of kernel heap memory");
         return NULL;
     }
 
+    new_block->magic = HEAP_MAGIC;
     new_block->size = size;
     new_block->free = 0;
     new_block->next = NULL;
     curr->next = new_block;
+    kernel_heap_init_guard(new_block);
 
     return (void *)(new_block + 1);
 }
@@ -568,7 +656,18 @@ void *kernel_malloc(uint32_t size) {
 void kernel_free(void *ptr) {
     if (!ptr) return;
 
+    uintptr_t ptr_addr = (uintptr_t)ptr;
+    uintptr_t heap_start_addr = (uintptr_t)heap_start;
+    uintptr_t heap_end_addr = (uintptr_t)heap_end;
+    if (ptr_addr < heap_start_addr + sizeof(block_header_t) || ptr_addr >= heap_end_addr) {
+        kernel_panic("kernel_free: pointer out of heap range");
+    }
+
     block_header_t *block = ((block_header_t *)ptr) - 1;
+    kernel_heap_check_block(block, "kernel_free");
+    if (block->free) {
+        kernel_panic("kernel_free: double free");
+    }
     block->free = 1;
 }
 
@@ -606,24 +705,24 @@ void kernel_idle_task(void) {
  * @param pcb The pointer to the process control block.
  * @param path The path to the ELF executable.
  * @param pname The name of the process.
- * @return int 0 on failure, 1 on success
+ * @return int 1 on failure, 0 on success
  */
 int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *pname, const char *const *argv, int argc, const char *const *envp, int envc) {
     vfs_node_t *node = vfs_open(path);
     if (!node) {
-        return 0;
+        return 1;
     }
 
     uint32_t file_size = node->size;
     uint8_t *elf_data = kernel_malloc(file_size);
     if (!elf_data) {
         vfs_close(node);
-        return 0;
+        return 1;
     }
     if (vfs_read(node, 0, file_size, (char *)elf_data) < 0) {
         kernel_free(elf_data);
         vfs_close(node);
-        return 0;
+        return 1;
     }
     vfs_close(node);
 
@@ -634,12 +733,13 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
         ehdr->e_type             != ET_EXEC ||
         ehdr->e_machine          != EM_386) {
         kernel_free(elf_data);
-        return 0;
+        return 1;
     }
 
     address_space_t *as = create_address_space();
 
     uint32_t old_cr3 = read_cr3();
+    uint32_t new_cr3 = as->phys_pdir;
     write_cr3(as->phys_pdir);
     lock_scheduler();
 
@@ -668,6 +768,7 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
         }
     }
 
+    uint32_t entry_point = ehdr->e_entry;
     kernel_free(elf_data);
 
     void *stack_base = (void*)USER_STACK_TOP;
@@ -677,8 +778,13 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
         if (!frame_stk) kernel_panic("kernel_load_elf: out of memory mapping user stack");
         map_page(as, va_stk, frame_stk, USER_PAGE_FLAGS, 0);
     }
-    
+
     memset(stack_base, 0, USER_STACK_SIZE);
+
+    uint32_t signal_trampoline_size = (uint32_t)(signal_trampoline_end - signal_trampoline);
+    void* phys_signal_trampoline = alloc_frame();
+    map_page(as, SIGNAL_TRAMPOLINE_ADDR, (uint32_t)phys_signal_trampoline, USER_PAGE_FLAGS, 0);
+    memcpy((void*)SIGNAL_TRAMPOLINE_ADDR, signal_trampoline, signal_trampoline_size);
 
     uint32_t strings_sz = count_total_string_bytes(envp, envc) + count_total_string_bytes(argv, argc);
     uint32_t ptrs_sz =  sizeof(uint32_t) * (1 /*argc*/ + (size_t)argc + 1 /*NULL*/ + (size_t)envc + 1 /*NULL*/);
@@ -697,7 +803,7 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
     }
     argv_user_array[argc] = 0;
 
-    uint32_t *envp_user_array = argv_user_array + argc + 1; 
+    uint32_t *envp_user_array = argv_user_array + argc + 1;
     for (int i = 0; i < envc; i++) {
         size_t len = strlen(envp[i]) + 1;
         memcpy((void*)cur_str, envp[i], len);
@@ -713,16 +819,16 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
 
     pcb->esp                            = (void*)sp;
     pcb->processor_context->esp_at_trap = sp;
-    pcb->cr3                            = (void*)as->phys_pdir;
+    pcb->cr3                            = (void*)new_cr3;
     pcb->address_space                  = as;
     pcb->esp_min                        = stack_base;
     pcb->esp_max                        = (void*)stack_top;
-    pcb->entry                          = (void (*)(void))ehdr->e_entry;
-    pcb->processor_context->eip         = (uint32_t)ehdr->e_entry;
+    pcb->entry                          = (void (*)(void))entry_point;
+    pcb->processor_context->eip         = entry_point;
     pcb->argv                           = argv_user_array;
     pcb->envp                           = envp_user_array;
 
-    return 1;
+    return 0;
 }
 
 /**
@@ -757,15 +863,14 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     struct idt_ptr idtp_read;
     asm volatile ("sidt %0" : "=m"(idtp_read));
     serial_puts(COM1_BASE,"init_high: irqs ready\n");
-    enable_interrupts();
 
     vbe_init(mbi);
     vbe_palette_init();
     vbe_flip();
-    splash_render(0,0);
-    //create_color_render(275);
 
     serial_puts(COM1_BASE,"init_high: framebuffer ready, early init complete\n");
+
+    enable_interrupts();
 
     printfs_set_mask(
         (1 << PRINT_STATUS_WARNING) |
@@ -780,7 +885,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     }
 
     strncpy(cmdline_buf, cmdline, sizeof(cmdline_buf));
-    cmdline_buf[sizeof(cmdline_buf) - 1] = '\0'; 
+    cmdline_buf[sizeof(cmdline_buf) - 1] = '\0';
 
     for (char* token = strtok(cmdline_buf, " "); token != NULL; token = strtok(NULL, " ")) {
         // yanderedev, should use a struct table in the future, but for now, we only have two args.
@@ -804,6 +909,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
             );
         } else if (strcmp(token, "quiet") == 0) {
             printfs_set_mask(0);
+            quiet_mode = 1;
         }
     }
 
@@ -812,45 +918,106 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     cpu_features_t processor_features = {0};
     kernel_get_cpu_features(&processor_features);
 
-	printfs(PRINT_STATUS_INFO,"Serotonin Kernel %d.%d.%d | Compile Time: %s %s | %d physical pages free | Hypervisor:%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__,buddy_free_pages(), kernel_hypervisor_present());
+	printfs(PRINT_STATUS_INFO,"Serotonin Kernel %d.%d.%d | Compile Time: %s %s | %d physical pages free (%d MB) | Hypervisor:%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__,buddy_free_pages(), (buddy_total_pages()*4000)/1000000, kernel_hypervisor_present());
     kernel_print_cpu_features(&processor_features);
     printfs(PRINT_STATUS_INFO,"Booted with arguments: %s\n",cmdline);
+    printfs(PRINT_STATUS_INFO,"VBE graphics mode framebuffer, resolution %dx%dx%d\n",vbe_info.width,vbe_info.height,vbe_info.bpp);
 
-    //ps2_mouse_init();
-
-    printfs(PRINT_STATUS_INFO,"Trying to mount rootfs drive 1\n");
+    printfs(PRINT_STATUS_INFO,"vfs: init\n");
+    vbe_flip();
 
     vfs_init();
+
+    printfs(PRINT_STATUS_INFO,"ide: init\n");
+    vbe_flip();
+
     ide_init();
+
+    printfs(PRINT_STATUS_INFO,"fat32: init\n");
+    vbe_flip();
+
     fat32_init();
+
+    printfs(PRINT_STATUS_INFO,"devfs: init\n");
+    vbe_flip();
+
+    devfs_init();
+
+    printfs(PRINT_STATUS_INFO,"tmpfs: init\n");
+    vbe_flip();
+
+    tmpfs_init();
+
+    printfs(PRINT_STATUS_INFO,"vfs: mounting root filesystem\n");
+    vbe_flip();
+
     int mount_result = vfs_mount("1", "/", "fat32");
 
     if (mount_result != 0) {
         kernel_panic("unable to mount rootfs on drive 1");
     }
-    printfs(PRINT_STATUS_SUCCESS,"Mounted rootfs!\n");
+    printfs(PRINT_STATUS_INFO,"vfs: root filesystem mounted\n");
+    vbe_flip();
+
+    printfs(PRINT_STATUS_INFO,"vfs: mounting /dev\n");
+    vbe_flip();
+
+    if (vfs_mount("devfs", "/dev", "devfs") != 0) {
+        kernel_panic("unable to mount devfs on /dev");
+    }
+
+    printfs(PRINT_STATUS_INFO,"vfs: mounting /tmp\n");
+    vbe_flip();
+
+    if (vfs_mount("tmpfs", "/tmp", "tmpfs") != 0) {
+        kernel_panic("unable to mount tmpfs on /tmp");
+    }
+
+    printfs(PRINT_STATUS_INFO,"devices: mouse init\n");
+    vbe_flip();
+    ps2_mouse_init();
+    dev_mouse_init();
+
+    printfs(PRINT_STATUS_INFO,"devices: keyboard init\n");
+    vbe_flip();
+    dev_keyboard_init();
 
     multitasking_init();
 
-    process_control_block_t *idle_task = task_create(kernel_idle_task, "Kernel Idle Task", CPU_KERNEL_MODE, 0);
-    enqueue(idle_task);
-
-    printfs(PRINT_STATUS_INFO,"Loading /bin/init\n");
+    printfs(PRINT_STATUS_INFO,"pty: init\n");
+    vbe_flip();
+    pty_init();
 
     char* init_loc = "/bin/init";
 
-    process_control_block_t *init = task_create(NULL, init_loc, CPU_USER_MODE, 255);
+    process_control_block_t *init = task_create(NULL, init_loc, CPU_USER_MODE, 254);
+    init->umask = 022;
+
+    // assign PTY 0 slave as stdin/stdout/stderr for init
+    for (int fd = 0; fd < 3; fd++) {
+        file_handle_t *h = (file_handle_t *)kernel_malloc(sizeof(file_handle_t));
+        memset(h, 0, sizeof(*h));
+        h->node = pty_table[0].slave_node;
+        h->flags = (fd == 0) ? O_RDONLY : O_WRONLY;
+        h->refcount = 1;
+        init->fd_table[fd] = h;
+    }
+    pty_table[0].foreground_pid = (int)init->pid;
     const char *argv[1] = {"/bin/init"}; int argc = 1;
-    const char *envp[1] = {"PATH=/"}; int envc = 1;
+    const char *envp[3] = {"PATH=/bin","TERM=xterm-256color","COLORTERM=truecolor"}; int envc = 3;
     int init_status = kernel_load_elf(init, init_loc, init_loc, argv, argc, envp, envc);
-    if (!init_status) {
+    if (init_status) {
         kernel_panic("unable to load init process!");
     }
 
-    enqueue(init);
-    printfs(PRINT_STATUS_INFO,"Entering scheduler\n");
-    multitasking_make_ready();
+    process_control_block_t *idle_task = task_create(kernel_idle_task, "kernel: idle", CPU_KERNEL_MODE, 0);
+    enqueue(idle_task);
 
+    vbe_worker_task = task_create(vbe_worker, "kernel: compositor", CPU_KERNEL_MODE, 255);
+    vbe_worker_task->no_requeue = 1;
+
+    enqueue(init);
+    multitasking_make_ready();
 
     #ifdef KERNEL_TEST_MODE
         extern void ktest_run_all_suites(void);
@@ -890,16 +1057,14 @@ __attribute__((target("no-sse"))) __attribute__((section(".identity"))) void ker
     uint32_t kernel_phys_start = (uint32_t)__kernel_load_base;
     uint32_t kernel_phys_end   = (uint32_t)__kernel_end - (uint32_t)__kernel_virtual_base + (uint32_t)__kernel_load_base;
     buddy_init(mbi, kernel_phys_start, kernel_phys_end, (uint32_t)mbi->framebuffer_addr, (uint32_t)(mbi->framebuffer_height) * (uint32_t)(mbi->framebuffer_pitch));
-    
+
     serial_puts(COM1_BASE, "init: physical memory manager initialized\n");
-    
+
     vmm_init();
 
     serial_puts(COM1_BASE, "init: virtual memory manager initialized\n");
 
     serial_puts(COM1_BASE, "init: jumping to higher half kernel\n");
-
-    uint32_t kernel_esp = 0xF03FFFFF;
 
     asm volatile (
         "movl %0, %%esp\n"
@@ -909,7 +1074,7 @@ __attribute__((target("no-sse"))) __attribute__((section(".identity"))) void ker
         "pushl $0\n"
         "jmp kernel_main_high"
         :
-        : "r"(kernel_esp), "r"(arg1), "r"(arg2)
+        : "r"(KERNEL_ESP), "r"(arg1), "r"(arg2)
         : "memory"
     );
 }

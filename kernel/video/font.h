@@ -6,11 +6,12 @@
 
 typedef struct {
     uint16_t codepoint;
-    uint8_t data[32];
+    uint8_t data[16];
 } FontGlyph;
 
 extern FontGlyph ascii_font[];
 extern const int ascii_font_glyph_count;
 extern FontGlyph *find_glyph(uint16_t codepoint);
+extern FontGlyph *find_glyph_bold(uint16_t codepoint);
 
 #endif

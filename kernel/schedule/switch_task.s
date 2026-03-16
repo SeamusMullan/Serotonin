@@ -6,10 +6,13 @@
 .extern current_task
 .extern kernel_panic
 .extern sys_tss
+.extern lock_count
+.extern irq_disabled
+.extern preempt_count
 
 # PCB offsets
 .equ    OFF_ESP,      4
-.equ    OFF_ESP0,     8 
+.equ    OFF_ESP0,     8
 .equ    OFF_CR3,      12
 .equ    OFF_ENTRY,    56
 .equ    OFF_PRIV,     61
@@ -22,10 +25,10 @@
 .equ    OFF_K_FPU,    112
 
 # context offsets
-.equ OFF_GS,            0
-.equ OFF_FS,            4
-.equ OFF_ES,            8
-.equ OFF_DS,           12
+.equ OFF_DS,            0
+.equ OFF_ES,            4
+.equ OFF_FS,            8
+.equ OFF_GS,           12
 .equ OFF_EDI,          16
 .equ OFF_ESI,          20
 .equ OFF_EBP,          24
@@ -42,6 +45,8 @@
 .equ OFF_SS,           68
 
 switch_task:
+    cli
+
     # PIC EOI
     movb $0x20, %al
     outb %al, $0x20
@@ -50,11 +55,6 @@ switch_task:
     movl    4(%esp), %edx
     testl   %edx, %edx
     jz      .fail
-
-    # store ESP0 into the PCB and TSS
-    movl    current_task, %ecx
-    movl    OFF_ESP0(%ecx), %ebx
-    movl    %ebx, sys_tss+4 # sys_tss.esp0
 
     # user mode switch
     cmpb $3, OFF_PRIV(%edx)
@@ -91,13 +91,20 @@ switch_user_mode:
     # switch to the new PCB
     movl    %edx, current_task
     movl    OFF_CTX(%edx), %ecx
-    
+
+    # reset scheduler lock state
+    movl    $0, lock_count
+    movl    $0, irq_disabled
+    movl    $0, preempt_count
+
+    # update TSS.ESP0 to this task's kernel stack top
+    movl    OFF_ESP0(%edx), %eax
+    movl    %eax, sys_tss + 4
+    # switch to the task's kernel stack for the iret frame
+    movl    %eax, %esp
+
     # restore FPU state
     fxrstor OFF_K_FPU(%edx)
-
-    # switch page dir
-    movl    OFF_CR3(%edx), %edx
-    movl    %edx, %cr3
 
     # restore data segment regs
     movw    OFF_DS(%ecx), %dx

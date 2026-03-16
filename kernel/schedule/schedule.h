@@ -10,6 +10,7 @@
 #define USER_MODE_CODE_SEGMENT 0x1B
 #define INIT_EFLAGS            0x00000202 // RSVD, IF
 #define MAX_TASKS              256
+#define NGROUPS_MAX            16
 #define PCB_ALIGNMENT          16
 #define MAX_PRIORITY           256
 #define PRIORITY_DECAY_RATE    10
@@ -67,7 +68,45 @@ typedef struct process_control_block {
     uint8_t original_priority;
     uint32_t signal_handlers[16];
     uint32_t signal_bitmask;
+    uint32_t blocked_signals;
+    processor_context_t *signal_processor_context;
+    __attribute__((aligned(16))) fpu_fxsave_area_t signal_fpu_fx;
+    uint8_t in_signal_handler;
+    uint8_t no_requeue;
+    char cwd[256];
+    uint16_t uid, gid, euid, egid;
+    uint16_t groups[NGROUPS_MAX];
+    uint8_t ngroups;
+    uint32_t umask;
+    uint32_t current_fd_flags;
+    uint32_t current_user_buf;
 } process_control_block_t;
+
+typedef struct pipe_waiter {
+    process_control_block_t *task;
+    struct pipe_waiter *next;
+} pipe_waiter_t;
+
+typedef struct pipe_state {
+    char *buffer;
+    uint32_t size;
+    uint32_t read_pos;
+    uint32_t write_pos;
+    uint32_t data_len;
+    uint32_t readers;
+    uint32_t writers;
+    pipe_waiter_t *read_waiters_head;
+    pipe_waiter_t *read_waiters_tail;
+    pipe_waiter_t *write_waiters_head;
+    pipe_waiter_t *write_waiters_tail;
+} pipe_state_t;
+
+typedef struct pipe_endpoint {
+    pipe_state_t *pipe;
+    uint8_t is_read_end;
+} pipe_endpoint_t;
+
+extern vfs_ops_t task_ipc_pipe_ops;
 
 typedef struct wait_node {
     struct process_control_block *task;
@@ -131,6 +170,7 @@ extern process_control_block_t *task_list;
 extern volatile uint32_t preempt_count;
 extern volatile uint8_t pending_schedule;
 extern lock_t *stdin_lock;
+extern volatile int foreground_pid;
 
 void multitasking_init(void);
 void multitasking_make_ready(void);
@@ -138,7 +178,7 @@ __attribute__((naked,noreturn)) extern void switch_task(process_control_block_t*
 __attribute__((naked,noreturn)) extern void switch_task_iret(process_control_block_t* next_thread);
 process_control_block_t* task_create(void (*entry)(void), const char *name, uint8_t priv, uint8_t prio);
 void task_yield(int irq);
-void task_exit(uint8_t exit);
+void task_exit(process_control_block_t* task_exited, uint8_t exit);
 void enqueue(process_control_block_t* pcb);
 process_control_block_t* dequeue();
 void lock_scheduler(void);
@@ -158,6 +198,15 @@ void preempt_enable();
 process_control_block_t* get_current_task(void);
 uint32_t get_task_count(void);
 int task_priority_decay(process_control_block_t *task);
+int task_ipc_signal_raise(process_control_block_t *task, uint8_t signal);
+int task_ipc_register_signal_handler(process_control_block_t *task, uint8_t signal, uint32_t handler);
+int task_ipc_deliver_signals(process_control_block_t *task, processor_context_t* ctx) ;
+process_control_block_t *task_lookup_by_pid(uint32_t pid);
+void task_set_fid(int pid);
+void task_ipc_break_fid();
+int task_ipc_pipe_read(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer);
+int task_ipc_pipe_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer);
+int task_ipc_pipe_close(vfs_node_t *node);
 
 static inline const char* to_signal_name(int signal_id) {
     static const char* const signal_names[16] = {

@@ -29,7 +29,7 @@ clock_t times(struct tms *buf) {
  * @param path Path to file (unused)
  * @return -1 (always fails with ENOSYS)
  */
-int unlink(const char *path) {
+__attribute__((weak)) int unlink(const char *path) {
     (void)path;
     errno = ENOSYS;
     return -1;

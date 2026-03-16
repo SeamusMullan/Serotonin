@@ -3,11 +3,23 @@
 .equ    OFF_ESP,   4
 .equ    OFF_K_FPU, 112
 
+# ============================================================
+# CPU Exception Handlers (ISR 0-31)
+# ============================================================
+
 .global isr0
 isr0:
     cli
-    pushl $0
+    pusha
+    pushl %ds
+    movw $0x10, %ax
+    movw %ax, %ds
+    mov %esp, %eax
+    push %eax
     call div_zero_fault_handler
+    add $4, %esp
+    popl %ds
+    popa
     iret
 
 .global isr1
@@ -29,33 +41,61 @@ isr2:
 .global isr3
 isr3:
     cli
-1:
-	jmp 1b
-    sti
+    pusha
+    pushl %ds
+    movw $0x10, %ax
+    movw %ax, %ds
+    mov %esp, %eax
+    push %eax
+    call breakpoint_fault_handler
+    add $4, %esp
+    popl %ds
+    popa
     iret
 
 .global isr4
 isr4:
     cli
-    pushl $4
-    call fault_handler
+    pusha
+    pushl %ds
+    movw $0x10, %ax
+    movw %ax, %ds
+    mov %esp, %eax
+    push %eax
+    call overflow_fault_handler
     add $4, %esp
+    popl %ds
+    popa
     iret
 
 .global isr5
 isr5:
     cli
-    pushl $5
-    call fault_handler
+    pusha
+    pushl %ds
+    movw $0x10, %ax
+    movw %ax, %ds
+    mov %esp, %eax
+    push %eax
+    call bound_range_fault_handler
     add $4, %esp
+    popl %ds
+    popa
     iret
 
 .global isr6
 isr6:
     cli
-    pushl $6
-    call fault_handler
+    pusha
+    pushl %ds
+    movw $0x10, %ax
+    movw %ax, %ds
+    mov %esp, %eax
+    push %eax
+    call invalid_opcode_handler
     add $4, %esp
+    popl %ds
+    popa
     iret
 
 .global isr7
@@ -111,14 +151,17 @@ isr13:
     cli
     pusha
     pushl %ds
+    movw $0x10, %ax
+    movw %ax, %ds
 
-    mov 44(%esp), %eax
+    mov %esp, %eax
     push %eax
     call gp_fault_handler
 
     add $4, %esp
     popl %ds
     popa
+    add $4, %esp
     iret
 
 .global isr14
@@ -126,14 +169,17 @@ isr14:
     cli
     pusha
     pushl %ds
+    movw $0x10, %ax
+    movw %ax, %ds
 
-    mov 36(%esp), %eax
+    mov %esp, %eax
     push %eax
     call page_fault_handler
 
     add $4, %esp
     popl %ds
     popa
+    add $4, %esp
     iret
 
 .global isr15
@@ -155,8 +201,16 @@ isr16:
 .global isr17
 isr17:
     cli
-    pushl $17
-    call fault_handler
+    pusha
+    pushl %ds
+    movw $0x10, %ax
+    movw %ax, %ds
+    mov %esp, %eax
+    push %eax
+    call alignment_check_fault_handler
+    add $4, %esp
+    popl %ds
+    popa
     add $4, %esp
     iret
 
@@ -171,9 +225,16 @@ isr18:
 .global isr19
 isr19:
     cli
-    pushl $19
-    call fault_handler
+    pusha
+    pushl %ds
+    movw $0x10, %ax
+    movw %ax, %ds
+    mov %esp, %eax
+    push %eax
+    call simd_fp_exception_handler
     add $4, %esp
+    popl %ds
+    popa
     iret
 
 .global isr20
@@ -272,141 +333,9 @@ isr31:
     add $4, %esp
     iret
 
-.global irq0
-irq0:
-    pushfl
-    pushal
-
-    pushl   %gs
-    pushl   %fs
-    pushl   %es
-    pushl   %ds
-
-    movl    current_task, %edx
-    test    %edx, %edx
-    jz      1f
-    fxsave  OFF_K_FPU(%edx)
-
-1:
-
-    movl    %esp, %eax
-    pushl   %eax
-    pushl   $0
-    call    irq_handler
-    addl    $8,   %esp
-
-    movl    current_task, %edx
-    test    %edx, %edx
-    jz      2f
-    fxrstor OFF_K_FPU(%edx)
-
-2:
-
-    popl    %ds
-    popl    %es
-    popl    %fs
-    popl    %gs
-    popal
-    orl $0x200, (%esp)
-    popfl
-
-    iret
-
-.global irq1
-irq1:
-    pushfl
-    pushal
-
-    pushl   %gs
-    pushl   %fs
-    pushl   %es
-    pushl   %ds
-
-    movl    current_task, %edx
-    test    %edx, %edx
-    jz      1f
-    fxsave  OFF_K_FPU(%edx)
-
-1:
-
-    movl    %esp, %eax
-    pushl   %eax
-    pushl   $1
-    call    irq_handler
-    addl    $8,   %esp
-
-    movl    current_task, %edx
-    test    %edx, %edx
-    jz      2f
-    fxrstor OFF_K_FPU(%edx)
-
-2:
-
-    popl    %ds
-    popl    %es
-    popl    %fs
-    popl    %gs
-    popal
-    popfl
-
-    iret
-
-.global irq2
-irq2:
-    pusha
-    pushl $2
-    call irq_handler
-    add $4, %esp
-    popa
-    iret
-
-.global irq3
-irq3:
-    pusha
-    pushl $3
-    call irq_handler
-    add $4, %esp
-    popa
-    iret
-
-.global irq4
-irq4:
-    pusha
-    pushl $4
-    call irq_handler
-    add $4, %esp
-    popa
-    iret
-
-.global irq5
-irq5:
-    pusha
-    pushl $5
-    call irq_handler
-    add $4, %esp
-    popa
-    iret
-
-.global irq6
-irq6:
-    pusha
-    pushl $6
-    call irq_handler
-    add $4, %esp
-    popa
-    iret
-
-.global irq7
-irq7:
-    pusha
-    pushl $7
-    call irq_handler
-    add $4, %esp
-    popa
-    iret
-
-.global irq8
-irq8:
+.macro IRQ_HANDLER num
+.global irq\num
+irq\num:
     pushfl
     pushal
     cli
@@ -416,25 +345,29 @@ irq8:
     pushl   %es
     pushl   %ds
 
+    movw $0x10, %ax
+    movw %ax, %ds
+    movw %ax, %es
+    movw %ax, %fs
+    movw %ax, %gs
+
     movl    current_task, %edx
     test    %edx, %edx
-    jz      1f
+    jz      .Lirq\num\()_skip_save
     fxsave  OFF_K_FPU(%edx)
-
-1:
+.Lirq\num\()_skip_save:
 
     movl    %esp, %eax
     pushl   %eax
-    pushl   $8
+    pushl   $\num
     call    irq_handler
     addl    $8,   %esp
 
     movl    current_task, %edx
     test    %edx, %edx
-    jz      2f
+    jz      .Lirq\num\()_skip_restore
     fxrstor OFF_K_FPU(%edx)
-
-2:
+.Lirq\num\()_skip_restore:
 
     popl    %ds
     popl    %es
@@ -444,66 +377,21 @@ irq8:
     popfl
 
     iret
+.endm
 
-.global irq9
-irq9:
-    pusha
-    pushl $9
-    call irq_handler
-    add $4, %esp
-    popa
-    iret
-
-.global irq10
-irq10:
-    pusha
-    pushl $10
-    call irq_handler
-    add $4, %esp
-    popa
-    iret
-
-.global irq11
-irq11:
-    pusha
-    pushl $11
-    call irq_handler
-    add $4, %esp
-    popa
-    iret
-
-.global irq12
-irq12:
-    pusha
-    pushl $12
-    call irq_handler
-    add $4, %esp
-    popa
-    iret
-
-.global irq13
-irq13:
-    pusha
-    pushl $13
-    call irq_handler
-    add $4, %esp
-    popa
-    iret
-
-.global irq14
-irq14:
-    pusha
-    pushl $14
-    call irq_handler
-    add $4, %esp
-    popa
-    iret
-
-.global irq15
-irq15:
-    pusha
-    pushl $15
-    call irq_handler
-    add $4, %esp
-    popa
-    iret
+IRQ_HANDLER 0
+IRQ_HANDLER 1
+IRQ_HANDLER 2
+IRQ_HANDLER 3
+IRQ_HANDLER 4
+IRQ_HANDLER 5
+IRQ_HANDLER 6
+IRQ_HANDLER 7
+IRQ_HANDLER 8
+IRQ_HANDLER 9
+IRQ_HANDLER 10
+IRQ_HANDLER 11
+IRQ_HANDLER 12
+IRQ_HANDLER 13
+IRQ_HANDLER 14
+IRQ_HANDLER 15

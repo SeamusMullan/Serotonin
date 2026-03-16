@@ -2,3 +2,8 @@ init.elf /bin/init
 sh.elf /bin/sh
 sponk.elf /bin/sponk
 lua.elf /bin/lua
+sender.elf /bin/sender
+receiver.elf /bin/receiver
+devfs_example.elf /bin/devfs_example
+cat.elf /bin/cat
+kbtest.elf /bin/kbtest

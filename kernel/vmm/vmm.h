@@ -2,14 +2,18 @@
 #define _KERNEL_VMM
 
 #include <stdint.h>
+#include <stddef.h>
 #include "paging_init.h"
 #include "../multiboot.h"
+
+typedef struct process_control_block process_control_block_t;
 
 #define PAGE_SIZE        4096
 #define PAGE_SHIFT       12
 #define MAX_ZONES        8
 #define MAX_ORDER        20
 #define MIN_MANAGED_PHYS 0x00200000
+#define MAX_SHM_OBJECTS  256
 
 /**
  * @brief Page descriptor structure
@@ -59,6 +63,21 @@ typedef struct range64 {
     uint64_t start, end;
 } range64_t;
 
+typedef struct shm_object {
+    uint32_t size;
+    uint32_t npages;
+    uint32_t *phys_pages;
+    uint32_t refcount;
+    uint32_t kernel_addr;
+} shm_object_t;
+
+typedef struct shmem_map {
+    uint32_t start;
+    uint32_t size;
+    shm_object_t *shm;
+    struct shmem_map *next;
+} shmem_map_t;
+
 /**
  * @brief Address space structure
  * 
@@ -66,9 +85,11 @@ typedef struct range64 {
  */
 typedef struct address_space {
     uint32_t phys_pdir; // phys_pdiddy
+    shmem_map_t *shmem_list;
 } address_space_t;
 
 extern buddy_state_t g_buddy;
+extern shm_object_t* shm_table[MAX_SHM_OBJECTS];
 
 void buddy_init(multiboot_info_t *mbi, uint32_t kernel_phys_start, uint32_t kernel_phys_end, uint32_t fb_phys_base, uint32_t fb_length);
 
@@ -90,6 +111,14 @@ vmm_page_table_t *ensure_pt(address_space_t *as, uint32_t pde_index, uint32_t pd
 
 void *kmap(uint32_t phys);
 void kunmap(void);
+
+int copy_to_user(address_space_t *as, uint32_t dst, const void *src, size_t len);
+int copy_from_user(address_space_t *as, void *dst, uint32_t src, size_t len);
+
+shm_object_t* shm_create(uint32_t size);
+uint32_t shm_map(process_control_block_t* pcb, shm_object_t *shm);
+void shm_unmap(address_space_t *as, uint32_t vaddr);
+int shm_alloc_id(void);
 
 static inline uint32_t vmm_pdi(uint32_t va) { return (uint32_t)(va >> 22); }
 static inline uint32_t vmm_pti(uint32_t va) { return (uint32_t)((va >> 12) & 0x3FF); }

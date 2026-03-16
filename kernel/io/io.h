@@ -39,6 +39,8 @@
 #define PS2_MOUSE_STATUS_RQ 0xE9
 #define PS2_MOUSE_SET_RESOLUTION 0xE8
 #define PS2_MOUSE_ACK 0xFA
+#define PS2_MOUSE_ERROR 0xFC
+#define PS2_MOUSE_ERROR2 0xFD
 #define PS2_MOUSE_SELFTEST_GOOD 0xAA
 #define PS2_SEND_BYTE 0xD4
 
@@ -49,7 +51,7 @@
  * and segment registers.
  */
 typedef struct processor_context {
-    uint32_t gs, fs, es, ds;
+    uint32_t ds, es, fs, gs;
     uint32_t edi, esi, ebp, esp_at_pushal, ebx, edx, ecx, eax;
     uint32_t stub_eflags;
     uint32_t eip, cs, eflags, esp_at_trap, ss;
@@ -76,6 +78,8 @@ extern volatile int multitasking_ready;
 extern volatile int irq_disabled;
 extern volatile rtc_time_t last_rtc_time;
 extern volatile uint32_t unix_timestamp;
+extern volatile int mouse_x;
+extern volatile int mouse_y;
 
 /**
  * @brief Output a byte to a port.

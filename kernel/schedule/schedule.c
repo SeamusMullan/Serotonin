@@ -13,9 +13,11 @@
 #include "../io/io.h"
 #include "../video/vbe/vbe.h"
 #include "../gdt.h"
+#include "../syscall/sys/errno.h"
 
 process_control_block_t *current_task = NULL;
 process_control_block_t *task_list    = NULL;
+process_control_block_t *init_task    = NULL;
 lock_t *stdin_lock;
 static process_control_block_t *runqueue[MAX_TASKS];
 static int rq_head = 0;
@@ -30,6 +32,35 @@ volatile uint32_t preempt_count = 0;
 volatile uint32_t lock_count = 0;
 volatile uint8_t pending_schedule = 0;
 static __attribute__((aligned(16))) fpu_fxsave_area_t fx_clean;
+static process_control_block_t *zombie_list = NULL;
+volatile int foreground_pid = 0;
+vfs_ops_t task_ipc_pipe_ops;
+
+static void reap_zombies(void) {
+    process_control_block_t *task = zombie_list;
+    process_control_block_t *prev = NULL;
+
+    while (task) {
+        if (task == current_task) {
+            prev = task;
+            task = task->next;
+            continue;
+        }
+
+        process_control_block_t *next = task->next;
+        if (prev) {
+            prev->next = next;
+        } else {
+            zombie_list = next;
+        }
+
+        destroy_address_space(task->address_space);
+        kernel_free_align(task->processor_context);
+        kernel_free_align(task->signal_processor_context);
+        kernel_free_align(task);
+        task = next;
+    }
+}
 
 static inline void bm_set(uint8_t p) {
     uint8_t word = p >> 5; // div by 32, select which prio_bitmap word
@@ -135,23 +166,38 @@ void *alloc_kernel_stack(void) {
 
 /**
  * @brief Disables interrupts to lock the scheduler.
+ *
+ * Saves the hardware IF state on the outermost lock so that
+ * unlock_scheduler restores it correctly.  This prevents sti
+ * from being called inside an IRQ handler whose interrupt gate
+ * already cleared IF.
  */
+static uint32_t saved_eflags = 0;
+
 void lock_scheduler(void) {
     if (multitasking_ready == 0)
         return;
+    if (lock_count == 0) {
+        uint32_t flags;
+        asm volatile("pushfl; popl %0" : "=r"(flags) : : "memory");
+        saved_eflags = flags;
+    }
     lock_count++;
-    clear_interrupts();
+    asm volatile("cli" ::: "memory");
 }
 
 /**
- * @brief Enables interrupts to unlock the scheduler.
+ * @brief Unlocks the scheduler and restores the interrupt state
+ *        that was active before the outermost lock_scheduler call.
  */
 void unlock_scheduler(void) {
     if (multitasking_ready == 0)
         return;
     lock_count--;
-    if (!lock_count)
-        enable_interrupts();
+    if (!lock_count) {
+        if (saved_eflags & 0x200)
+            asm volatile("sti" ::: "memory");
+    }
 }
 
 void fpu_get_init_state(void) {
@@ -162,7 +208,7 @@ void fpu_get_init_state(void) {
  * @brief Initializes multitasking by creating the initial kernel task.
  */
 void multitasking_init(void) {
-    process_control_block_t *init_task = (process_control_block_t*)kernel_malloc_align(PCB_ALIGNMENT, sizeof(process_control_block_t));
+    init_task = (process_control_block_t*)kernel_malloc_align(PCB_ALIGNMENT, sizeof(process_control_block_t));
     memset(init_task, 0, sizeof(*init_task));
 
     init_task->pid     = next_pid++;
@@ -180,6 +226,12 @@ void multitasking_init(void) {
 
     stdin_lock = kernel_malloc(sizeof(lock_t));
     task_lock_init(stdin_lock, 1);
+    task_ipc_pipe_ops.read = task_ipc_pipe_read;
+    task_ipc_pipe_ops.write = task_ipc_pipe_write;
+    task_ipc_pipe_ops.close = task_ipc_pipe_close;
+
+    printfs(PRINT_STATUS_INFO,"scheduler: init\n");
+    vbe_flip();
 }
 
 
@@ -193,27 +245,27 @@ void multitasking_make_ready(void) {
  */
 void task_yield(int irq) {
     lock_scheduler();
+    reap_zombies();
 
     if (current_task->state == PROCESS_STATE_RUNNING) {
-        if ((unsigned int)current_task->esp < (unsigned int)current_task->esp_min && current_task->priv == CPU_USER_MODE) {
-            printfs(PRINT_STATUS_ERROR, "Stack overflow detected in task '%s' (attempted esp=%p, esp_max=%p)\n", current_task->name, current_task->esp,current_task->esp_max);
-            task_exit(EXIT_SIGSEGV);
-        }
         current_task->state = PROCESS_STATE_READY;
-        enqueue(current_task);
+        if (!current_task->no_requeue)
+            enqueue(current_task);
     }
 
-    process_control_block_t* next = NULL;
-    while ((next = dequeue()) != NULL) {
-        if (next->state == PROCESS_STATE_READY) {
-            // found someone we can switch into
-            next->state = PROCESS_STATE_RUNNING;
-            unlock_scheduler();
-            preempt_enable();
-
-            // if nothing is pending, switch
-            switch_task(next);
+    process_control_block_t* next = dequeue();
+    if (next->state == PROCESS_STATE_READY) {
+        if (next->priv == CPU_USER_MODE) {
+            switch_address_space(next->address_space);
+            task_ipc_deliver_signals(next, next->processor_context);
         }
+        // found someone we can switch into
+        next->state = PROCESS_STATE_RUNNING;
+        preempt_enable();
+
+        // if nothing is pending, switch
+        switch_task(next);
+        __builtin_unreachable();
     }
 
     kernel_panic("task_yield: no valid task to switch to");
@@ -222,27 +274,64 @@ void task_yield(int irq) {
 /**
  * @brief Terminates the currently running task and switches to the next one.
  */
-void task_exit(uint8_t exit) {
-    printfs(PRINT_STATUS_DEBUG, "task_exit: Task %s (pid=%u) exited:%s\n", current_task->name, current_task->pid,to_signal_name(exit));
-    current_task->state = PROCESS_STATE_TERMINATED;
-    current_task->signal = exit;
+void task_exit(process_control_block_t* task_exited, uint8_t exit) {
+    printfs(PRINT_STATUS_DEBUG, "task_exit: Task %s (pid=%u) exited:%s\n", task_exited->name, task_exited->pid,to_signal_name(exit));
 
-    process_control_block_t *waiter = task_list;
-    while (waiter) {
-        if (waiter->waiting_on == (int)current_task->pid) {
-            waiter->waiting_on = -1;
-            switch_address_space(waiter->address_space);
-            memset(waiter->status_ptr, exit, sizeof(uint8_t));
-            waiter->state = PROCESS_STATE_READY;
-            waiter->processor_context->eax = exit;
-            enqueue(waiter);
-            break;
-        }
-        waiter = waiter->next;
+    if (current_task->pid == 1) {
+        kernel_panic("init died");
     }
 
-    kernel_free_align(current_task->processor_context);
-    kernel_free_align(current_task);
+    task_exited->state = PROCESS_STATE_TERMINATED;
+    task_exited->signal = exit;
+
+    for (int i = 0; i < FD_MAX; i++) {
+        if (task_exited->fd_table[i]) {
+            close_fd(task_exited, i);
+        }
+    }
+
+    process_control_block_t *task = task_list;
+    process_control_block_t *prev_task = NULL;
+    while (task) {
+        if (task->waiting_on == task_exited->pid) {
+            task->waiting_on = -1;
+            int write_rc = 0;
+            if (task->status_ptr) {
+                uint32_t va = (uint32_t)task->status_ptr;
+                uint32_t phys = get_mapping(task->address_space, va);
+                if (phys) {
+                    uint8_t *dst = (uint8_t*)kmap(phys);
+                    dst[va & (PAGE_SIZE - 1)] = exit;
+                    kunmap();
+                } else {
+                    write_rc = -EFAULT;
+                }
+            } else {
+                write_rc = -EFAULT;
+            }
+            task->state = PROCESS_STATE_READY;
+            task->processor_context->eax = write_rc ? write_rc : exit;
+            enqueue(task);
+        }
+        if (task == task_exited) {
+            if (prev_task) {
+                prev_task->next = task->next;
+            } else {
+                task_list = task->next;
+            }
+        }
+        prev_task = task;
+        task = task->next;
+    }
+    address_space_t *as = task_exited->address_space;
+    if (as) {
+        while (as->shmem_list) {
+            shm_unmap(as, as->shmem_list->start);
+        }
+    }
+
+    task_exited->next = zombie_list;
+    zombie_list = task_exited;
 
     task_yield(0);  // pick the next runnable task
     kernel_panic("task_exit: nothing to switch to");
@@ -256,7 +345,7 @@ void task_exit(uint8_t exit) {
  */
 process_control_block_t* task_create(void (*entry)(void), const char *name, uint8_t priv, uint8_t prio) {
     // alloc and init pcb
-    process_control_block_t *pcb = (process_control_block_t*)kernel_malloc_align(PCB_ALIGNMENT, sizeof(*pcb));
+    process_control_block_t *pcb = (process_control_block_t*)kernel_malloc_align(PCB_ALIGNMENT,sizeof(process_control_block_t));
     memset(pcb, 0, sizeof(*pcb));
     pcb->pid      = next_pid++;
     pcb->cr3      = read_cr3_register();
@@ -268,46 +357,54 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
     pcb->priority = prio;
     pcb->original_priority = prio;
     strncpy(pcb->name, name, sizeof(pcb->name)-1);
+    strcpy(pcb->cwd, "/");
 
     memcpy(&pcb->fpu_fx, &fx_clean, sizeof(fx_clean));
+    memcpy(&pcb->signal_fpu_fx, &fx_clean, sizeof(fx_clean));
 
-    processor_context_t *ctx = (processor_context_t *)kernel_malloc_align(PCB_ALIGNMENT, sizeof(*ctx));
+    processor_context_t *ctx = (processor_context_t *)kernel_malloc_align(PCB_ALIGNMENT, sizeof(processor_context_t));
     memset(ctx, 0, sizeof(*ctx));
     pcb->processor_context = ctx;
+
+    processor_context_t *signal_ctx = (processor_context_t *)kernel_malloc_align(PCB_ALIGNMENT, sizeof(processor_context_t));
+    memset(signal_ctx, 0, sizeof(*signal_ctx));
+    pcb->signal_processor_context = signal_ctx;
 
     // create stack
     uint8_t *stack;
     uint32_t *stk_top;
     if (priv == CPU_USER_MODE) {
-        //stack = (uint8_t*)alloc_user_stack();
-        //stk_top = (uint32_t*)(stack + USER_STACK_SIZE);
         pcb->processor_context->ds          = USER_MODE_SEGMENT;
         pcb->processor_context->es          = USER_MODE_SEGMENT;
         pcb->processor_context->fs          = USER_MODE_SEGMENT;
         pcb->processor_context->gs          = USER_MODE_SEGMENT;
-        pcb->processor_context->ss          = USER_MODE_SEGMENT; 
-        //pcb->processor_context->esp_at_trap = (uint32_t)stk_top;
+        pcb->processor_context->ss          = USER_MODE_SEGMENT;
         pcb->processor_context->stub_eflags = INIT_EFLAGS;
         pcb->processor_context->eflags      = INIT_EFLAGS;
-        pcb->processor_context->cs          = USER_MODE_CODE_SEGMENT; 
+        pcb->processor_context->cs          = USER_MODE_CODE_SEGMENT;
         pcb->processor_context->eip         = (uint32_t)entry;
         pcb->brk_start                      = USER_HEAP_START;
         pcb->brk_end                        = USER_HEAP_START;
-        //memset(stack, 0, USER_STACK_SIZE);
+        memcpy(signal_ctx, ctx, sizeof(processor_context_t));
+
+        uint8_t *kstack = (uint8_t*)alloc_kernel_stack();
+        uint32_t kstack_top = (uint32_t)kstack + KERNEL_STACK_SIZE;
+        memset(kstack, 0, KERNEL_STACK_SIZE);
+        pcb->esp0 = (void*)kstack_top;
     } else {
         stack = (uint8_t*)alloc_kernel_stack();
         stk_top = (uint32_t*)(stack + KERNEL_STACK_SIZE);
         memset(stack, 0, KERNEL_STACK_SIZE);
+        pcb->esp = stk_top;
+        pcb->esp0 = (void*)stk_top;
     }
 
-    pcb->esp = stk_top;
-    pcb->esp0 = get_esp();
-    pcb->esp_max = stack;
-    pcb->esp_min = stk_top;
+    pcb->esp_max = (priv == CPU_USER_MODE) ? NULL : (void*)stack;
+    pcb->esp_min = (priv == CPU_USER_MODE) ? NULL : (void*)stk_top;
     pcb->entry = entry;
-    pcb->next = NULL;
 
-    printfs(PRINT_STATUS_DEBUG,"Creating task '%s', esp=%p, esp0=%p\n", name, pcb->esp,pcb->esp0);
+    printfs(PRINT_STATUS_INFO,"scheduler: spawned new task \"%s\"\n",pcb->name);
+    vbe_flip();
 
     enqueue_task_list(pcb);
 
@@ -380,7 +477,7 @@ void task_set_state(process_control_block_t *pcb, int state) {
 void task_block(void) {
     current_task->state = PROCESS_STATE_BLOCKED;
     task_yield(1);
-    __builtin_unreachable();
+    return;
 }
 
 /**
@@ -388,8 +485,10 @@ void task_block(void) {
  * @param pcb Pointer to the task's process control block.
  */
 void task_unblock(process_control_block_t *pcb) {
+    lock_scheduler();
     pcb->state = PROCESS_STATE_READY;
     enqueue(pcb);
+    unlock_scheduler();
 }
 
 void enqueue_waiter(lock_t *lock, process_control_block_t *pcb) {
@@ -463,9 +562,11 @@ void task_lock_release(lock_t *lock) {
 }
 
 process_control_block_t* task_fork(process_control_block_t *parent) {
+    lock_scheduler();
+
     if (parent->priv == CPU_KERNEL_MODE) {
         printfs(PRINT_STATUS_ERROR,"Process '%s' attempted fork in kernel mode and will be terminated.\n",current_task->name);
-        task_exit(EXIT_SIGILL);
+        task_exit(parent,EXIT_SIGILL);
     }
 
     process_control_block_t *pcb = (process_control_block_t*)kernel_malloc_align(PCB_ALIGNMENT, sizeof(process_control_block_t));
@@ -474,6 +575,14 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     memset(ctx, 0, sizeof(*ctx));
     pcb->processor_context = ctx;
     memcpy(pcb->processor_context, parent->processor_context, sizeof(processor_context_t));
+    processor_context_t *signal_ctx = (processor_context_t *)kernel_malloc_align(PCB_ALIGNMENT, sizeof(*signal_ctx));
+    memset(signal_ctx, 0, sizeof(*signal_ctx));
+    pcb->signal_processor_context = signal_ctx;
+    if (parent->signal_processor_context) {
+        memcpy(pcb->signal_processor_context, parent->signal_processor_context, sizeof(processor_context_t));
+    } else {
+        memcpy(pcb->signal_processor_context, pcb->processor_context, sizeof(processor_context_t));
+    }
     pcb->state = PROCESS_STATE_READY;
     pcb->pid   = next_pid++;
 
@@ -516,7 +625,7 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
         memset(dst, 0, PAGE_SIZE);
         kunmap();
     }
-    
+
     for (uint32_t offset = 0; offset < USER_STACK_SIZE; offset += PAGE_SIZE) {
         uint32_t p_va = p_stack_base + offset;
         uint32_t c_va = c_stack_base + offset;
@@ -547,23 +656,26 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     pcb->brk_end = USER_HEAP_START;
     pcb->next = NULL;
 
-    /*
-    // create stack
-    uint8_t *stack;
-    uint32_t *stk_top;
-    uint32_t ebp;
-    stack = (uint8_t*)alloc_user_stack();
-    stk_top = (uint32_t*)(stack + USER_STACK_SIZE);
-    memset(stack, 0, USER_STACK_SIZE);
+    pcb->signal_bitmask = 0;
+    for (int i = 0; i < 16; i++) {
+        pcb->signal_handlers[i] = 0;
+    }
+    for (int i = 0; i < FD_MAX; i++) {
+        if (pcb->fd_table[i]) {
+            pcb->fd_table[i]->refcount++;
+        }
+    }
 
-    ebp = (uint32_t)stk_top - bp_offset;
-    stk_top = (uint32_t*)((uint32_t)stk_top - stk_offset);
-
-    */
+    uint8_t *child_kstack = (uint8_t*)alloc_kernel_stack();
+    uint32_t child_kstack_top = (uint32_t)child_kstack + KERNEL_STACK_SIZE;
+    memset(child_kstack, 0, KERNEL_STACK_SIZE);
+    pcb->esp0 = (void*)child_kstack_top;
 
     printfs(PRINT_STATUS_DEBUG,"Forking task '%s', esp=%p, esp0=%p\n", pcb->name, pcb->esp,pcb->esp0);
 
     enqueue_task_list(pcb);
+
+    unlock_scheduler();
 
     return pcb;
 }
@@ -600,7 +712,7 @@ process_control_block_t *dequeue_waiter_semaphore(lock_semaphore_t *semaphore) {
 
 void task_semaphore_acquire(lock_semaphore_t *semaphore) {
     lock_scheduler();
-    
+
     if (semaphore->current_count < semaphore->max_count) {
         semaphore->current_count++;
     } else {
@@ -639,12 +751,12 @@ process_control_block_t* get_current_task(void) {
 uint32_t get_task_count(void) {
     uint32_t count = 0;
     process_control_block_t *task = task_list;
-    
+
     while (task != NULL) {
         count++;
         task = task->next;
     }
-    
+
     return count;
 }
 
@@ -655,7 +767,7 @@ int task_priority_decay(process_control_block_t *task) {
 
     if (quanta < PRIORITY_QUANTA_PUNISH)
         return prio;
-    if (prio == 0) 
+    if (prio == 0)
         return orig_prio;
 
     task->quanta_used = 0;
@@ -664,15 +776,254 @@ int task_priority_decay(process_control_block_t *task) {
     return new_prio;
 }
 
+process_control_block_t *task_lookup_by_pid(uint32_t pid) {
+    process_control_block_t *task = task_list;
+    while (task) {
+        if (pid == task->pid) {
+            return task;
+        }
+        task = task->next;
+    }
+    return NULL;
+}
+
 int task_ipc_signal_raise(process_control_block_t *task, uint8_t signal) {
-    if (signal >= 16) return -1;
-    task->signal = signal;
+    if (signal >= 16)
+        return -1;
+
+    task->signal_bitmask |= (1u << signal);
     return 0;
 }
 
 int task_ipc_register_signal_handler(process_control_block_t *task, uint8_t signal, uint32_t handler) {
-    if (signal >= 16) return -1;
+    if (signal >= 16)
+        return -1;
+
     task->signal_handlers[signal] = handler;
-    task->signal_bitmask |= (1u << signal);
+    return 0;
+}
+
+int task_ipc_deliver_signals(process_control_block_t *task, processor_context_t* ctx) {
+    if (task->priv != CPU_USER_MODE)
+        return -1;
+    if (task->in_signal_handler)
+        return -1;
+
+    uint32_t pending = task->signal_bitmask;
+    uint32_t masked = task->blocked_signals;
+    uint32_t deliverable = pending & ~masked;
+
+    if (!deliverable)
+        return -1;
+
+    int sig = __builtin_ctz(deliverable);
+    task->signal_bitmask &= ~(1u << sig);
+
+    memcpy(task->signal_processor_context, ctx, sizeof(processor_context_t));
+    memcpy(&task->signal_fpu_fx, &task->fpu_fx, sizeof(fx_clean));
+
+    uint32_t handler = task->signal_handlers[sig];
+
+    if (handler == 0) {
+        task_exit(task,sig);
+        return -1;
+    }
+
+    uint32_t *user_sp = (uint32_t *)ctx->esp_at_trap;
+    user_sp -= 2;
+
+    user_sp[0] = SIGNAL_TRAMPOLINE_ADDR;
+    user_sp[1] = sig;
+    ctx->esp_at_trap = (uint32_t)user_sp;
+    ctx->eip = handler;
+
+    task->in_signal_handler = 1;
+
+    return 0;
+}
+
+// FIXME
+void task_ipc_break_fid() {
+    process_control_block_t *fpcb = task_lookup_by_pid(foreground_pid);
+
+    if (!fpcb)
+        return;
+
+    if (fpcb->priv == CPU_KERNEL_MODE)
+        kernel_panic("kernel process as foreground pid!");
+
+    task_ipc_signal_raise(fpcb, EXIT_SIGINT);
+}
+
+int task_ipc_pipe_waiter_enqueue(pipe_waiter_t **head, pipe_waiter_t **tail, process_control_block_t *task) {
+    pipe_waiter_t *node = kernel_malloc(sizeof(*node));
+    if (!node)
+        return -ENOMEM;
+    node->task = task;
+    node->next = NULL;
+    if (*tail) {
+        (*tail)->next = node;
+        *tail = node;
+    } else {
+        *head = *tail = node;
+    }
+    return 0;
+}
+
+process_control_block_t *task_ipc_pipe_waiter_dequeue(pipe_waiter_t **head, pipe_waiter_t **tail) {
+    if (!*head)
+        return NULL;
+    pipe_waiter_t *node = *head;
+    process_control_block_t *task = node->task;
+    *head = node->next;
+    if (!*head)
+        *tail = NULL;
+    kernel_free(node);
+    return task;
+}
+
+void task_ipc_pipe_wake_one_reader(pipe_state_t *pipe) {
+    process_control_block_t *task = task_ipc_pipe_waiter_dequeue(&pipe->read_waiters_head, &pipe->read_waiters_tail);
+    if (task)
+        task_unblock(task);
+}
+
+void task_ipc_pipe_wake_one_writer(pipe_state_t *pipe) {
+    process_control_block_t *task = task_ipc_pipe_waiter_dequeue(&pipe->write_waiters_head, &pipe->write_waiters_tail);
+    if (task)
+        task_unblock(task);
+}
+
+void task_ipc_pipe_wake_all_readers(pipe_state_t *pipe) {
+    process_control_block_t *task;
+    while ((task = task_ipc_pipe_waiter_dequeue(&pipe->read_waiters_head, &pipe->read_waiters_tail)) != NULL) {
+        task_unblock(task);
+    }
+}
+
+void task_ipc_pipe_wake_all_writers(pipe_state_t *pipe) {
+    process_control_block_t *task;
+    while ((task = task_ipc_pipe_waiter_dequeue(&pipe->write_waiters_head, &pipe->write_waiters_tail)) != NULL) {
+        task_unblock(task);
+    }
+}
+
+int task_ipc_pipe_read(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer) {
+    (void)offset;
+    if (!node || !buffer || size == 0)
+        return 0;
+
+    pipe_endpoint_t *endpoint = (pipe_endpoint_t*)node->fs_data;
+    if (!endpoint || !endpoint->pipe || !endpoint->is_read_end)
+        return -EBADF;
+
+    pipe_state_t *pipe = endpoint->pipe;
+
+    while (1) {
+        lock_scheduler();
+        if (pipe->data_len > 0) {
+            uint32_t to_read = size < pipe->data_len ? size : pipe->data_len;
+            for (uint32_t i = 0; i < to_read; i++) {
+                buffer[i] = pipe->buffer[pipe->read_pos];
+                pipe->read_pos = (pipe->read_pos + 1) % pipe->size;
+            }
+            pipe->data_len -= to_read;
+            if (pipe->write_waiters_head)
+                task_ipc_pipe_wake_one_writer(pipe);
+            unlock_scheduler();
+            return (int)to_read;
+        }
+
+        if (pipe->writers == 0) {
+            unlock_scheduler();
+            return 0;
+        }
+
+        if (task_ipc_pipe_waiter_enqueue(&pipe->read_waiters_head, &pipe->read_waiters_tail, current_task) != 0) {
+            unlock_scheduler();
+            return -ENOMEM;
+        }
+        current_task->state = PROCESS_STATE_BLOCKED;
+        unlock_scheduler();
+        task_yield(1);
+    }
+}
+
+int task_ipc_pipe_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer) {
+    (void)offset;
+    if (!node || !buffer || size == 0)
+        return 0;
+
+    pipe_endpoint_t *endpoint = (pipe_endpoint_t*)node->fs_data;
+    if (!endpoint || !endpoint->pipe || endpoint->is_read_end)
+        return -EBADF;
+
+    pipe_state_t *pipe = endpoint->pipe;
+    uint32_t written = 0;
+
+    while (written < size) {
+        lock_scheduler();
+        if (pipe->readers == 0) {
+            unlock_scheduler();
+            task_ipc_signal_raise(current_task, EXIT_SIGPIPE);
+            return -EPIPE;
+        }
+
+        if (pipe->data_len < pipe->size) {
+            uint32_t space = pipe->size - pipe->data_len;
+            uint32_t to_write = (size - written) < space ? (size - written) : space;
+            for (uint32_t i = 0; i < to_write; i++) {
+                pipe->buffer[pipe->write_pos] = buffer[written + i];
+                pipe->write_pos = (pipe->write_pos + 1) % pipe->size;
+            }
+            pipe->data_len += to_write;
+            written += to_write;
+            if (pipe->read_waiters_head)
+                task_ipc_pipe_wake_one_reader(pipe);
+            unlock_scheduler();
+            return (int)written;
+        }
+
+        if (task_ipc_pipe_waiter_enqueue(&pipe->write_waiters_head, &pipe->write_waiters_tail, current_task) != 0) {
+            unlock_scheduler();
+            return -ENOMEM;
+        }
+        current_task->state = PROCESS_STATE_BLOCKED;
+        unlock_scheduler();
+        task_yield(1);
+    }
+
+    return (int)written;
+}
+
+int task_ipc_pipe_close(vfs_node_t *node) {
+    if (!node)
+        return 0;
+
+    pipe_endpoint_t *endpoint = (pipe_endpoint_t*)node->fs_data;
+    if (!endpoint || !endpoint->pipe)
+        return 0;
+
+    pipe_state_t *pipe = endpoint->pipe;
+    lock_scheduler();
+    if (endpoint->is_read_end) {
+        if (pipe->readers > 0)
+            pipe->readers--;
+        if (pipe->readers == 0)
+            task_ipc_pipe_wake_all_writers(pipe);
+    } else {
+        if (pipe->writers > 0)
+            pipe->writers--;
+        if (pipe->writers == 0)
+            task_ipc_pipe_wake_all_readers(pipe);
+    }
+    int free_pipe = (pipe->readers == 0 && pipe->writers == 0);
+    unlock_scheduler();
+
+    kernel_free(endpoint);
+    if (free_pipe) {
+        kernel_free(pipe->buffer);
+        kernel_free(pipe);
+    }
     return 0;
 }

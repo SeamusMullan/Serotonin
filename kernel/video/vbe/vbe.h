@@ -3,17 +3,18 @@
 
 #include <stdint.h>
 #include "../../multiboot.h"
+#include "../../schedule/schedule.h"
 #include "../font.h"
 
+#define VBE_TICKS_PER_FRAME 17
+#define VBE_CURSOR_BLINK_MS 500
+
 #define VBE_FONT_WIDTH  8
-#define VBE_FONT_HEIGHT 20
+#define VBE_FONT_HEIGHT 16
 #define VBE_NUM_Z_LAYERS 16
 
 #define SCREEN_WIDTH 1280
 #define SCREEN_HEIGHT 800
-
-static uint32_t term_cursor_col = 0;
-static uint32_t term_cursor_row = 0;
 
 extern uint32_t vbe_palette[256];
 
@@ -43,10 +44,9 @@ typedef enum {
 } vbe_color_t;
 
 extern uint32_t vbe_colors[16];
+extern process_control_block_t *vbe_worker_task;
 
-static uint32_t term_color = 0xFFFFFF;
-
-static int vbe_any_dirty;
+struct term_state;
 
 // We only need width, height, pitch, bpp, and backbuffer pointer here:
 typedef struct {
@@ -71,8 +71,16 @@ typedef struct {
     uint8_t z;
     uint8_t active;
     uint8_t alpha;
+    uint16_t width;
+    uint16_t height;
+    uint16_t x0;
+    uint16_t y0;
+    uint32_t pitch;
     __attribute__((aligned(16))) uint32_t *bufptr;
 } vbe_z_layer_t;
+
+typedef struct fb_layer_config fb_layer_config_t;
+typedef struct fb_layer_metadata fb_layer_metadata_t;
 
 extern vbe_mode_info_t vbe_info;
 extern uint32_t fb_size_bytes;
@@ -107,7 +115,23 @@ void vbe_clear_all_z_layers(void);
 // If resulting alpha <= 0 it becomes fully transparent (pixel value 0).
 void vbe_z_copy_and_fade(uint32_t src_z, uint32_t dst_z, uint8_t fade_amount);
 vbe_z_layer_t* vbe_create_z_layer(uint8_t z, uint8_t alpha, uint8_t active);
+void vbe_layer_attach(uint8_t z, uint32_t *bufptr, const fb_layer_config_t *cfg, fb_layer_metadata_t *meta);
+void vbe_layer_detach(uint8_t z);
+fb_layer_metadata_t *vbe_layer_get_metadata(uint8_t z);
 void vbe_mark_region_dirty(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
 void vbe_handle_ansi_sequence(const char *seq);
+void vbe_worker(void);
+
+void vbe_terminal_putchar_ctx(struct term_state *ts, char c);
+void vbe_terminal_puts_ctx(struct term_state *ts, const char *str, int len);
+void vbe_terminal_back_ctx(struct term_state *ts);
+void vbe_handle_ansi_sequence_ctx(struct term_state *ts, const char *seq);
+void vbe_set_layer0_bufptr(uint32_t *bufptr);
+uint32_t *vbe_get_layer0_bufptr(void);
+
+extern uint32_t term_cursor_col;
+extern uint32_t term_cursor_row;
+extern uint32_t term_fg_color;
+extern uint32_t term_bg_color;
 
 #endif

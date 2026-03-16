@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include "kernel.h"
 #include "gdt.h"
 
 /**
@@ -72,6 +73,7 @@ __attribute__((section(".identity"))) static void gdt_set_gate(int num, uint32_t
  * 
  */
 __attribute__((section(".identity"))) void install_tss() {
+    sys_tss.esp0 = KERNEL_ESP;
 	sys_tss.ss0 = 0x10;
 	sys_tss.iomap = ( unsigned short ) sizeof( tss_struct ); 
 }
@@ -105,4 +107,8 @@ __attribute__((section(".identity"))) void init_gdt() {
     gdt_set_gate(5,addr,size - 1,0x89,0x40);
 
     gdt_flush((uint32_t)&gdtp);
+}
+
+void tss_set_esp0(uint32_t esp0) {
+    sys_tss.esp0 = esp0;
 }

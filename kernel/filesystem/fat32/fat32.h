@@ -99,12 +99,18 @@ static int fat32_read(vfs_node_t *node,uint32_t offset,uint32_t size,char *buffe
 static int fat32_open(vfs_node_t *node);
 static int fat32_close(vfs_node_t *node);
 static int fat32_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer);
+static int fat32_truncate(vfs_node_t *node, uint32_t size);
+static int fat32_unlink(vfs_node_t *parent, const char *name);
+static int fat32_rmdir(vfs_node_t *parent, const char *name);
 static vfs_node_t *fat32_create(vfs_node_t *parent, const char *name);
 static vfs_node_t *fat32_mkdir(vfs_node_t *parent, const char *name);
 
 static vfs_ops_t fat32_ops = {
     .read    = fat32_read,
     .write   = fat32_write,
+    .truncate = fat32_truncate,
+    .unlink = fat32_unlink,
+    .rmdir = fat32_rmdir,
     .open    = fat32_open,
     .close   = fat32_close,
     .readdir = fat32_readdir,

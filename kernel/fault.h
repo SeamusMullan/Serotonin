@@ -1,7 +1,7 @@
 #ifndef _KERNEL_FAULT
 #define _KERNEL_FAULT
 
-#pragma once
+#include <stdint.h>
 
 typedef enum {
     ISR_DIVIDE_ERROR         = 0,   // #DE
@@ -38,5 +38,22 @@ typedef enum {
     ISR_RESERVED_31          = 31
 } isr_vector_t;
 
+typedef struct exception_frame {
+    uint32_t ds;
+    uint32_t edi;
+    uint32_t esi;
+    uint32_t ebp;
+    uint32_t esp_at_pushal;
+    uint32_t ebx;
+    uint32_t edx;
+    uint32_t ecx;
+    uint32_t eax;
+    uint32_t error_code;
+    uint32_t eip;
+    uint32_t cs;
+    uint32_t eflags;
+    uint32_t esp_at_trap;
+    uint32_t ss;
+} exception_frame_t;
 
 #endif

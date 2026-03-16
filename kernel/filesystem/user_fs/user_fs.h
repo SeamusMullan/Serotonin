@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 #define FD_MAX 64
-#define FIRST_FD 3
+#define FIRST_FD 0
 
 // terry davis was right, gcc is a piece of shit
 typedef struct process_control_block process_control_block_t;

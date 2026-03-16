@@ -18,7 +18,7 @@ void rtc_init() {
     outb(CMOS_STATUS_REGISTER_A, CMOS_RTC_STATUS_B);
     uint8_t prev = inb(CMOS_STATUS_REGISTER_B);
     outb(CMOS_STATUS_REGISTER_A, CMOS_RTC_STATUS_B);
-    outb(CMOS_STATUS_REGISTER_B, prev | 0x10); // enable update-ended interrupts
+    outb(CMOS_STATUS_REGISTER_B, prev | 0x40); // enable update-ended interrupts
 }
 
 int is_leap_year(int year) {
