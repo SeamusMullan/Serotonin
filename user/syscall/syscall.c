@@ -14,6 +14,8 @@
 #include <string.h>
 #include "syscall_table.h"
 #include "lib5ht/lib5ht.h"
+#include "sys/socket.h"
+#include "sys/poll.h"
 
 #define HOST_NAME_MAX 64
 
@@ -279,6 +281,19 @@ int pause(void) {
 }
 
 /**
+ * @brief Set an alarm timer
+ *
+ * Arranges for SIGALRM to be delivered after the specified number of seconds.
+ * Passing 0 cancels any pending alarm.
+ *
+ * @param seconds Seconds until SIGALRM delivery (0 to cancel)
+ * @return Seconds remaining on previous alarm, or 0 if none
+ */
+unsigned int alarm(unsigned int seconds) {
+    return (unsigned int)do_syscall(SYSTEM_CALL_ALARM, seconds, 0, 0);
+}
+
+/**
  * @brief Create a shared memory segment
  *
  * @param size Size of the shared memory segment in bytes
@@ -448,6 +463,60 @@ int gethostname(char *name, size_t len) {
     }
     memcpy(name, buf.nodename, nlen + 1);
     return 0;
+}
+
+int socket(int domain, int type, int protocol) {
+    (void)protocol;
+    return do_syscall(SYSTEM_CALL_SOCKET, (uint32_t)domain, (uint32_t)type, 0);
+}
+
+int bind(int sockfd, const struct sockaddr_un *addr, socklen_t addrlen) {
+    return do_syscall(SYSTEM_CALL_BIND, (uint32_t)sockfd, (uint32_t)addr, (uint32_t)addrlen);
+}
+
+int listen(int sockfd, int backlog) {
+    return do_syscall(SYSTEM_CALL_LISTEN, (uint32_t)sockfd, (uint32_t)backlog, 0);
+}
+
+int accept(int sockfd, struct sockaddr_un *addr, socklen_t *addrlen) {
+    return do_syscall(SYSTEM_CALL_ACCEPT, (uint32_t)sockfd, (uint32_t)addr, (uint32_t)addrlen);
+}
+
+int connect(int sockfd, const struct sockaddr_un *addr, socklen_t addrlen) {
+    return do_syscall(SYSTEM_CALL_CONNECT, (uint32_t)sockfd, (uint32_t)addr, (uint32_t)addrlen);
+}
+
+int send(int sockfd, const void *buf, size_t len, int flags) {
+    (void)flags;
+    return do_syscall(SYSTEM_CALL_SEND, (uint32_t)sockfd, (uint32_t)buf, (uint32_t)len);
+}
+
+int recv(int sockfd, void *buf, size_t len, int flags) {
+    (void)flags;
+    return do_syscall(SYSTEM_CALL_RECV, (uint32_t)sockfd, (uint32_t)buf, (uint32_t)len);
+}
+
+int shutdown(int sockfd, int how) {
+    return do_syscall(SYSTEM_CALL_SHUTDOWN, (uint32_t)sockfd, (uint32_t)how, 0);
+}
+
+int socketpair(int domain, int type, int protocol, int sv[2]) {
+    (void)domain;
+    (void)protocol;
+    return do_syscall(SYSTEM_CALL_SOCKETPAIR, (uint32_t)type, (uint32_t)sv, 0);
+}
+
+int _5ht_select(int nfds, _5ht_fd_set *readfds, _5ht_fd_set *writefds,
+                _5ht_fd_set *exceptfds, struct timeval *timeout) {
+    uint32_t args[4] = {
+        (uint32_t)readfds, (uint32_t)writefds,
+        (uint32_t)exceptfds, (uint32_t)timeout
+    };
+    return do_syscall(SYSTEM_CALL_SELECT, (uint32_t)nfds, (uint32_t)args, 0);
+}
+
+int poll(struct pollfd *fds, nfds_t nfds, int timeout) {
+    return do_syscall(SYSTEM_CALL_POLL, (uint32_t)fds, (uint32_t)nfds, (uint32_t)timeout);
 }
 
 void _init(void) {}

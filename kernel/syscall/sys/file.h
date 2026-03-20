@@ -27,7 +27,7 @@
 #define	_FDIRECTORY	0x200000
 #define	_FEXECSRCH	0x400000
 
-#define S_IFMT   0xF000 
+#define S_IFMT   0xF000
 
 #define S_IFREG  0x8000   /* Regular file */
 #define S_IFDIR  0x4000   /* Directory */
@@ -67,7 +67,13 @@
 #define O_NONBLOCK _FNDELAY
 #define O_NOCTTY _FNOCTTY
 
-struct stat 
+#define POLLIN     0x0001
+#define POLLOUT    0x0004
+#define POLLERR    0x0008
+#define POLLHUP    0x0010
+#define POLLNVAL   0x0020
+
+struct stat
 {
     dev_t		st_dev;
     ino_t		st_ino;

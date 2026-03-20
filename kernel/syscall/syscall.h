@@ -8,6 +8,53 @@
 #define STDIN_BUFFER_SIZE 4096
 #define FIRST_FD 3
 
+#define FD_SETSIZE 64
+#define _FD_WORDS  (FD_SETSIZE / 32)
+#define K_FD_ZERO(s)      do { for (int _i=0;_i<_FD_WORDS;_i++) (s)->bits[_i]=0; } while(0)
+#define K_FD_SET(fd,s)    ((s)->bits[(fd)/32] |=  (1U << ((fd)%32)))
+#define K_FD_CLR(fd,s)    ((s)->bits[(fd)/32] &= ~(1U << ((fd)%32)))
+#define K_FD_ISSET(fd,s)  ((s)->bits[(fd)/32] &   (1U << ((fd)%32)))
+
+#define POLL_WAITER_SELECT 0
+#define POLL_WAITER_POLL   1
+
+#define SOCK_BUFFER_SIZE_ALLOC 4096
+
+typedef struct { uint32_t bits[_FD_WORDS]; } kernel_fd_set;
+
+struct kernel_pollfd {
+    int      fd;
+    int16_t  events;
+    int16_t  revents;
+};
+
+struct kernel_timeval {
+    int32_t tv_sec;
+    int32_t tv_usec;
+};
+
+typedef struct poll_waiter {
+    struct poll_waiter       *next;
+    process_control_block_t  *task;
+    uint8_t                   type;        /* SELECT or POLL */
+    uint64_t                  deadline;    /* 0 = no timeout */
+    uint8_t                   has_timeout;
+
+    /* SELECT fields */
+    int                       nfds;
+    kernel_fd_set             readfds;
+    kernel_fd_set             writefds;
+    kernel_fd_set             exceptfds;
+    uint32_t                  readfds_ptr;
+    uint32_t                  writefds_ptr;
+    uint32_t                  exceptfds_ptr;
+
+    /* POLL fields */
+    struct kernel_pollfd     *pfds;        /* kernel-heap copy */
+    uint32_t                  poll_nfds;
+    uint32_t                  poll_fds_ptr; /* user-space address */
+} poll_waiter_t;
+
 /**
  * @brief Enumeration of system calls.
  *
@@ -72,7 +119,19 @@ enum {
     SYSTEM_CALL_5HT_PTY_SETATTR = 55,
     SYSTEM_CALL_5HT_PTY_GETATTR = 56,
     SYSTEM_CALL_5HT_PTY_WINSIZE = 57,
-    SYSTEM_CALL_5HT_PTY_SETPGRP = 58
+    SYSTEM_CALL_5HT_PTY_SETPGRP = 58,
+    SYSTEM_CALL_ALARM      = 59,
+    SYSTEM_CALL_SOCKET     = 60,
+    SYSTEM_CALL_BIND       = 61,
+    SYSTEM_CALL_LISTEN     = 62,
+    SYSTEM_CALL_ACCEPT     = 63,
+    SYSTEM_CALL_CONNECT    = 64,
+    SYSTEM_CALL_SEND       = 65,
+    SYSTEM_CALL_RECV       = 66,
+    SYSTEM_CALL_SHUTDOWN   = 67,
+    SYSTEM_CALL_SOCKETPAIR = 68,
+    SYSTEM_CALL_SELECT     = 69,
+    SYSTEM_CALL_POLL       = 70
 };
 
 /**
@@ -101,6 +160,7 @@ enum {
 };
 
 void system_call(processor_context_t *ctx);
+void poll_waiter_tick(void);
 extern void isr_syscall(void);
 
 #endif

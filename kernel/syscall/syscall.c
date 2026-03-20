@@ -9,6 +9,7 @@
 #include "../string.h"
 #include "../filesystem/vfs.h"
 #include "../filesystem/vfs_perm.h"
+#include "../filesystem/devfs/devfs.h"
 #include "../filesystem/user_fs/user_fs.h"
 #include "../video/vbe/vbe.h"
 #include "../io/serial.h"
@@ -35,6 +36,7 @@ struct utsname {
 };
 
 static char kernel_hostname[HOST_NAME_MAX + 1] = "serotonin";
+static poll_waiter_t *poll_waiters_head = NULL;
 
 typedef struct layer_state {
     uint8_t allocated;
@@ -747,6 +749,420 @@ static void sys_pipe(uint32_t arg2) {
     errno = 0;
 }
 
+static unix_socket_t *sock_alloc(uint8_t type) {
+    unix_socket_t *sock = (unix_socket_t *)kernel_malloc(sizeof(*sock));
+    if (!sock) return NULL;
+    memset(sock, 0, sizeof(*sock));
+    sock->type = type;
+    sock->state = SOCK_STATE_UNCONNECTED;
+    sock->buf_size = SOCK_BUFFER_SIZE_ALLOC;
+    sock->buffer = (char *)kernel_malloc(SOCK_BUFFER_SIZE_ALLOC);
+    if (!sock->buffer) {
+        kernel_free(sock);
+        return NULL;
+    }
+    sock->readers = 1;
+    sock->writers = 1;
+    return sock;
+}
+
+static int sock_make_fd_for(unix_socket_t *sock, uint32_t flags, process_control_block_t *task) {
+    sock_endpoint_t *ep = (sock_endpoint_t *)kernel_malloc(sizeof(*ep));
+    vfs_node_t *node = (vfs_node_t *)kernel_malloc(sizeof(*node));
+    file_handle_t *handle = (file_handle_t *)kernel_malloc(sizeof(*handle));
+    if (!ep || !node || !handle) {
+        if (ep) kernel_free(ep);
+        if (node) kernel_free(node);
+        if (handle) kernel_free(handle);
+        return -ENOMEM;
+    }
+    ep->sock = sock;
+    memset(node, 0, sizeof(*node));
+    node->flags = VFS_FLAG_FILE | VFS_FLAG_SOCKET;
+    node->ops = &task_ipc_unix_socket_ops;
+    node->fs_data = ep;
+    node->uid = task->euid;
+    node->gid = task->egid;
+    node->mode = S_IFSOCK | 0600;
+
+    memset(handle, 0, sizeof(*handle));
+    handle->node = node;
+    handle->flags = flags;
+    handle->refcount = 0;
+
+    int fd = alloc_fd(task, handle);
+    if (fd < 0) {
+        kernel_free(handle);
+        kernel_free(node);
+        kernel_free(ep);
+        return -EMFILE;
+    }
+    return fd;
+}
+
+static int sock_make_fd(unix_socket_t *sock, uint32_t flags) {
+    return sock_make_fd_for(sock, flags, current_task);
+}
+
+static void sys_socket(uint32_t domain, uint32_t type) {
+    if (domain != AF_UNIX) {
+        errno = -EAFNOSUPPORT;
+        return;
+    }
+    if (type != SOCK_STREAM && type != SOCK_DGRAM) {
+        errno = -EPROTOTYPE;
+        return;
+    }
+
+    unix_socket_t *sock = sock_alloc(type);
+    if (!sock) {
+        errno = -ENOMEM;
+        return;
+    }
+
+    int fd = sock_make_fd(sock, O_RDWR);
+    if (fd < 0) {
+        kernel_free(sock->buffer);
+        kernel_free(sock);
+        errno = fd;
+        return;
+    }
+    errno = fd;
+}
+
+static unix_socket_t *sock_from_fd(int fd) {
+    if (fd < 0 || fd >= FD_MAX || !current_task->fd_table[fd])
+        return NULL;
+    file_handle_t *h = current_task->fd_table[fd];
+    if (!h->node || !(h->node->flags & VFS_FLAG_SOCKET))
+        return NULL;
+    sock_endpoint_t *ep = (sock_endpoint_t *)h->node->fs_data;
+    return ep ? ep->sock : NULL;
+}
+
+static void sys_bind(uint32_t fd_arg, uint32_t addr_arg, uint32_t len) {
+    int fd = (int)fd_arg;
+    unix_socket_t *sock = sock_from_fd(fd);
+    if (!sock) {
+        errno = -ENOTSOCK;
+        return;
+    }
+    if (sock->bound) {
+        errno = -EINVAL;
+        return;
+    }
+
+    struct sockaddr_un addr;
+    if (len > sizeof(addr)) len = sizeof(addr);
+    if (copy_from_user(current_task->address_space, &addr, addr_arg, len) != 0) {
+        errno = -EFAULT;
+        return;
+    }
+    if (addr.sun_family != AF_UNIX) {
+        errno = -EAFNOSUPPORT;
+        return;
+    }
+
+    addr.sun_path[UNIX_PATH_MAX - 1] = '\0';
+
+    if (unix_socket_lookup(addr.sun_path)) {
+        errno = -EADDRINUSE;
+        return;
+    }
+
+    strncpy(sock->path, addr.sun_path, UNIX_PATH_MAX);
+    sock->bound = 1;
+    sock->state = SOCK_STATE_BOUND;
+
+    if (unix_socket_register(sock) != 0) {
+        sock->bound = 0;
+        sock->state = SOCK_STATE_UNCONNECTED;
+        errno = -ENOSPC;
+        return;
+    }
+    errno = 0;
+}
+
+static void sys_listen(uint32_t fd_arg, uint32_t backlog) {
+    int fd = (int)fd_arg;
+    unix_socket_t *sock = sock_from_fd(fd);
+    if (!sock) {
+        errno = -ENOTSOCK;
+        return;
+    }
+    if (sock->type != SOCK_STREAM) {
+        errno = -EOPNOTSUPP;
+        return;
+    }
+    if (!sock->bound) {
+        errno = -EINVAL;
+        return;
+    }
+
+    sock->backlog_max = backlog < SOCK_BACKLOG_MAX ? backlog : SOCK_BACKLOG_MAX;
+    if (sock->backlog_max == 0) sock->backlog_max = 1;
+    sock->state = SOCK_STATE_LISTENING;
+    errno = 0;
+}
+
+static void sock_accept_deliver(unix_socket_t *listener, process_control_block_t *task) {
+    unix_socket_t *client_sock = listener->backlog[0];
+    for (uint32_t i = 1; i < listener->backlog_count; i++)
+        listener->backlog[i - 1] = listener->backlog[i];
+    listener->backlog_count--;
+
+    unix_socket_t *server_sock = sock_alloc(SOCK_STREAM);
+    if (!server_sock) {
+        sock_wake_one(&listener->connect_waiters_head, &listener->connect_waiters_tail);
+        unlock_scheduler();
+        task->processor_context->eax = (uint32_t)(-ENOMEM);
+        return;
+    }
+    server_sock->state = SOCK_STATE_CONNECTED;
+    server_sock->peer = client_sock;
+    client_sock->peer = server_sock;
+    client_sock->state = SOCK_STATE_CONNECTED;
+
+    sock_wake_one(&listener->connect_waiters_head, &listener->connect_waiters_tail);
+    unlock_scheduler();
+
+    int new_fd = sock_make_fd_for(server_sock, O_RDWR, task);
+    if (new_fd < 0) {
+        server_sock->state = SOCK_STATE_CLOSED;
+        client_sock->peer = NULL;
+        client_sock->state = SOCK_STATE_UNCONNECTED;
+        kernel_free(server_sock->buffer);
+        kernel_free(server_sock);
+        task->processor_context->eax = (uint32_t)new_fd;
+        return;
+    }
+
+    task->processor_context->eax = (uint32_t)new_fd;
+}
+
+static void sys_accept(uint32_t fd_arg, uint32_t addr_arg, uint32_t len_arg) {
+    (void)addr_arg; (void)len_arg;
+    int fd = (int)fd_arg;
+    unix_socket_t *listener = sock_from_fd(fd);
+    if (!listener) {
+        errno = -ENOTSOCK;
+        return;
+    }
+    if (listener->state != SOCK_STATE_LISTENING) {
+        errno = -EINVAL;
+        return;
+    }
+
+    lock_scheduler();
+    if (listener->backlog_count == 0) {
+        sock_waiter_enqueue(&listener->accept_waiters_head, &listener->accept_waiters_tail, current_task, 0, 0);
+        current_task->state = PROCESS_STATE_BLOCKED;
+        unlock_scheduler();
+        task_yield(1);
+        __builtin_unreachable();
+    }
+
+    sock_accept_deliver(listener, current_task);
+    errno = (int)current_task->processor_context->eax;
+}
+
+static void sys_connect(uint32_t fd_arg, uint32_t addr_arg, uint32_t len) {
+    int fd = (int)fd_arg;
+    unix_socket_t *sock = sock_from_fd(fd);
+    if (!sock) {
+        errno = -ENOTSOCK;
+        return;
+    }
+
+    if (sock->state == SOCK_STATE_CONNECTED) {
+        errno = 0;
+        return;
+    }
+
+    struct sockaddr_un addr;
+    if (len > sizeof(addr)) len = sizeof(addr);
+    if (copy_from_user(current_task->address_space, &addr, addr_arg, len) != 0) {
+        errno = -EFAULT;
+        return;
+    }
+    if (addr.sun_family != AF_UNIX) {
+        errno = -EAFNOSUPPORT;
+        return;
+    }
+    addr.sun_path[UNIX_PATH_MAX - 1] = '\0';
+
+    unix_socket_t *listener = unix_socket_lookup(addr.sun_path);
+    if (!listener) {
+        errno = -ECONNREFUSED;
+        return;
+    }
+
+    if (sock->type == SOCK_STREAM) {
+        if (listener->state != SOCK_STATE_LISTENING) {
+            errno = -ECONNREFUSED;
+            return;
+        }
+
+        lock_scheduler();
+
+        if (listener->backlog_count >= listener->backlog_max) {
+            unlock_scheduler();
+            errno = -ECONNREFUSED;
+            return;
+        }
+
+        listener->backlog[listener->backlog_count++] = sock;
+        sock->state = SOCK_STATE_CONNECTING;
+
+        if (listener->accept_waiters_head) {
+            sock_waiter_t *w = sock_waiter_dequeue(&listener->accept_waiters_head, &listener->accept_waiters_tail);
+            process_control_block_t *accepter = w->task;
+            kernel_free(w);
+            sock_accept_deliver(listener, accepter);
+            task_unblock(accepter);
+            errno = 0;
+            return;
+        }
+
+        sock_waiter_enqueue(&listener->connect_waiters_head, &listener->connect_waiters_tail, current_task, 0, 0);
+        current_task->state = PROCESS_STATE_BLOCKED;
+        unlock_scheduler();
+        task_yield(1);
+        __builtin_unreachable();
+    } else {
+        sock->peer = listener;
+        sock->state = SOCK_STATE_CONNECTED;
+        errno = 0;
+    }
+}
+
+static void sys_send(uint32_t fd_arg, uint32_t buf_arg, uint32_t len) {
+    int fd = (int)fd_arg;
+    if (fd < 0 || fd >= FD_MAX || !current_task->fd_table[fd]) {
+        errno = -EBADF;
+        return;
+    }
+
+    if (buf_arg < USER_SPACE_START || buf_arg + len - 1 > USER_SPACE_END) {
+        errno = -EFAULT;
+        return;
+    }
+
+    char *kbuf = (char *)kernel_malloc(len);
+    if (!kbuf) {
+        errno = -ENOMEM;
+        return;
+    }
+    if (copy_from_user(current_task->address_space, kbuf, buf_arg, len) != 0) {
+        kernel_free(kbuf);
+        errno = -EFAULT;
+        return;
+    }
+    errno = task_ipc_unix_socket_write(current_task->fd_table[fd]->node, 0, len, kbuf);
+    kernel_free(kbuf);
+}
+
+static void sys_recv(uint32_t fd_arg, uint32_t buf_arg, uint32_t len) {
+    int fd = (int)fd_arg;
+    if (fd < 0 || fd >= FD_MAX || !current_task->fd_table[fd]) {
+        errno = -EBADF;
+        return;
+    }
+
+    if (buf_arg < USER_SPACE_START || buf_arg + len - 1 > USER_SPACE_END) {
+        errno = -EFAULT;
+        return;
+    }
+    current_task->current_user_buf = buf_arg;
+
+    char *kbuf = (char *)kernel_malloc(len);
+    if (!kbuf) {
+        errno = -ENOMEM;
+        return;
+    }
+
+    int n = task_ipc_unix_socket_read(current_task->fd_table[fd]->node, 0, len, kbuf);
+    if (n > 0) {
+        if (copy_to_user(current_task->address_space, buf_arg, kbuf, (size_t)n) != 0) {
+            kernel_free(kbuf);
+            errno = -EFAULT;
+            return;
+        }
+    }
+    kernel_free(kbuf);
+    errno = n;
+}
+
+static void sys_shutdown(uint32_t fd_arg, uint32_t how) {
+    (void)how;
+    int fd = (int)fd_arg;
+    unix_socket_t *sock = sock_from_fd(fd);
+    if (!sock) {
+        errno = -ENOTSOCK;
+        return;
+    }
+
+    lock_scheduler();
+    sock->state = SOCK_STATE_CLOSED;
+    sock_wake_all(&sock->read_waiters_head, &sock->read_waiters_tail);
+    sock_wake_all(&sock->write_waiters_head, &sock->write_waiters_tail);
+    if (sock->peer) {
+        sock_wake_all(&sock->peer->read_waiters_head, &sock->peer->read_waiters_tail);
+        sock_wake_all(&sock->peer->write_waiters_head, &sock->peer->write_waiters_tail);
+    }
+    unlock_scheduler();
+    errno = 0;
+}
+
+static void sys_socketpair(uint32_t type, uint32_t sv_addr) {
+    if (type != SOCK_STREAM && type != SOCK_DGRAM) {
+        errno = -EPROTOTYPE;
+        return;
+    }
+    if (sv_addr < USER_SPACE_START || sv_addr + sizeof(int) * 2 - 1 > USER_SPACE_END) {
+        errno = -EFAULT;
+        return;
+    }
+
+    unix_socket_t *s0 = sock_alloc(type);
+    unix_socket_t *s1 = sock_alloc(type);
+    if (!s0 || !s1) {
+        if (s0) { kernel_free(s0->buffer); kernel_free(s0); }
+        if (s1) { kernel_free(s1->buffer); kernel_free(s1); }
+        errno = -ENOMEM;
+        return;
+    }
+
+    s0->peer = s1;
+    s1->peer = s0;
+    s0->state = SOCK_STATE_CONNECTED;
+    s1->state = SOCK_STATE_CONNECTED;
+
+    int fd0 = sock_make_fd(s0, O_RDWR);
+    if (fd0 < 0) {
+        kernel_free(s0->buffer); kernel_free(s0);
+        kernel_free(s1->buffer); kernel_free(s1);
+        errno = fd0;
+        return;
+    }
+    int fd1 = sock_make_fd(s1, O_RDWR);
+    if (fd1 < 0) {
+        close_fd(current_task, fd0);
+        kernel_free(s1->buffer); kernel_free(s1);
+        errno = fd1;
+        return;
+    }
+
+    int sv[2] = { fd0, fd1 };
+    if (copy_to_user(current_task->address_space, sv_addr, sv, sizeof(sv)) != 0) {
+        close_fd(current_task, fd0);
+        close_fd(current_task, fd1);
+        errno = -EFAULT;
+        return;
+    }
+    errno = 0;
+}
+
 static void sys_dup(uint32_t arg2, uint32_t arg3) {
     int oldfd = (int)arg2;
     int newfd = (int)arg3;
@@ -854,6 +1270,11 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
         destroy_address_space(oldas);
         if (exec_mode & S_ISUID) current_task->euid = exec_uid;
         if (exec_mode & S_ISGID) current_task->egid = exec_gid;
+        /* reset caught signal handlers — old addresses are stale in the new image */
+        for (int i = 0; i < 16; i++)
+            current_task->signal_handlers[i] = 0;
+        current_task->signal_bitmask = 0;
+        current_task->in_signal_handler = 0;
         printfs(PRINT_STATUS_DEBUG, "execve: executing %s, pid=%d\n", path, current_task->pid);
         kernel_free(argv);
         kernel_free(envp);
@@ -1118,6 +1539,23 @@ static void sys_sigret(processor_context_t *ctx) {
 static void sys_pause(void) {
     task_yield(0);
     return;
+}
+
+static void sys_alarm(uint32_t seconds) {
+    lock_scheduler();
+
+    uint32_t old = current_task->alarm_ticks;
+    /* convert remaining ticks back to seconds (round up) for return value */
+    uint32_t old_seconds = old ? (old + 999) / 1000 : 0;
+
+    if (seconds == 0)
+        current_task->alarm_ticks = 0;   /* cancel pending alarm */
+    else
+        current_task->alarm_ticks = seconds * 1000;  /* PIT is 1000 Hz */
+
+    unlock_scheduler();
+
+    errno = (int)old_seconds;
 }
 
 static void sys_shm_create(uint32_t arg2) {
@@ -1822,7 +2260,7 @@ static void sys_umask(uint32_t arg2) {
 static void sys_uname(uint32_t arg2) {
     struct utsname buf;
     char version[16];
-    snprintf(version, sizeof(version), "%d.%d.%d",KERNEL_VERSION_LOW, KERNEL_VERSION_MID, KERNEL_VERSION_HIGH);
+    snprintf(version, sizeof(version), "%d.%d.%d",KERNEL_VERSION_HIGH, KERNEL_VERSION_MID, KERNEL_VERSION_LOW);
     strncpy(buf.sysname, "Serotonin", sizeof(buf.sysname));
     strncpy(buf.nodename, kernel_hostname, sizeof(buf.nodename));
     strncpy(buf.release, (const char *)version, sizeof(buf.release));
@@ -2022,6 +2460,407 @@ static void sys_5ht_pty_setpgrp(uint32_t arg2) {
     errno = 0;
 }
 
+static int fd_poll_check_task(process_control_block_t *task, int fd) {
+    int revents = 0;
+
+    if (fd == 0 && task->fd_table[0] == NULL) {
+        pty_t *pty = &pty_table[active_vty];
+        if (!pty->attr.icanon) {
+            if (pty->input_ring.data_len > 0)
+                revents |= POLLIN;
+        } else {
+            for (uint32_t i = 0; i < pty->input_ring.data_len; i++) {
+                uint32_t pos = (pty->input_ring.read_pos + i) % PTY_RING_SIZE;
+                if (pty->input_ring.buf[pos] == '\n') {
+                    revents |= POLLIN;
+                    break;
+                }
+            }
+        }
+        revents |= POLLOUT;
+        return revents;
+    }
+
+    if ((fd == 1 || fd == 2) && task->fd_table[fd] == NULL) {
+        revents |= POLLOUT;
+        return revents;
+    }
+
+    if (fd < 0 || fd >= FD_MAX || task->fd_table[fd] == NULL)
+        return POLLNVAL;
+
+    file_handle_t *handle = task->fd_table[fd];
+    vfs_node_t *node = handle->node;
+    if (!node)
+        return POLLNVAL;
+
+    if (node->flags & VFS_FLAG_PIPE) {
+        pipe_endpoint_t *ep = (pipe_endpoint_t*)node->fs_data;
+        if (ep && ep->pipe) {
+            pipe_state_t *p = ep->pipe;
+            if (ep->is_read_end) {
+                if (p->data_len > 0)   revents |= POLLIN;
+                if (p->writers == 0)   revents |= POLLHUP;
+            } else {
+                if (p->data_len < p->size) revents |= POLLOUT;
+                if (p->readers == 0)       revents |= POLLERR;
+            }
+        }
+        return revents;
+    }
+
+    if (node->flags & VFS_FLAG_SOCKET) {
+        sock_endpoint_t *sep = (sock_endpoint_t*)node->fs_data;
+        if (sep && sep->sock) {
+            unix_socket_t *s = sep->sock;
+
+            if (s->state == SOCK_STATE_LISTENING) {
+                if (s->backlog_count > 0) revents |= POLLIN;
+                return revents;
+            }
+
+            if (s->data_len > 0)
+                revents |= POLLIN;
+
+            if (s->type == SOCK_DGRAM) {
+                revents |= POLLOUT;
+            } else if (s->peer) {
+                if (s->peer->data_len < s->peer->buf_size)
+                    revents |= POLLOUT;
+            }
+
+            if (s->state == SOCK_STATE_CLOSED ||
+                (s->type == SOCK_STREAM && !s->peer))
+                revents |= POLLHUP;
+        }
+        return revents;
+    }
+
+    pty_t *pty = pty_from_node(node);
+    if (pty) {
+        int is_master = (node == pty->master_node) ||
+                        (node->ops != NULL && node->ops == pty->master_node->ops &&
+                         node->fs_data == pty->master_node->fs_data);
+        if (is_master) {
+            if (pty->output_ring.data_len > 0) revents |= POLLIN;
+            revents |= POLLOUT;
+        } else {
+            if (pty->input_ring.data_len > 0) revents |= POLLIN;
+            revents |= POLLOUT;
+        }
+        return revents;
+    }
+
+    if ((node->flags & VFS_FLAG_FILE) && node->fs_data) {
+        devfs_file_t *devfile = (devfs_file_t *)node->fs_data;
+        if (devfile->ops && devfile->ops->poll) {
+            revents |= devfile->ops->poll(node);
+            return revents;
+        }
+    }
+
+    revents |= POLLIN | POLLOUT;
+    return revents;
+}
+
+static int fd_poll_check(int fd) {
+    return fd_poll_check_task(current_task, fd);
+}
+
+static void poll_waiter_add(poll_waiter_t *w) {
+    w->next = poll_waiters_head;
+    poll_waiters_head = w;
+}
+
+static void poll_waiter_remove(poll_waiter_t *w) {
+    poll_waiter_t **pp = &poll_waiters_head;
+    while (*pp) {
+        if (*pp == w) { *pp = w->next; return; }
+        pp = &(*pp)->next;
+    }
+}
+
+static int poll_waiter_try_select(poll_waiter_t *w) {
+    kernel_fd_set res_r, res_w, res_e;
+    K_FD_ZERO(&res_r);
+    K_FD_ZERO(&res_w);
+    K_FD_ZERO(&res_e);
+
+    int ready = 0;
+    for (int fd = 0; fd < w->nfds; fd++) {
+        int want_r = w->readfds_ptr   && K_FD_ISSET(fd, &w->readfds);
+        int want_w = w->writefds_ptr  && K_FD_ISSET(fd, &w->writefds);
+        int want_e = w->exceptfds_ptr && K_FD_ISSET(fd, &w->exceptfds);
+        if (!want_r && !want_w && !want_e)
+            continue;
+
+        int events = fd_poll_check_task(w->task, fd);
+        if (want_r && (events & (POLLIN | POLLHUP | POLLERR))) {
+            K_FD_SET(fd, &res_r); ready++;
+        }
+        if (want_w && (events & POLLOUT)) {
+            K_FD_SET(fd, &res_w); ready++;
+        }
+        if (want_e && (events & POLLERR)) {
+            K_FD_SET(fd, &res_e); ready++;
+        }
+    }
+
+    if (ready > 0 || (w->has_timeout && timer_ticks >= w->deadline)) {
+        if (w->readfds_ptr)
+            copy_to_user(w->task->address_space, w->readfds_ptr, &res_r, sizeof(kernel_fd_set));
+        if (w->writefds_ptr)
+            copy_to_user(w->task->address_space, w->writefds_ptr, &res_w, sizeof(kernel_fd_set));
+        if (w->exceptfds_ptr)
+            copy_to_user(w->task->address_space, w->exceptfds_ptr, &res_e, sizeof(kernel_fd_set));
+        return ready;
+    }
+    return -1;
+}
+
+static int poll_waiter_try_poll(poll_waiter_t *w) {
+    int ready = 0;
+    for (uint32_t i = 0; i < w->poll_nfds; i++) {
+        w->pfds[i].revents = 0;
+        if (w->pfds[i].fd < 0) continue;
+
+        int events = fd_poll_check_task(w->task, w->pfds[i].fd);
+        int16_t rev = 0;
+        if (events & POLLNVAL) { rev = POLLNVAL; }
+        else {
+            if ((w->pfds[i].events & POLLIN)  && (events & POLLIN))  rev |= POLLIN;
+            if ((w->pfds[i].events & POLLOUT) && (events & POLLOUT)) rev |= POLLOUT;
+            if (events & POLLERR) rev |= POLLERR;
+            if (events & POLLHUP) rev |= POLLHUP;
+        }
+        w->pfds[i].revents = rev;
+        if (rev) ready++;
+    }
+
+    if (ready > 0 || (w->has_timeout && timer_ticks >= w->deadline)) {
+        uint32_t pfd_size = w->poll_nfds * sizeof(struct kernel_pollfd);
+        copy_to_user(w->task->address_space, w->poll_fds_ptr, w->pfds, pfd_size);
+        return ready;
+    }
+    return -1;
+}
+
+void poll_waiter_tick(void) {
+    poll_waiter_t *w = poll_waiters_head;
+    while (w) {
+        poll_waiter_t *next = w->next;
+
+        int rc;
+        if (w->type == POLL_WAITER_SELECT)
+            rc = poll_waiter_try_select(w);
+        else
+            rc = poll_waiter_try_poll(w);
+
+        if (rc >= 0) {
+            w->task->processor_context->eax = (uint32_t)rc;
+            poll_waiter_remove(w);
+            if (w->type == POLL_WAITER_POLL && w->pfds)
+                kernel_free(w->pfds);
+            task_unblock(w->task);
+            kernel_free(w);
+        }
+        w = next;
+    }
+}
+
+static void sys_select(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+    int nfds = (int)arg2;
+    uint32_t args_ptr = arg3;
+
+    if (nfds < 0 || nfds > FD_SETSIZE) {
+        errno = -EINVAL;
+        return;
+    }
+
+    uint32_t args[4];
+    if (copy_from_user(current_task->address_space, args, args_ptr, sizeof(args)) != 0) {
+        errno = -EFAULT;
+        return;
+    }
+
+    uint32_t readfds_ptr   = args[0];
+    uint32_t writefds_ptr  = args[1];
+    uint32_t exceptfds_ptr = args[2];
+    uint32_t timeout_ptr   = args[3];
+
+    kernel_fd_set readfds, writefds, exceptfds;
+    K_FD_ZERO(&readfds);
+    K_FD_ZERO(&writefds);
+    K_FD_ZERO(&exceptfds);
+
+    if (readfds_ptr) {
+        if (copy_from_user(current_task->address_space, &readfds, readfds_ptr, sizeof(kernel_fd_set)) != 0) {
+            errno = -EFAULT; return;
+        }
+    }
+    if (writefds_ptr) {
+        if (copy_from_user(current_task->address_space, &writefds, writefds_ptr, sizeof(kernel_fd_set)) != 0) {
+            errno = -EFAULT; return;
+        }
+    }
+    if (exceptfds_ptr) {
+        if (copy_from_user(current_task->address_space, &exceptfds, exceptfds_ptr, sizeof(kernel_fd_set)) != 0) {
+            errno = -EFAULT; return;
+        }
+    }
+
+    int has_timeout = 0;
+    uint64_t deadline = 0;
+    if (timeout_ptr) {
+        struct kernel_timeval tv;
+        if (copy_from_user(current_task->address_space, &tv, timeout_ptr, sizeof(tv)) != 0) {
+            errno = -EFAULT; return;
+        }
+        has_timeout = 1;
+        uint64_t timeout_ms = (uint64_t)tv.tv_sec * 1000 + (uint64_t)(tv.tv_usec / 1000);
+        if (timeout_ms == 0) has_timeout = 2;
+        deadline = timer_ticks + timeout_ms;
+    }
+
+    kernel_fd_set res_r, res_w, res_e;
+    K_FD_ZERO(&res_r);
+    K_FD_ZERO(&res_w);
+    K_FD_ZERO(&res_e);
+
+    int ready = 0;
+    for (int fd = 0; fd < nfds; fd++) {
+        int want_r = readfds_ptr   && K_FD_ISSET(fd, &readfds);
+        int want_w = writefds_ptr  && K_FD_ISSET(fd, &writefds);
+        int want_e = exceptfds_ptr && K_FD_ISSET(fd, &exceptfds);
+        if (!want_r && !want_w && !want_e)
+            continue;
+
+        int events = fd_poll_check(fd);
+        if (events & POLLNVAL) { errno = -EBADF; return; }
+        if (want_r && (events & (POLLIN | POLLHUP | POLLERR))) {
+            K_FD_SET(fd, &res_r); ready++;
+        }
+        if (want_w && (events & POLLOUT)) {
+            K_FD_SET(fd, &res_w); ready++;
+        }
+        if (want_e && (events & POLLERR)) {
+            K_FD_SET(fd, &res_e); ready++;
+        }
+    }
+
+    if (ready > 0 || has_timeout == 2) {
+        if (readfds_ptr)
+            copy_to_user(current_task->address_space, readfds_ptr, &res_r, sizeof(kernel_fd_set));
+        if (writefds_ptr)
+            copy_to_user(current_task->address_space, writefds_ptr, &res_w, sizeof(kernel_fd_set));
+        if (exceptfds_ptr)
+            copy_to_user(current_task->address_space, exceptfds_ptr, &res_e, sizeof(kernel_fd_set));
+        errno = ready;
+        return;
+    }
+
+    poll_waiter_t *w = kernel_malloc(sizeof(poll_waiter_t));
+    if (!w) { errno = -ENOMEM; return; }
+
+    w->task          = current_task;
+    w->type          = POLL_WAITER_SELECT;
+    w->has_timeout   = has_timeout;
+    w->deadline      = deadline;
+    w->nfds          = nfds;
+    w->readfds       = readfds;
+    w->writefds      = writefds;
+    w->exceptfds     = exceptfds;
+    w->readfds_ptr   = readfds_ptr;
+    w->writefds_ptr  = writefds_ptr;
+    w->exceptfds_ptr = exceptfds_ptr;
+    w->pfds          = NULL;
+    w->poll_nfds     = 0;
+    w->poll_fds_ptr  = 0;
+
+    lock_scheduler();
+    poll_waiter_add(w);
+    current_task->state = PROCESS_STATE_BLOCKED;
+    unlock_scheduler();
+    task_yield(1);
+    __builtin_unreachable();
+}
+
+static void sys_poll(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+    uint32_t fds_ptr = arg2;
+    uint32_t nfds    = arg3;
+    int32_t  timeout = (int32_t)arg4;
+
+    if (nfds > FD_SETSIZE) {
+        errno = -EINVAL;
+        return;
+    }
+
+    if (nfds == 0) {
+        errno = 0;
+        return;
+    }
+
+    uint32_t pfd_size = nfds * sizeof(struct kernel_pollfd);
+    struct kernel_pollfd *pfds = kernel_malloc(pfd_size);
+    if (!pfds) { errno = -ENOMEM; return; }
+
+    if (copy_from_user(current_task->address_space, pfds, fds_ptr, pfd_size) != 0) {
+        kernel_free(pfds);
+        errno = -EFAULT;
+        return;
+    }
+
+    int ready = 0;
+    for (uint32_t i = 0; i < nfds; i++) {
+        pfds[i].revents = 0;
+        if (pfds[i].fd < 0) continue;
+
+        int events = fd_poll_check(pfds[i].fd);
+        int16_t rev = 0;
+        if (events & POLLNVAL) { rev = POLLNVAL; }
+        else {
+            if ((pfds[i].events & POLLIN)  && (events & POLLIN))  rev |= POLLIN;
+            if ((pfds[i].events & POLLOUT) && (events & POLLOUT)) rev |= POLLOUT;
+            if (events & POLLERR) rev |= POLLERR;
+            if (events & POLLHUP) rev |= POLLHUP;
+        }
+        pfds[i].revents = rev;
+        if (rev) ready++;
+    }
+
+    if (ready > 0 || timeout == 0) {
+        copy_to_user(current_task->address_space, fds_ptr, pfds, pfd_size);
+        kernel_free(pfds);
+        errno = ready;
+        return;
+    }
+
+    poll_waiter_t *w = kernel_malloc(sizeof(poll_waiter_t));
+    if (!w) { kernel_free(pfds); errno = -ENOMEM; return; }
+
+    w->task          = current_task;
+    w->type          = POLL_WAITER_POLL;
+    w->has_timeout   = (timeout >= 0);
+    w->deadline      = (timeout >= 0) ? timer_ticks + (uint64_t)timeout : 0;
+    w->pfds          = pfds;
+    w->poll_nfds     = nfds;
+    w->poll_fds_ptr  = fds_ptr;
+    w->nfds          = 0;
+    K_FD_ZERO(&w->readfds);
+    K_FD_ZERO(&w->writefds);
+    K_FD_ZERO(&w->exceptfds);
+    w->readfds_ptr   = 0;
+    w->writefds_ptr  = 0;
+    w->exceptfds_ptr = 0;
+
+    lock_scheduler();
+    poll_waiter_add(w);
+    current_task->state = PROCESS_STATE_BLOCKED;
+    unlock_scheduler();
+    task_yield(1);
+    __builtin_unreachable();
+}
+
 /**
  * @brief Handle system calls.
  *
@@ -2217,6 +3056,42 @@ void system_call(processor_context_t *ctx) {
         case SYSTEM_CALL_5HT_PTY_SETPGRP:
             sys_5ht_pty_setpgrp(arg2);
             break;
+        case SYSTEM_CALL_ALARM:
+            sys_alarm(arg2);
+            break;
+        case SYSTEM_CALL_SOCKET:
+            sys_socket(arg2, arg3);
+            break;
+        case SYSTEM_CALL_BIND:
+            sys_bind(arg2, arg3, arg4);
+            break;
+        case SYSTEM_CALL_LISTEN:
+            sys_listen(arg2, arg3);
+            break;
+        case SYSTEM_CALL_ACCEPT:
+            sys_accept(arg2, arg3, arg4);
+            break;
+        case SYSTEM_CALL_CONNECT:
+            sys_connect(arg2, arg3, arg4);
+            break;
+        case SYSTEM_CALL_SEND:
+            sys_send(arg2, arg3, arg4);
+            break;
+        case SYSTEM_CALL_RECV:
+            sys_recv(arg2, arg3, arg4);
+            break;
+        case SYSTEM_CALL_SHUTDOWN:
+            sys_shutdown(arg2, arg3);
+            break;
+        case SYSTEM_CALL_SOCKETPAIR:
+            sys_socketpair(arg2, arg3);
+            break;
+        case SYSTEM_CALL_SELECT:
+            sys_select(arg2, arg3, arg4);
+            break;
+        case SYSTEM_CALL_POLL:
+            sys_poll(arg2, arg3, arg4);
+            break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);
             __builtin_unreachable();
@@ -2224,7 +3099,14 @@ void system_call(processor_context_t *ctx) {
 
     ctx->eax = errno;
 
+    /* lock scheduler so the PIT alarm loop cannot race with
+       signal_bitmask read-modify-write or with task_exit's
+       task_list manipulation if a default-action signal kills
+       the task here.  switch_task resets lock_count if we
+       never return (task_exit path). */
+    lock_scheduler();
     task_ipc_deliver_signals(current_task, ctx);
+    unlock_scheduler();
 
     printfs(PRINT_STATUS_DEBUG, "[SYSCALL] exiting kernel\n");
 
