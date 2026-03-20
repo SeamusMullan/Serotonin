@@ -1,0 +1,4 @@
+# HTTP server - needs network to be up
+exec=/bin/httpd
+type=daemon
+after=lwipd

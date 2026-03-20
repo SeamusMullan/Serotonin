@@ -1,0 +1,3 @@
+exec=/bin/getty /dev/pts/0
+type=daemon
+after=lwipd,httpd

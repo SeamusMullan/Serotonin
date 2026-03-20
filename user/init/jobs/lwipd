@@ -1,0 +1,5 @@
+# Network daemon - ready when DHCP assigns an IP
+exec=/bin/lwipd
+type=daemon
+ready=stdout:lwipd: ready
+after=slowstart

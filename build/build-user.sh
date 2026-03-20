@@ -50,6 +50,13 @@ i686-elf-gcc -c games/sponk/sponk.c -o games/sponk/sponk.o $CFLAGS
 i686-elf-gcc -c opl2_editor/opl2_editor.c -o opl2_editor/opl2_editor.o $CFLAGS
 i686-elf-gcc -c getty/getty.c -o getty/getty.o $CFLAGS
 i686-elf-gcc -c fetch.c -o fetch.o $CFLAGS
+i686-elf-gcc -c nettest.c -o nettest.o $CFLAGS
+i686-elf-gcc -c socket_test.c -o socket_test.o $CFLAGS
+i686-elf-gcc -c ifconfig.c -o ifconfig.o $CFLAGS -Ilwip/serotonin
+i686-elf-gcc -c ping.c -o ping.o $CFLAGS -Ilwip/serotonin
+i686-elf-gcc -c httpd.c -o httpd.o $CFLAGS -Ilwip/serotonin
+i686-elf-gcc -c seriald.c -o seriald.o $CFLAGS
+i686-elf-gcc -c initctl.c -o initctl.o $CFLAGS -Iinit
 
 # --- Link C programs ---
 
@@ -73,6 +80,77 @@ i686-elf-gcc $LDFLAGS $CRT0 kb_test.o $LDLIBS -o kbtest.elf
 i686-elf-gcc $LDFLAGS $CRT0 opl2_editor/opl2_editor.o $LDLIBS -o opl2edit.elf
 i686-elf-gcc $LDFLAGS $CRT0 getty/getty.o $LDLIBS -o getty.elf
 i686-elf-gcc $LDFLAGS $CRT0 fetch.o $LDLIBS -o fetch.elf
+i686-elf-gcc $LDFLAGS $CRT0 nettest.o $LDLIBS -o nettest.elf
+i686-elf-gcc $LDFLAGS $CRT0 socket_test.o $LDLIBS -o socktest.elf
+i686-elf-gcc $LDFLAGS $CRT0 seriald.o $LDLIBS -o seriald.elf
+i686-elf-gcc $LDFLAGS $CRT0 initctl.o $LDLIBS -o initctl.elf
+
+# ifconfig (uses lwip client library)
+i686-elf-gcc -c lwip/serotonin/lwip_client.c -o lwip/serotonin/lwip_client.o $CFLAGS
+i686-elf-gcc $LDFLAGS $CRT0 ifconfig.o lwip/serotonin/lwip_client.o $LDLIBS -o ifconfig.elf
+i686-elf-gcc $LDFLAGS $CRT0 ping.o lwip/serotonin/lwip_client.o $LDLIBS -o ping.elf
+i686-elf-gcc $LDFLAGS $CRT0 httpd.o lwip/serotonin/lwip_client.o $LDLIBS -o httpd.elf
+
+# --- lwIP network daemon ---
+
+echo "Building lwIP network daemon..."
+
+LWIP_DIR="lwip/src"
+LWIP_PORT="lwip/serotonin"
+LWIP_INCLUDES="-I${LWIP_PORT} -I${LWIP_PORT}/arch -I${LWIP_DIR}/include"
+
+# lwIP core sources (NO_SYS=1: no api/ files except err.c)
+LWIP_SRCS="
+    ${LWIP_DIR}/core/init.c
+    ${LWIP_DIR}/core/def.c
+    ${LWIP_DIR}/core/dns.c
+    ${LWIP_DIR}/core/inet_chksum.c
+    ${LWIP_DIR}/core/ip.c
+    ${LWIP_DIR}/core/mem.c
+    ${LWIP_DIR}/core/memp.c
+    ${LWIP_DIR}/core/netif.c
+    ${LWIP_DIR}/core/pbuf.c
+    ${LWIP_DIR}/core/raw.c
+    ${LWIP_DIR}/core/stats.c
+    ${LWIP_DIR}/core/sys.c
+    ${LWIP_DIR}/core/altcp.c
+    ${LWIP_DIR}/core/altcp_alloc.c
+    ${LWIP_DIR}/core/altcp_tcp.c
+    ${LWIP_DIR}/core/tcp.c
+    ${LWIP_DIR}/core/tcp_in.c
+    ${LWIP_DIR}/core/tcp_out.c
+    ${LWIP_DIR}/core/timeouts.c
+    ${LWIP_DIR}/core/udp.c
+    ${LWIP_DIR}/core/ipv4/autoip.c
+    ${LWIP_DIR}/core/ipv4/dhcp.c
+    ${LWIP_DIR}/core/ipv4/etharp.c
+    ${LWIP_DIR}/core/ipv4/icmp.c
+    ${LWIP_DIR}/core/ipv4/igmp.c
+    ${LWIP_DIR}/core/ipv4/ip4_frag.c
+    ${LWIP_DIR}/core/ipv4/ip4.c
+    ${LWIP_DIR}/core/ipv4/ip4_addr.c
+    ${LWIP_DIR}/netif/ethernet.c
+    ${LWIP_DIR}/api/err.c
+"
+
+# Serotonin port sources
+LWIP_PORT_SRCS="
+    ${LWIP_PORT}/serotonin_netif.c
+    ${LWIP_PORT}/lwip_daemon.c
+"
+
+# Compile all lwIP source files
+LWIP_OBJS=""
+for src in $LWIP_SRCS $LWIP_PORT_SRCS; do
+    obj="${src%.c}.o"
+    i686-elf-gcc -c "$src" -o "$obj" $CFLAGS $LWIP_INCLUDES -Wno-address
+    LWIP_OBJS="$LWIP_OBJS $obj"
+done
+
+# Link lwIP daemon
+i686-elf-gcc $LDFLAGS $CRT0 $LWIP_OBJS $LDLIBS -o lwipd.elf
+
+echo "lwIP daemon build complete: lwipd.elf"
 
 # --- C++ programs ---
 

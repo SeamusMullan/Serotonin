@@ -1,0 +1,3 @@
+exec=/bin/seriald
+type=daemon
+after=lwipd,httpd

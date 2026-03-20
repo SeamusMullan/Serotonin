@@ -15,6 +15,7 @@ docs/Doxyfile
 user/init/init
 user/init/test
 newlib/
+user/lwip
 
 *.aux
 *.log
