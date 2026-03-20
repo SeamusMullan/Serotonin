@@ -12,6 +12,7 @@
 #define VFS_FLAG_DIRECTORY 0x2
 #define VFS_FLAG_SYMLINK   0x4
 #define VFS_FLAG_PIPE      0x8
+#define VFS_FLAG_SOCKET    0x10
 
 typedef struct vfs_node vfs_node_t;
 typedef struct vfs_ops vfs_ops_t;
@@ -58,6 +59,7 @@ typedef struct vfs_ops {
     vfs_node_t *(*finddir)(vfs_node_t *node, const char *name);
     vfs_node_t *(*create)(vfs_node_t *parent, const char *name);
     vfs_node_t *(*mkdir)(vfs_node_t *parent, const char *name);
+    int (*poll)(vfs_node_t *node);  /* returns POLLIN/POLLOUT bitmask, or 0 */
 } vfs_ops_t;
 
 /**

@@ -82,16 +82,37 @@ typedef struct fat_dir_entry {
     uint32_t file_size;
 } __attribute__((packed)) fat_dir_entry_t;
 
+typedef struct fat_lfn_entry {
+    uint8_t  order;        // Sequence number (OR'd with 0x40 for last)
+    uint16_t name1[5];     // Characters 1-5 (UCS-2)
+    uint8_t  attr;         // Always 0x0F
+    uint8_t  type;         // Always 0x00 for LFN
+    uint8_t  checksum;     // Checksum of short name
+    uint16_t name2[6];     // Characters 6-11 (UCS-2)
+    uint16_t first_cluster; // Always 0x0000
+    uint16_t name3[2];     // Characters 12-13 (UCS-2)
+} __attribute__((packed)) fat_lfn_entry_t;
+
 // FAT32 end-of-chain marker
 #define FAT32_CLUSTER_END     0x0FFFFFF8
 
 // Directory entry attribute bits
+#define FAT32_ATTR_READ_ONLY  0x01   // Read-only entry
+#define FAT32_ATTR_HIDDEN     0x02   // Hidden entry
+#define FAT32_ATTR_SYSTEM     0x04   // System entry
 #define FAT32_ATTR_VOLUME_ID  0x08   // Volume label entry
 #define FAT32_ATTR_DIRECTORY  0x10   // Directory entry
+#define FAT32_ATTR_ARCHIVE    0x20   // Archive entry
+#define FAT32_ATTR_LFN        0x0F   // Long file name entry
+
+// Maximum LFN length (255 UCS-2 characters)
+#define FAT32_LFN_MAX         255
 
 
 void fat32_init(void);
 static void fat32_parse_bpb(fat32_fs_info_t *info, uint8_t drive, uint32_t partition_start_lba, uint8_t *boot_sector);
+static void fat32_read_cluster(fat32_fs_info_t *fs_info, uint32_t cluster, uint8_t *buffer);
+static uint32_t fat32_read_fat_entry(fat32_fs_info_t *fs_info, uint32_t cluster);
 extern vfs_node_t *fat32_mount(const char *device);
 extern vfs_node_t *fat32_readdir(vfs_node_t *node, uint32_t index);
 static vfs_node_t *fat32_finddir(vfs_node_t *node, const char *name);
