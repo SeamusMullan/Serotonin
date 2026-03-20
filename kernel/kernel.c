@@ -29,6 +29,8 @@
 #include "device/mouse/dev_mouse.h"
 #include "device/keyboard/dev_keyboard.h"
 #include "pty/pty.h"
+#include "io/pci/pci.h"
+#include "device/pci_drivers.h"
 
 
 #define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
@@ -856,6 +858,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     serial_puts(COM1_BASE,"init_high: remapping pic\n");
 
     pic_remap(0x20, 0x28);
+    irq_install_defaults();
 
     serial_puts(COM1_BASE,"init_high: initializing idt\n");
 
@@ -972,6 +975,12 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     if (vfs_mount("tmpfs", "/tmp", "tmpfs") != 0) {
         kernel_panic("unable to mount tmpfs on /tmp");
     }
+
+    printfs(PRINT_STATUS_INFO,"pci: init\n");
+    vbe_flip();
+
+    pci_init();
+    pci_drivers_init();
 
     printfs(PRINT_STATUS_INFO,"devices: mouse init\n");
     vbe_flip();

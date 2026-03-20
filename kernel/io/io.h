@@ -6,6 +6,7 @@
 #define MILLISECONDS_TO_TICKS(ms) (ms)
 #define STDIO_INPUT_BUFFER 1024
 #define SCHEDULE_QUANTUM MILLISECONDS_TO_TICKS(10)
+#define IRQ_MAX 16
 #define IRQ_PIT 0
 #define IRQ_KEYBOARD  1
 #define IRQ_SERIAL 4
@@ -186,6 +187,28 @@ static inline uint8_t bcd_to_bin(uint8_t val) {
     return (val & 0x0F) + ((val >> 4) * 10);
 }
 
+/**
+ * @brief Input a 32-bit dword from a port.
+ *
+ * @param port The port number.
+ * @return uint32_t The value read from the port.
+ */
+static inline uint32_t inl(uint16_t port) {
+    uint32_t ret;
+    asm volatile ("inl %1, %0" : "=a"(ret) : "Nd"(port));
+    return ret;
+}
+
+/**
+ * @brief Output a 32-bit dword to a port.
+ *
+ * @param port The port number.
+ * @param val The value to output.
+ */
+static inline void outl(uint16_t port, uint32_t val) {
+    asm volatile ("outl %0, %1" : : "a"(val), "Nd"(port));
+}
+
 static inline void io_wait_input_clear() {
     while (inb(PS2_STATUS_PORT) & 0x02);
 }
@@ -200,7 +223,12 @@ static inline void io_wait_output_full() {
  * @param irq The IRQ number.
  * @param ctx The processor context.
  */
+typedef void (*irq_handler_fn)(int irq, processor_context_t *ctx);
+
 void irq_handler(int irq, processor_context_t *ctx);
+void irq_register(int irq, irq_handler_fn handler);
+void irq_unregister(int irq);
+void irq_install_defaults(void);
 void pic_remap(int offset1, int offset2);
 void handle_scancode(uint8_t scancode);
 void rtc_init(void);

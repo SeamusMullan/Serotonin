@@ -898,11 +898,14 @@ int copy_to_user(address_space_t *as, uint32_t dst, const void *src, size_t len)
         if (chunk > len)
             chunk = len;
 
-        clear_interrupts();
+        uint32_t eflags;
+        asm volatile("pushfl; popl %0" : "=r"(eflags));
+        int ints_were_on = eflags & 0x200;
+        if (ints_were_on) clear_interrupts();
         uint8_t *dst_k = (uint8_t *)kmap(phys);
         memcpy(dst_k + off, src_bytes, chunk);
         kunmap();
-        enable_interrupts();
+        if (ints_were_on) enable_interrupts();
 
         dst += (uint32_t)chunk;
         src_bytes += chunk;
@@ -943,11 +946,14 @@ int copy_from_user(address_space_t *as, void *dst, uint32_t src, size_t len) {
         if (chunk > len)
             chunk = len;
 
-        clear_interrupts();
+        uint32_t eflags;
+        asm volatile("pushfl; popl %0" : "=r"(eflags));
+        int ints_were_on = eflags & 0x200;
+        if (ints_were_on) clear_interrupts();
         uint8_t *src_k = (uint8_t *)kmap(phys);
         memcpy(dst_bytes, src_k + off, chunk);
         kunmap();
-        enable_interrupts();
+        if (ints_were_on) enable_interrupts();
 
         src += (uint32_t)chunk;
         dst_bytes += chunk;

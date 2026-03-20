@@ -78,6 +78,22 @@ extern page_directory_t page_directory;
 
 extern uintptr_t page_dir_ptr;
 void paging_init(uintptr_t fb_phys_base);
-void *phys_to_virt(uintptr_t phys_addr);
+
+static inline uint32_t virt_to_phys(void *virt) {
+    uintptr_t v = (uintptr_t)virt;
+    if (v >= KERNEL_HEAP_VMA && v < KERNEL_HEAP_VMA + KERNEL_HEAP_SIZE)
+        return (uint32_t)(v - KERNEL_HEAP_VMA + KERNEL_HEAP_PHYS);
+    if (v >= KERNEL_VMA_BASE && v < KERNEL_HEAP_VMA)
+        return (uint32_t)(v - KERNEL_VMA_BASE + KERNEL_PHYS_BASE);
+    return (uint32_t)v;
+}
+
+static inline void *phys_to_virt(uintptr_t phys) {
+    if (phys >= KERNEL_HEAP_PHYS && phys < KERNEL_HEAP_PHYS + KERNEL_HEAP_SIZE)
+        return (void *)(phys - KERNEL_HEAP_PHYS + KERNEL_HEAP_VMA);
+    if (phys >= KERNEL_PHYS_BASE && phys < KERNEL_HEAP_PHYS)
+        return (void *)(phys - KERNEL_PHYS_BASE + KERNEL_VMA_BASE);
+    return (void *)phys;
+}
 
 #endif
