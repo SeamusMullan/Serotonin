@@ -13,8 +13,8 @@
 #define VBE_FONT_HEIGHT 16
 #define VBE_NUM_Z_LAYERS 16
 
-#define SCREEN_WIDTH 1280
-#define SCREEN_HEIGHT 800
+#define SCREEN_WIDTH 1920
+#define SCREEN_HEIGHT 1080
 
 extern uint32_t vbe_palette[256];
 

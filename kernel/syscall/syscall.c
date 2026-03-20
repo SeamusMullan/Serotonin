@@ -2543,6 +2543,7 @@ static int fd_poll_check_task(process_control_block_t *task, int fd) {
                          node->fs_data == pty->master_node->fs_data);
         if (is_master) {
             if (pty->output_ring.data_len > 0) revents |= POLLIN;
+            if (pty->slave_refcount == 0) revents |= POLLHUP;
             revents |= POLLOUT;
         } else {
             if (pty->input_ring.data_len > 0) revents |= POLLIN;

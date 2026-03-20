@@ -28,6 +28,7 @@
 #include "device/devfs_example.h"
 #include "device/mouse/dev_mouse.h"
 #include "device/keyboard/dev_keyboard.h"
+#include "device/serial/dev_serial.h"
 #include "pty/pty.h"
 #include "io/pci/pci.h"
 #include "device/pci_drivers.h"
@@ -511,8 +512,8 @@ void kernel_panic(char* str) {
     asm volatile ("mov %%cr4, %0" : "=r"(cr4));
     asm volatile ("str %0" : "=r"(tr));;
 
-    for (int y = 0; y < SCREEN_HEIGHT; ++y)
-        for (int x = 0; x < SCREEN_WIDTH; ++x)
+    for (uint32_t y = 0; y < vbe_info.height; ++y)
+        for (uint32_t x = 0; x < vbe_info.width; ++x)
             vbe_fast_putpixel(x, y, 0xFF5A000F);
 
     vbe_set_cursor(0,0);
@@ -990,6 +991,10 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     printfs(PRINT_STATUS_INFO,"devices: keyboard init\n");
     vbe_flip();
     dev_keyboard_init();
+
+    printfs(PRINT_STATUS_INFO,"devices: serial init\n");
+    vbe_flip();
+    dev_serial_init();
 
     multitasking_init();
 

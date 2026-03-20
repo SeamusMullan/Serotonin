@@ -44,7 +44,9 @@ extern page_directory_t page_directory;
 #define KERNEL_HEAP_SIZE ((uint32_t)(256 * 1024 * 1024U)) // 256 MB heap
 
 #define FB_VMA_BASE      0xE0000000U   // virtual base for the framebuffer mapping
-#define LAYER_PDE_BASE   ((FB_VMA_BASE >> 22) + 1)
+#define FB_MAX_SIZE      (1920U * 1080U * 4U) // max framebuffer size in bytes
+#define FB_PDE_COUNT     ((FB_MAX_SIZE + 0x3FFFFFU) / 0x400000U)
+#define LAYER_PDE_BASE   ((FB_VMA_BASE >> 22) + FB_PDE_COUNT)
 #define LAYER_PDE_COUNT  ((KERNEL_STACK_VMA >> 22) - LAYER_PDE_BASE)
 
 #define USER_SPACE_START 0x00400000U

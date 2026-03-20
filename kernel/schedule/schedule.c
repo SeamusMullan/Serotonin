@@ -299,7 +299,7 @@ void task_exit(process_control_block_t* task_exited, uint8_t exit) {
 
     printfs(PRINT_STATUS_DEBUG, "task_exit: Task %s (pid=%u) exited:%s\n", task_exited->name, task_exited->pid,to_signal_name(exit));
 
-    if (current_task->pid == 1) {
+    if (task_exited->pid == 1) {
         kernel_panic("init died");
     }
 

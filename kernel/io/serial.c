@@ -22,6 +22,9 @@ void serial_init(uint16_t port) {
     printf("its working??\n");
 
     outb(port + SERIAL_MODEM_CTRL, 0x0F);    // Set normal operation mode
+
+    // Enable receive data available interrupt
+    outb(port + SERIAL_INT_ENABLE, 0x01);
 }
 
 void serial_putchar(uint16_t port, char c) {
@@ -33,4 +36,12 @@ void serial_puts(uint16_t port, const char* str) {
     while (*str) {
         serial_putchar(port, (char)*str++);
     }
+}
+
+int serial_data_ready(uint16_t port) {
+    return inb(port + SERIAL_LINE_STATUS) & 0x01;
+}
+
+char serial_getchar(uint16_t port) {
+    return (char)inb(port + SERIAL_RECV_BUFFER);
 }

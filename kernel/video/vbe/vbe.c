@@ -28,7 +28,7 @@ uint32_t dirty_min_y = 0;
 uint32_t dirty_max_x = 0;
 uint32_t dirty_max_y = 0;
 static int vbe_any_dirty = 0;
-uint8_t dirty_lines[SCREEN_HEIGHT];
+uint8_t *dirty_lines;
 vbe_mode_info_t vbe_info = {0};
 uint32_t fb_size_bytes;
 uint32_t vbe_palette[256];
@@ -44,8 +44,8 @@ static fb_layer_metadata_t *vbe_layer_meta[VBE_NUM_Z_LAYERS];
 static uint32_t *vbe_layer_default_bufs[VBE_NUM_Z_LAYERS];
 static inline int vbe_z_valid(uint8_t z) { return (z > 0 && z < VBE_NUM_Z_LAYERS); }
 
-#define DIRTY_BITMAP_SIZE ((SCREEN_WIDTH * SCREEN_HEIGHT + 7) / 8)
-uint8_t dirty_bitmap[DIRTY_BITMAP_SIZE];
+static uint32_t dirty_bitmap_size;
+uint8_t *dirty_bitmap;
 
 uint32_t vbe_colors[16] = {
     0x00000000, // BLACK
@@ -219,6 +219,14 @@ void vbe_init(multiboot_info_t *mbi)
     vbe_info.bpp = bpp;
 
     fb_size_bytes = (uint32_t)height * pitch;
+
+    dirty_lines = (uint8_t *)kernel_malloc(height);
+    memset(dirty_lines, 0, height);
+
+    dirty_bitmap_size = (width * height + 7) / 8;
+    dirty_bitmap = (uint8_t *)kernel_malloc(dirty_bitmap_size);
+    memset(dirty_bitmap, 0, dirty_bitmap_size);
+
     vbe_info.backbuffer = (uint32_t *)kernel_malloc_align(16, fb_size_bytes);
     if (!vbe_info.backbuffer)
     {
@@ -253,7 +261,7 @@ void vbe_init(multiboot_info_t *mbi)
 
 static inline void vbe_mark_pixel_dirty(uint16_t x, uint16_t y)
 {
-    if (x >= SCREEN_WIDTH || y >= SCREEN_HEIGHT)
+    if (x >= vbe_info.width || y >= vbe_info.height)
         return;
 
     // check if outside existing bb and update the points to respect the new bounds
@@ -692,7 +700,7 @@ void vbe_flip(void)
     if (cursor_visible && cursor_blink_on) {
         uint32_t cx = term_cursor_col * VBE_FONT_WIDTH;
         uint32_t cy = term_cursor_row * VBE_FONT_HEIGHT;
-        if (cx + VBE_FONT_WIDTH <= SCREEN_WIDTH && cy + VBE_FONT_HEIGHT <= SCREEN_HEIGHT) {
+        if (cx + VBE_FONT_WIDTH <= vbe_info.width && cy + VBE_FONT_HEIGHT <= vbe_info.height) {
             uint32_t stride = vbe_info.pitch / sizeof(uint32_t);
             uint32_t *bb = vbe_info.backbuffer;
             for (uint32_t row = 0; row < VBE_FONT_HEIGHT; row++) {
@@ -1105,13 +1113,13 @@ void vbe_fast_mark_dirty(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
     if (w == 0 || h == 0)
         return;
 
-    uint32_t index = y * SCREEN_WIDTH + x;
+    uint32_t index = y * vbe_info.width + x;
     dirty_bitmap[index / 8] |= (1 << (index % 8));
 
-    if (x + w > SCREEN_WIDTH)
-        w = SCREEN_WIDTH - x;
-    if (y + h > SCREEN_HEIGHT)
-        h = SCREEN_HEIGHT - y;
+    if (x + w > vbe_info.width)
+        w = vbe_info.width - x;
+    if (y + h > vbe_info.height)
+        h = vbe_info.height - y;
 
     for (uint32_t dy = 0; dy < h; dy++)
     {
@@ -1155,7 +1163,7 @@ void vbe_clear_screen(uint32_t color)
 {
     uint32_t *back_buf = vbe_z_layers[0]->bufptr;
     memset(back_buf, color, fb_size_bytes);
-    vbe_mark_region_dirty(0,0,SCREEN_WIDTH,SCREEN_WIDTH);
+    vbe_mark_region_dirty(0, 0, vbe_info.width, vbe_info.height);
 }
 
 void vbe_z_putpixel(uint32_t z, uint32_t x, uint32_t y, uint32_t color)
@@ -1197,9 +1205,9 @@ void vbe_clear_z_layer(uint32_t z, uint32_t color)
         return;
     memset(vbe_z_layers[z]->bufptr, color, fb_size_bytes);
     dbb->x0 = 0;
-    dbb->x1 = SCREEN_WIDTH-1;
+    dbb->x1 = vbe_info.width - 1;
     dbb->y0 = 0;
-    dbb->y1 = SCREEN_HEIGHT-1;
+    dbb->y1 = vbe_info.height - 1;
 }
 
 void vbe_clear_all_z_layers(void)

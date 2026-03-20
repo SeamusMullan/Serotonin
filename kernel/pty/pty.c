@@ -226,7 +226,7 @@ static void pty_default_term_state(term_state_t *ts) {
 pty_t *pty_from_node(vfs_node_t *node) {
     if (!node || !node->fs_data) return NULL;
 
-    if (node->ops == &pty_slave_ops) {
+    if (node->ops == &pty_slave_ops || node->ops == &pty_master_ops) {
         return (pty_t *)node->fs_data;
     }
 
@@ -294,10 +294,10 @@ void pty_init(void) {
         pty->slave_refcount = 1;
         pty->foreground_pid = -1;
 
-        pty->winsize.ws_col = (uint16_t)(SCREEN_WIDTH / VBE_FONT_WIDTH);
-        pty->winsize.ws_row = (uint16_t)(SCREEN_HEIGHT / VBE_FONT_HEIGHT);
-        pty->winsize.ws_xpixel = SCREEN_WIDTH;
-        pty->winsize.ws_ypixel = SCREEN_HEIGHT;
+        pty->winsize.ws_col = (uint16_t)(vbe_info.width / VBE_FONT_WIDTH);
+        pty->winsize.ws_row = (uint16_t)(vbe_info.height / VBE_FONT_HEIGHT);
+        pty->winsize.ws_xpixel = vbe_info.width;
+        pty->winsize.ws_ypixel = vbe_info.height;
 
         pty_register_devfs(pty);
     }
@@ -321,8 +321,8 @@ pty_t *pty_alloc(void) {
             pty->slave_refcount  = 1;
             pty->master_refcount = 1;
 
-            pty->winsize.ws_col = (uint16_t)(SCREEN_WIDTH / VBE_FONT_WIDTH);
-            pty->winsize.ws_row = (uint16_t)(SCREEN_HEIGHT / VBE_FONT_HEIGHT);
+            pty->winsize.ws_col = (uint16_t)(vbe_info.width / VBE_FONT_WIDTH);
+            pty->winsize.ws_row = (uint16_t)(vbe_info.height / VBE_FONT_HEIGHT);
 
             pty_register_devfs(pty);
             return pty;

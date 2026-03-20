@@ -15,7 +15,7 @@ __attribute__((aligned(PAGE_SIZE), section(".identity_data")))
 page_table_t heap_page_tables[64];
 
 __attribute__((aligned(PAGE_SIZE), section(".identity_data")))
-page_table_t fb_page_table;
+page_table_t fb_page_tables[FB_PDE_COUNT];
 
 __attribute__((aligned(PAGE_SIZE), section(".identity_data")))
 page_table_t layer_page_tables[LAYER_PDE_COUNT];
@@ -66,10 +66,12 @@ void paging_init(uintptr_t fb_phys_base) {
             mk_entry((uintptr_t)&kernel_page_tables[pd_idx],PAGE_FLAGS);
     }
 
-    // Map framebuffer: 4 MiB at FB_VMA_BASE
-    for (uint32_t i = 0; i < PAGE_ENTRIES; ++i)
-        fb_page_table[i] = (fb_phys_base + i * PAGE_SIZE) | PAGE_FLAGS;
-    page_directory[FB_VMA_BASE >> 22] = ((uintptr_t)&fb_page_table) | PAGE_FLAGS;
+    // Map framebuffer: FB_PDE_COUNT * 4 MiB at FB_VMA_BASE
+    for (uint32_t pd_idx = 0; pd_idx < FB_PDE_COUNT; ++pd_idx) {
+        for (uint32_t i = 0; i < PAGE_ENTRIES; ++i)
+            fb_page_tables[pd_idx][i] = (fb_phys_base + pd_idx * 0x400000 + i * PAGE_SIZE) | PAGE_FLAGS;
+        page_directory[(FB_VMA_BASE >> 22) + pd_idx] = ((uintptr_t)&fb_page_tables[pd_idx]) | PAGE_FLAGS;
+    }
 
     // Map layer window: remaining 0xE* range up to kernel stack.
     for (uint32_t pd_idx = 0; pd_idx < LAYER_PDE_COUNT; ++pd_idx) {

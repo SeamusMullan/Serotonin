@@ -6,6 +6,7 @@
 #include "../video/vbe/vbe.h"
 #include "../kernel.h"
 #include "../device/mouse/dev_mouse.h"
+#include "../device/serial/dev_serial.h"
 #include "../syscall/syscall.h"
 
 volatile uint64_t timer_ticks = 0;
@@ -140,8 +141,8 @@ static void irq_mouse_handler(int irq, processor_context_t *ctx) {
 
         if (mouse_x < 0) mouse_x = 0;
         if (mouse_y < 0) mouse_y = 0;
-        if (mouse_x >= SCREEN_WIDTH)  mouse_x = SCREEN_WIDTH - 1;
-        if (mouse_y >= SCREEN_HEIGHT) mouse_y = SCREEN_HEIGHT - 1;
+        if (mouse_x >= (int32_t)vbe_info.width)  mouse_x = vbe_info.width - 1;
+        if (mouse_y >= (int32_t)vbe_info.height) mouse_y = vbe_info.height - 1;
 
         uint8_t changed = buttons ^ prev_mouse_buttons;
         if (changed) {
@@ -222,9 +223,16 @@ void irq_handler(int irq, processor_context_t *ctx) {
     outb(0x20, 0x20);      // EOI to master PIC
 }
 
+static void irq_serial_handler(int irq, processor_context_t *ctx) {
+    (void)irq;
+    (void)ctx;
+    dev_serial_irq_handler();
+}
+
 void irq_install_defaults(void) {
     irq_register(IRQ_PIT, irq_pit_handler);
     irq_register(IRQ_KEYBOARD, irq_keyboard_handler);
     irq_register(IRQ_MOUSE, irq_mouse_handler);
     irq_register(IRQ_RTC, irq_rtc_handler);
+    irq_register(IRQ_SERIAL, irq_serial_handler);
 }

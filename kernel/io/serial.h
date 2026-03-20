@@ -21,10 +21,13 @@
 #define SERIAL_FIFO_CTRL    2
 #define SERIAL_LINE_CTRL    3
 #define SERIAL_MODEM_CTRL   4
+#define SERIAL_LINE_STATUS  5
 #define SERIAL_SCRATCH      7
 
 void serial_init(uint16_t port);
 void serial_putchar(uint16_t port, char c);
 void serial_puts(uint16_t port, const char* str);
+int  serial_data_ready(uint16_t port);
+char serial_getchar(uint16_t port);
 
 #endif

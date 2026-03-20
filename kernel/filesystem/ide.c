@@ -202,13 +202,10 @@ int ide_write_sector(uint8_t drive, uint32_t lba, const uint8_t *buffer) {
         return -1;
     }
 
-    // flush write cache (optional but safe)
+    // flush write cache
     outb(io+7, ATA_CMD_CACHE_FLUSH);
     io_wait();
-    if (ide_wait(ATA_STATUS_BSY, 0, 100000)) {
-        printfs(PRINT_STATUS_WARNING,"IDE write: cache flush timeout\n");
-        return -1;
-    }
+    ide_wait(ATA_STATUS_BSY, 0, 500000);
 
     return 0;
 }
@@ -229,4 +226,3 @@ int ide_write_sectors(uint8_t drive, uint32_t lba, uint8_t count, const uint8_t 
     }
     return 0;
 }
-
