@@ -16,6 +16,8 @@
 #define PRIORITY_DECAY_RATE    10
 #define PRIORITY_QUANTA_PUNISH 10
 
+#define MAX_BOUND_SOCKETS 64
+
 typedef struct fpu_fxsave_area {
     uint8_t bytes[512];
 } fpu_fxsave_area_t __attribute__((aligned(16)));
@@ -80,6 +82,7 @@ typedef struct process_control_block {
     uint32_t umask;
     uint32_t current_fd_flags;
     uint32_t current_user_buf;
+    uint32_t alarm_ticks;       /* ticks remaining until SIGALRM (0 = inactive) */
 } process_control_block_t;
 
 typedef struct pipe_waiter {
@@ -107,6 +110,88 @@ typedef struct pipe_endpoint {
 } pipe_endpoint_t;
 
 extern vfs_ops_t task_ipc_pipe_ops;
+
+#define AF_UNIX       1
+#define SOCK_STREAM   1
+#define SOCK_DGRAM    2
+
+#define UNIX_PATH_MAX   108
+#define SOCK_BUFFER_SIZE 4096
+#define SOCK_BACKLOG_MAX 8
+
+struct sockaddr_un {
+    uint16_t sun_family;
+    char     sun_path[UNIX_PATH_MAX];
+};
+
+typedef struct unix_socket unix_socket_t;
+
+typedef struct sock_waiter {
+    process_control_block_t *task;
+    struct sock_waiter *next;
+    uint32_t user_buf;          /* user-space destination/source address */
+    uint32_t buf_size;          /* requested read/write size */
+} sock_waiter_t;
+
+typedef struct unix_socket {
+    uint8_t  type;              /* SOCK_STREAM or SOCK_DGRAM */
+    uint8_t  state;             /* SOCK_STATE_* */
+    uint8_t  bound;
+    char     path[UNIX_PATH_MAX];
+
+    /* circular data buffer (stream / dgram recv) */
+    char    *buffer;
+    uint32_t buf_size;
+    uint32_t read_pos;
+    uint32_t write_pos;
+    uint32_t data_len;
+
+    /* reference counts */
+    uint32_t readers;
+    uint32_t writers;
+
+    /* blocking queues */
+    sock_waiter_t *read_waiters_head,  *read_waiters_tail;
+    sock_waiter_t *write_waiters_head, *write_waiters_tail;
+
+    /* stream connection state */
+    unix_socket_t *peer;        /* connected peer (stream) */
+
+    /* listen backlog */
+    unix_socket_t *backlog[SOCK_BACKLOG_MAX];
+    uint32_t backlog_count;
+    uint32_t backlog_max;
+    sock_waiter_t *accept_waiters_head, *accept_waiters_tail;
+    sock_waiter_t *connect_waiters_head, *connect_waiters_tail;
+} unix_socket_t;
+
+enum {
+    SOCK_STATE_UNCONNECTED = 0,
+    SOCK_STATE_BOUND       = 1,
+    SOCK_STATE_LISTENING   = 2,
+    SOCK_STATE_CONNECTING  = 3,
+    SOCK_STATE_CONNECTED   = 4,
+    SOCK_STATE_CLOSED      = 5
+};
+
+typedef struct sock_endpoint {
+    unix_socket_t *sock;
+} sock_endpoint_t;
+
+extern vfs_ops_t task_ipc_unix_socket_ops;
+
+int  task_ipc_unix_socket_read(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer);
+int  task_ipc_unix_socket_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer);
+int  task_ipc_unix_socket_close(vfs_node_t *node);
+
+unix_socket_t *unix_socket_lookup(const char *path);
+int  unix_socket_register(unix_socket_t *sock);
+void unix_socket_unregister(unix_socket_t *sock);
+
+int  sock_waiter_enqueue(sock_waiter_t **head, sock_waiter_t **tail, process_control_block_t *task, uint32_t user_buf, uint32_t buf_size);
+sock_waiter_t *sock_waiter_dequeue(sock_waiter_t **head, sock_waiter_t **tail);
+void sock_wake_one(sock_waiter_t **head, sock_waiter_t **tail);
+void sock_wake_all(sock_waiter_t **head, sock_waiter_t **tail);
 
 typedef struct wait_node {
     struct process_control_block *task;

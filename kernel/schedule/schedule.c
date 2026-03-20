@@ -35,6 +35,22 @@ static __attribute__((aligned(16))) fpu_fxsave_area_t fx_clean;
 static process_control_block_t *zombie_list = NULL;
 volatile int foreground_pid = 0;
 vfs_ops_t task_ipc_pipe_ops;
+static unix_socket_t *bound_sockets[MAX_BOUND_SOCKETS];
+static uint32_t bound_socket_count = 0;
+
+vfs_ops_t task_ipc_unix_socket_ops = {
+    .read  = task_ipc_unix_socket_read,
+    .write = task_ipc_unix_socket_write,
+    .close = task_ipc_unix_socket_close,
+    .truncate = NULL,
+    .unlink   = NULL,
+    .rmdir    = NULL,
+    .open     = NULL,
+    .readdir  = NULL,
+    .finddir  = NULL,
+    .create   = NULL,
+    .mkdir    = NULL,
+};
 
 static void reap_zombies(void) {
     process_control_block_t *task = zombie_list;
@@ -254,18 +270,22 @@ void task_yield(int irq) {
     }
 
     process_control_block_t* next = dequeue();
-    if (next->state == PROCESS_STATE_READY) {
-        if (next->priv == CPU_USER_MODE) {
-            switch_address_space(next->address_space);
-            task_ipc_deliver_signals(next, next->processor_context);
-        }
-        // found someone we can switch into
-        next->state = PROCESS_STATE_RUNNING;
-        preempt_enable();
+    while (next) {
+        if (next->state == PROCESS_STATE_READY) {
+            if (next->priv == CPU_USER_MODE) {
+                switch_address_space(next->address_space);
+                task_ipc_deliver_signals(next, next->processor_context);
+            }
+            // found someone we can switch into
+            next->state = PROCESS_STATE_RUNNING;
+            preempt_enable();
 
-        // if nothing is pending, switch
-        switch_task(next);
-        __builtin_unreachable();
+            // if nothing is pending, switch
+            switch_task(next);
+            __builtin_unreachable();
+        }
+        // shouldn't happen but let's try recover
+        next = dequeue();
     }
 
     kernel_panic("task_yield: no valid task to switch to");
@@ -275,6 +295,8 @@ void task_yield(int irq) {
  * @brief Terminates the currently running task and switches to the next one.
  */
 void task_exit(process_control_block_t* task_exited, uint8_t exit) {
+    lock_scheduler();
+
     printfs(PRINT_STATUS_DEBUG, "task_exit: Task %s (pid=%u) exited:%s\n", task_exited->name, task_exited->pid,to_signal_name(exit));
 
     if (current_task->pid == 1) {
@@ -486,8 +508,10 @@ void task_block(void) {
  */
 void task_unblock(process_control_block_t *pcb) {
     lock_scheduler();
-    pcb->state = PROCESS_STATE_READY;
-    enqueue(pcb);
+    if (pcb->state == PROCESS_STATE_BLOCKED) {
+        pcb->state = PROCESS_STATE_READY;
+        enqueue(pcb);
+    }
     unlock_scheduler();
 }
 
@@ -657,6 +681,7 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     pcb->next = NULL;
 
     pcb->signal_bitmask = 0;
+    pcb->alarm_ticks = 0;
     for (int i = 0; i < 16; i++) {
         pcb->signal_handlers[i] = 0;
     }
@@ -792,6 +817,10 @@ int task_ipc_signal_raise(process_control_block_t *task, uint8_t signal) {
         return -1;
 
     task->signal_bitmask |= (1u << signal);
+
+    if (task->state == PROCESS_STATE_BLOCKED)
+        task_unblock(task);
+
     return 0;
 }
 
@@ -1025,5 +1054,250 @@ int task_ipc_pipe_close(vfs_node_t *node) {
         kernel_free(pipe->buffer);
         kernel_free(pipe);
     }
+    return 0;
+}
+
+int sock_waiter_enqueue(sock_waiter_t **head, sock_waiter_t **tail, process_control_block_t *task, uint32_t user_buf, uint32_t buf_size) {
+    sock_waiter_t *node = (sock_waiter_t *)kernel_malloc(sizeof(*node));
+    if (!node) return -ENOMEM;
+    node->task = task;
+    node->next = NULL;
+    node->user_buf = user_buf;
+    node->buf_size = buf_size;
+    if (*tail) {
+        (*tail)->next = node;
+        *tail = node;
+    } else {
+        *head = *tail = node;
+    }
+    return 0;
+}
+
+sock_waiter_t *sock_waiter_dequeue(sock_waiter_t **head, sock_waiter_t **tail) {
+    if (!*head) return NULL;
+    sock_waiter_t *node = *head;
+    *head = node->next;
+    if (!*head) *tail = NULL;
+    return node;
+}
+
+void sock_wake_one(sock_waiter_t **head, sock_waiter_t **tail) {
+    sock_waiter_t *w = sock_waiter_dequeue(head, tail);
+    if (w) {
+        w->task->processor_context->eax = 0;
+        task_unblock(w->task);
+        kernel_free(w);
+    }
+}
+
+void sock_wake_all(sock_waiter_t **head, sock_waiter_t **tail) {
+    sock_waiter_t *w;
+    while ((w = sock_waiter_dequeue(head, tail)) != NULL) {
+        w->task->processor_context->eax = 0;
+        task_unblock(w->task);
+        kernel_free(w);
+    }
+}
+
+unix_socket_t *unix_socket_lookup(const char *path) {
+    for (uint32_t i = 0; i < bound_socket_count; i++) {
+        if (bound_sockets[i] && strcmp(bound_sockets[i]->path, path) == 0)
+            return bound_sockets[i];
+    }
+    return NULL;
+}
+
+int unix_socket_register(unix_socket_t *sock) {
+    if (bound_socket_count >= MAX_BOUND_SOCKETS)
+        return -ENOSPC;
+    bound_sockets[bound_socket_count++] = sock;
+    return 0;
+}
+
+void unix_socket_unregister(unix_socket_t *sock) {
+    for (uint32_t i = 0; i < bound_socket_count; i++) {
+        if (bound_sockets[i] == sock) {
+            bound_sockets[i] = bound_sockets[--bound_socket_count];
+            return;
+        }
+    }
+}
+
+static void sock_read_wake_one(unix_socket_t *sock) {
+    sock_waiter_t *w = sock_waiter_dequeue(&sock->read_waiters_head, &sock->read_waiters_tail);
+    if (!w) return;
+
+    uint32_t avail = sock->data_len;
+    uint32_t to_read = w->buf_size < avail ? w->buf_size : avail;
+
+    if (to_read > 0 && w->user_buf) {
+        char tmp[256];
+        uint32_t done = 0;
+        while (done < to_read) {
+            uint32_t chunk = to_read - done;
+            if (chunk > sizeof(tmp)) chunk = sizeof(tmp);
+            for (uint32_t i = 0; i < chunk; i++) {
+                tmp[i] = sock->buffer[sock->read_pos];
+                sock->read_pos = (sock->read_pos + 1) % sock->buf_size;
+            }
+            sock->data_len -= chunk;
+            copy_to_user(w->task->address_space, w->user_buf + done, tmp, chunk);
+            done += chunk;
+        }
+        w->task->processor_context->eax = to_read;
+    } else {
+        w->task->processor_context->eax = 0;
+    }
+
+    task_unblock(w->task);
+    kernel_free(w);
+}
+
+int task_ipc_unix_socket_read(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer) {
+    (void)offset;
+    if (!node || !buffer || size == 0)
+        return 0;
+
+    sock_endpoint_t *ep = (sock_endpoint_t *)node->fs_data;
+    if (!ep || !ep->sock)
+        return -EBADF;
+
+    unix_socket_t *sock = ep->sock;
+
+    if (sock->type == SOCK_STREAM && sock->state != SOCK_STATE_CONNECTED)
+        return -ENOTCONN;
+
+    lock_scheduler();
+
+    if (sock->data_len > 0) {
+        uint32_t to_read = size < sock->data_len ? size : sock->data_len;
+        for (uint32_t i = 0; i < to_read; i++) {
+            buffer[i] = sock->buffer[sock->read_pos];
+            sock->read_pos = (sock->read_pos + 1) % sock->buf_size;
+        }
+        sock->data_len -= to_read;
+        if (sock->write_waiters_head)
+            sock_wake_one(&sock->write_waiters_head, &sock->write_waiters_tail);
+        unlock_scheduler();
+        return (int)to_read;
+    }
+
+    if (sock->type == SOCK_STREAM && (!sock->peer || sock->peer->state == SOCK_STATE_CLOSED)) {
+        unlock_scheduler();
+        return 0;
+    }
+
+    uint32_t user_buf = current_task->current_user_buf;
+    if (sock_waiter_enqueue(&sock->read_waiters_head, &sock->read_waiters_tail, current_task, user_buf, size) != 0) {
+        unlock_scheduler();
+        return -ENOMEM;
+    }
+    current_task->state = PROCESS_STATE_BLOCKED;
+    unlock_scheduler();
+    task_yield(1);
+    __builtin_unreachable();
+}
+
+int task_ipc_unix_socket_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer) {
+    (void)offset;
+    if (!node || !buffer || size == 0)
+        return 0;
+
+    sock_endpoint_t *ep = (sock_endpoint_t *)node->fs_data;
+    if (!ep || !ep->sock)
+        return -EBADF;
+
+    unix_socket_t *sock = ep->sock;
+
+    if (sock->type == SOCK_STREAM) {
+        if (sock->state != SOCK_STATE_CONNECTED || !sock->peer)
+            return -ENOTCONN;
+
+        unix_socket_t *peer = sock->peer;
+
+        lock_scheduler();
+        if (peer->state == SOCK_STATE_CLOSED) {
+            unlock_scheduler();
+            task_ipc_signal_raise(current_task, EXIT_SIGPIPE);
+            return -EPIPE;
+        }
+
+        if (peer->data_len < peer->buf_size) {
+            uint32_t space = peer->buf_size - peer->data_len;
+            uint32_t to_write = size < space ? size : space;
+            for (uint32_t i = 0; i < to_write; i++) {
+                peer->buffer[peer->write_pos] = buffer[i];
+                peer->write_pos = (peer->write_pos + 1) % peer->buf_size;
+            }
+            peer->data_len += to_write;
+            if (peer->read_waiters_head)
+                sock_read_wake_one(peer);
+            unlock_scheduler();
+            return (int)to_write;
+        }
+
+        if (sock_waiter_enqueue(&peer->write_waiters_head, &peer->write_waiters_tail, current_task, 0, 0) != 0) {
+            unlock_scheduler();
+            return -ENOMEM;
+        }
+        current_task->state = PROCESS_STATE_BLOCKED;
+        unlock_scheduler();
+        task_yield(1);
+        __builtin_unreachable();
+    }
+
+    if (sock->peer) {
+        unix_socket_t *peer = sock->peer;
+        lock_scheduler();
+        if (peer->data_len + size > peer->buf_size) {
+            unlock_scheduler();
+            return -EMSGSIZE;
+        }
+        for (uint32_t i = 0; i < size; i++) {
+            peer->buffer[peer->write_pos] = buffer[i];
+            peer->write_pos = (peer->write_pos + 1) % peer->buf_size;
+        }
+        peer->data_len += size;
+        if (peer->read_waiters_head)
+            sock_read_wake_one(peer);
+        unlock_scheduler();
+        return (int)size;
+    }
+
+    return -EDESTADDRREQ;
+}
+
+int task_ipc_unix_socket_close(vfs_node_t *node) {
+    if (!node) return 0;
+
+    sock_endpoint_t *ep = (sock_endpoint_t *)node->fs_data;
+    if (!ep || !ep->sock) return 0;
+
+    unix_socket_t *sock = ep->sock;
+
+    lock_scheduler();
+    sock->state = SOCK_STATE_CLOSED;
+
+    sock_wake_all(&sock->read_waiters_head, &sock->read_waiters_tail);
+    sock_wake_all(&sock->write_waiters_head, &sock->write_waiters_tail);
+    sock_wake_all(&sock->accept_waiters_head, &sock->accept_waiters_tail);
+    sock_wake_all(&sock->connect_waiters_head, &sock->connect_waiters_tail);
+
+    if (sock->peer) {
+        unix_socket_t *peer = sock->peer;
+        if (peer->peer == sock)
+            peer->peer = NULL;
+        sock_wake_all(&peer->read_waiters_head, &peer->read_waiters_tail);
+        sock_wake_all(&peer->write_waiters_head, &peer->write_waiters_tail);
+        sock->peer = NULL;
+    }
+    unlock_scheduler();
+
+    if (sock->bound)
+        unix_socket_unregister(sock);
+
+    kernel_free(ep);
+    kernel_free(sock->buffer);
+    kernel_free(sock);
     return 0;
 }
