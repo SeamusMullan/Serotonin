@@ -50,6 +50,47 @@ if [[ -n "$DISK_IMAGE" ]]; then
 	QEMU_CMD+=( -drive file="$DISK_IMAGE",if=ide,index=1,media=disk,format="$fmt" )
 fi
 
+# Set up tap interface for packet sniffing
+TAP_IF="${SEROTONIN_TAP:-tap0}"
+if ! ip link show "$TAP_IF" &>/dev/null; then
+	echo "[INFO] Creating tap interface $TAP_IF (requires sudo)..."
+	sudo ip tuntap add dev "$TAP_IF" mode tap user "$(whoami)"
+fi
+# Ensure tap always has its IP and is up (idempotent)
+if ! ip addr show "$TAP_IF" 2>/dev/null | grep -q '10.0.2.1/24'; then
+	sudo ip addr add 10.0.2.1/24 dev "$TAP_IF"
+fi
+sudo ip link set "$TAP_IF" up
+
+# Kill stale serotonin dnsmasq, then (re)start it
+sudo pkill -f 'serotonin-dnsmasq' 2>/dev/null || true
+sudo rm -f /tmp/serotonin-dnsmasq.pid /tmp/serotonin-dnsmasq.log
+echo "[INFO] Starting dnsmasq DHCP server on $TAP_IF..."
+sudo dnsmasq --interface="$TAP_IF" --bind-dynamic \
+	--dhcp-range=10.0.2.50,10.0.2.150,255.255.255.0,12h \
+	--except-interface=lo --no-resolv --no-hosts \
+	--pid-file=/tmp/serotonin-dnsmasq.pid \
+	--log-facility=/tmp/serotonin-dnsmasq.log \
+	--log-dhcp
+echo "[INFO] dnsmasq DHCP server started on $TAP_IF (10.0.2.50-150)"
+
+# NAT: masquerade tap traffic out through the host's default interface
+HOST_IF="$(ip route show default | awk '{print $5; exit}')"
+sudo sysctl -w net.ipv4.ip_forward=1 >/dev/null
+sudo iptables -t nat -C POSTROUTING -s 10.0.2.0/24 -o "$HOST_IF" -j MASQUERADE 2>/dev/null \
+	|| sudo iptables -t nat -A POSTROUTING -s 10.0.2.0/24 -o "$HOST_IF" -j MASQUERADE
+sudo iptables -C FORWARD -i "$TAP_IF" -o "$HOST_IF" -j ACCEPT 2>/dev/null \
+	|| sudo iptables -A FORWARD -i "$TAP_IF" -o "$HOST_IF" -j ACCEPT
+sudo iptables -C FORWARD -i "$HOST_IF" -o "$TAP_IF" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null \
+	|| sudo iptables -A FORWARD -i "$HOST_IF" -o "$TAP_IF" -m state --state RELATED,ESTABLISHED -j ACCEPT
+echo "[INFO] NAT enabled: $TAP_IF -> $HOST_IF"
+
+# RTL8139 NIC on the tap backend
+QEMU_CMD+=(
+	-netdev tap,id=net0,ifname="$TAP_IF",script=no,downscript=no
+	-device rtl8139,netdev=net0
+)
+
 # Forward any extra args to QEMU (e.g., -serial mon:stdio, -display none, etc.)
 QEMU_CMD+=( "$@" )
 
