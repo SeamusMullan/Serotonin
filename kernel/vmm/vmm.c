@@ -770,6 +770,9 @@ void unmap_page(address_space_t *as, uint32_t vaddr, int free_frame_flag)
     uint32_t as_cr3 = as->phys_pdir & PAGE_MASK;
 
     if (cur == as_cr3) {
+        uint32_t *pd = cur_pd_va();
+        if (!(pd[pdi] & PAGE_PRESENT)) return;
+
         uint32_t *pt = pt_va(pdi);
         uint32_t entry = pt[pti];
         if (!(entry & PAGE_PRESENT)) return;
@@ -778,18 +781,15 @@ void unmap_page(address_space_t *as, uint32_t vaddr, int free_frame_flag)
         pt[pti] = 0;
         invlpg((void*)vaddr);
 
-        uint32_t *pd = cur_pd_va();
-        if (pd[pdi] & PAGE_PRESENT) {
-            int empty = 1;
-            for (int i = 0; i < PAGE_ENTRIES; ++i) {
-                if (pt[i] & PAGE_PRESENT) { empty = 0; break; }
-            }
-            if (empty) {
-                uint32_t pt_phys = pd[pdi] & PAGE_MASK;
-                pd[pdi] = 0;
-                write_cr3(cur);  // flush
-                free_frame((void*)pt_phys);
-            }
+        int empty = 1;
+        for (int i = 0; i < PAGE_ENTRIES; ++i) {
+            if (pt[i] & PAGE_PRESENT) { empty = 0; break; }
+        }
+        if (empty) {
+            uint32_t pt_phys = pd[pdi] & PAGE_MASK;
+            pd[pdi] = 0;
+            write_cr3(cur);  // flush
+            free_frame((void*)pt_phys);
         }
         return;
     }
