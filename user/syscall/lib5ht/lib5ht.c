@@ -64,6 +64,10 @@ int sys_5ht_pty_setpgrp(int fd) {
     return do_syscall(SYSTEM_CALL_5HT_PTY_SETPGRP, (uint32_t)fd, 0, 0);
 }
 
+int sys_5ht_grab_input(int grab) {
+    return do_syscall(SYSTEM_CALL_5HT_GRAB_INPUT, (uint32_t)grab, 0, 0);
+}
+
 int ioctl(int fd, unsigned long request, void *arg) {
     switch (request) {
         case TCGETS:

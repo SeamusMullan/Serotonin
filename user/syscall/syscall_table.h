@@ -86,7 +86,8 @@ enum {
     SYSTEM_CALL_SHUTDOWN   = 67,
     SYSTEM_CALL_SOCKETPAIR = 68,
     SYSTEM_CALL_SELECT     = 69,
-    SYSTEM_CALL_POLL       = 70
+    SYSTEM_CALL_POLL       = 70,
+    SYSTEM_CALL_5HT_GRAB_INPUT = 71
 };
 
 #endif

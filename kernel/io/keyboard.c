@@ -30,6 +30,7 @@ char stdio_buffer[STDIO_INPUT_BUFFER];
 static uint8_t shift_pressed = 0;
 static uint8_t ctrl_pressed = 0;
 static uint8_t alt_pressed = 0;
+volatile int keyboard_grab_active = 0;
 
 /**
  * @brief Handle keyboard scancodes.
@@ -45,7 +46,6 @@ void handle_scancode(uint8_t scancode) {
         return;
     }
 
-    // build devfs event for every scancode
     keyboard_event_t ev = {0};
 
     if (scancode & 0x80) {
@@ -68,22 +68,29 @@ void handle_scancode(uint8_t scancode) {
     else if (scancode == 0x38) {
         // Alt press
         alt_pressed = 1;
-    }
-    else if (alt_pressed && scancode >= 0x3B && scancode <= 0x3E) {
-        // Alt+F1-F4: VTY switching
-        uint32_t vty_id = (uint32_t)(scancode - 0x3B);
-        pty_switch_vty(vty_id);
+        ev.scancode = scancode;
+        ev.ascii = 0;
+        ev.flags = 0;
+        dev_keyboard_push_event(&ev);
     }
     else if (scancode == 0x2A || scancode == 0x36) {
-        // shift press
+        // Shift press
         shift_pressed = 1;
+        ev.scancode = scancode;
+        ev.ascii = 0;
+        ev.flags = KEY_FLAG_SHIFT;
+        dev_keyboard_push_event(&ev);
     }
     else if (scancode == 0x1D) {
-        // ctrl press
+        // Ctrl press
         ctrl_pressed = 1;
+        ev.scancode = scancode;
+        ev.ascii = 0;
+        ev.flags = KEY_FLAG_CTRL;
+        dev_keyboard_push_event(&ev);
     }
     else {
-        // regular key press, route through PTY line discipline
+        // Regular key press
         char c;
         if (scancode == 0x1C) {
             c = '\n';
@@ -98,16 +105,23 @@ void handle_scancode(uint8_t scancode) {
         if (shift_pressed) ev.flags |= KEY_FLAG_SHIFT;
         if (ctrl_pressed) ev.flags |= KEY_FLAG_CTRL;
 
-        // generate ctrl+letter for line discipline
-        if (ctrl_pressed && c >= 'a' && c <= 'z') {
-            c = (char)(c - 'a' + 1);
+        // Route through PTY line discipline (unless WM has grabbed input)
+        if (!keyboard_grab_active) {
+            char ldisc_c = c;
+            if (ctrl_pressed && ldisc_c >= 'a' && ldisc_c <= 'z') {
+                ldisc_c = (char)(ldisc_c - 'a' + 1);
+            }
+            if (ldisc_c) {
+                pty_ldisc_input(&pty_table[active_vty], ldisc_c);
+            }
+            // Alt+F1-F4: VTY switching
+            if (alt_pressed && scancode >= 0x3B && scancode <= 0x3E) {
+                uint32_t vty_id = (uint32_t)(scancode - 0x3B);
+                pty_switch_vty(vty_id);
+            }
         }
 
-        if (c) {
-            pty_ldisc_input(&pty_table[active_vty], c);
-        }
-
-        // always push to /dev/keyboard for raw consumers
+        // Always push to /dev/keyboard for raw consumers
         dev_keyboard_push_event(&ev);
     }
 

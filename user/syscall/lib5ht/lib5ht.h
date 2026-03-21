@@ -272,6 +272,7 @@ int sys_5ht_pty_setattr(int fd, const pty_attr_t *attr);
 int sys_5ht_pty_getattr(int fd, pty_attr_t *attr);
 int sys_5ht_pty_winsize(int fd, pty_winsize_t *ws, int get);
 int sys_5ht_pty_setpgrp(int fd);
+int sys_5ht_grab_input(int grab);
 int ioctl(int fd, unsigned long request, void *arg);
 
 /** @} */ /* end of lib5ht group */

@@ -81,6 +81,7 @@ extern volatile rtc_time_t last_rtc_time;
 extern volatile uint32_t unix_timestamp;
 extern volatile int mouse_x;
 extern volatile int mouse_y;
+extern volatile int keyboard_grab_active;
 
 /**
  * @brief Output a byte to a port.

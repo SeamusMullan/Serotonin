@@ -2062,8 +2062,13 @@ static void sys_5ht_rcfg_layer(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
         return;
     }
 
-    int needs_realloc = (cfg.x0 != state->cfg.x0) || (cfg.y0 != state->cfg.y0) ||
-                        (cfg.x1 != state->cfg.x1) || (cfg.y1 != state->cfg.y1) ||
+    /* Only reallocate if the layer dimensions (buffer size) changed,
+       not when just the position changed */
+    uint16_t old_w = state->cfg.x1 - state->cfg.x0;
+    uint16_t old_h = state->cfg.y1 - state->cfg.y0;
+    uint16_t new_w = cfg.x1 - cfg.x0;
+    uint16_t new_h = cfg.y1 - cfg.y0;
+    int needs_realloc = (new_w != old_w) || (new_h != old_h) ||
                         (cfg.stride != state->cfg.stride);
     if (needs_realloc) {
         layer_state_t new_state = {0};
@@ -3092,6 +3097,10 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_POLL:
             sys_poll(arg2, arg3, arg4);
+            break;
+        case SYSTEM_CALL_5HT_GRAB_INPUT:
+            keyboard_grab_active = arg2 ? 1 : 0;
+            ctx->eax = 0;
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);
