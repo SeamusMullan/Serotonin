@@ -478,6 +478,14 @@ void kernel_sleep(unsigned int milliseconds) {
  * @param str The panic message to display.
  */
 void kernel_panic(char* str) {
+    static volatile int panic_in_progress = 0;
+    if (panic_in_progress) {
+        /* Recursive panic — halt immediately */
+        clear_interrupts();
+        for (;;) asm volatile("hlt");
+    }
+    panic_in_progress = 1;
+
     unsigned int eip;
 
     asm volatile (
@@ -535,20 +543,22 @@ void kernel_panic(char* str) {
     uint32_t old_ebp = ebp;
 
     for (uint32_t i = 0; i < 10; i++) {
-        if (!ebp)
+        if (ebp < 0xC0000000 || ebp > 0xFFFFFFFC)
+            break;
+        /* Ensure ebp is aligned — misaligned means corrupt frame */
+        if (ebp & 3)
             break;
 
         uint32_t *frame = (uint32_t*)ebp;
         uint32_t ret_addr = frame[1];
 
-        printf("  #%d:0x%08x:0x%08x\n", i, ebp, ret_addr);
+        printf("  #%d: ebp=0x%08x ret=0x%08x\n", i, ebp, ret_addr);
 
-        ebp = frame[0];
-
-        if (ebp == 0 || ebp == (uint32_t)frame)
+        uint32_t next_ebp = frame[0];
+        /* Next frame must be strictly higher on the stack (grows down) and in kernel space */
+        if (next_ebp <= ebp || next_ebp < 0xC0000000)
             break;
-        if (ebp < 0x1000)
-            break;
+        ebp = next_ebp;
     }
 
     printf("\n");
@@ -564,17 +574,20 @@ void kernel_panic(char* str) {
         printf("[multitasking not ready!]\n");
     }
 
-    uint8_t* ptr = (uint8_t*)eip;
-
-    for (int i = 0; i < 0x8C; i++) {
-        if (i % 20 == 0) {
-            printf("\n0x%08x: ", (unsigned int)(ptr + i));
-        } else if (i % 4 == 0) {
-            printf(" ");
+    if (eip >= 0xC0000000) {
+        uint8_t* ptr = (uint8_t*)eip;
+        for (int i = 0; i < 0x8C; i++) {
+            if (i % 20 == 0) {
+                printf("\n0x%08x: ", (unsigned int)(ptr + i));
+            } else if (i % 4 == 0) {
+                printf(" ");
+            }
+            printf("%02x", ptr[i]);
         }
-        printf("%02x", ptr[i]);
+        printf("\n\n");
+    } else {
+        printf("\nEIP 0x%08x is in user space — code dump skipped\n\n", eip);
     }
-    printf("\n\n");
 
     printf("Kernel version: %d.%d.%d\n", KERNEL_VERSION_HIGH, KERNEL_VERSION_MID, KERNEL_VERSION_LOW);
     printf("EIP: 0x%08x\n", (unsigned int)eip);

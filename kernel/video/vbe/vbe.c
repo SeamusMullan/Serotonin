@@ -662,15 +662,23 @@ void vbe_flip(void)
     uint16_t y0 = dbb->y0;
     uint16_t y1 = dbb->y1;
 
-    uint16_t rect_height = y1-y0;
-    uint32_t rect_bytes = rect_height * vbe_info.pitch;
+    /* Clamp to screen bounds */
+    if (x1 > vbe_info.width)  x1 = vbe_info.width;
+    if (y1 > vbe_info.height) y1 = vbe_info.height;
+    if (x0 >= x1 || y0 >= y1) goto reset;
 
-    uint8_t *bb_ptr = (uint8_t *)vbe_info.backbuffer + y0 * vbe_info.pitch;
-    uint8_t *fb_ptr = (uint8_t *)vbe_info.framebuffer + y0 * vbe_info.pitch;
-    uint8_t *buf0_ptr = (uint8_t *)vbe_z_layers[0]->bufptr + y0 * vbe_info.pitch;
+    uint32_t pitch = vbe_info.pitch;
+    uint32_t bpp = sizeof(uint32_t);
+    uint32_t dirty_row_bytes = (x1 - x0) * bpp;
 
-    memcpy(bb_ptr, buf0_ptr, rect_bytes);
+    /* Step 1: Copy only the dirty columns of layer 0 to backbuffer */
+    for (uint16_t y = y0; y < y1; y++) {
+        uint8_t *bb_row  = (uint8_t *)vbe_info.backbuffer      + y * pitch + x0 * bpp;
+        uint8_t *buf0_row = (uint8_t *)vbe_z_layers[0]->bufptr + y * pitch + x0 * bpp;
+        memcpy(bb_row, buf0_row, dirty_row_bytes);
+    }
 
+    /* Step 2: Blend layers 1..init_z within dirty rect */
     for (uint8_t z = 1; z < init_z; z++) {
         vbe_z_layer_t *layer = (vbe_z_layer_t*)vbe_z_layers[z];
         if (!layer->active)
@@ -694,18 +702,19 @@ void vbe_flip(void)
         uint32_t src_x = ix0 - layer_x0;
         uint32_t src_y = iy0 - layer_y0;
 
-        vbe_blend_area_stride(vbe_info.backbuffer, vbe_info.pitch, layer->bufptr, layer->pitch, ix0, iy0, src_x, src_y, w, h);
+        vbe_blend_area_stride(vbe_info.backbuffer, pitch, layer->bufptr, layer->pitch, ix0, iy0, src_x, src_y, w, h);
     }
 
+    /* Step 3: Kernel text cursor (if visible and within dirty rect) */
     if (cursor_visible && cursor_blink_on) {
         uint32_t cx = term_cursor_col * VBE_FONT_WIDTH;
         uint32_t cy = term_cursor_row * VBE_FONT_HEIGHT;
         if (cx + VBE_FONT_WIDTH <= vbe_info.width && cy + VBE_FONT_HEIGHT <= vbe_info.height) {
-            uint32_t stride = vbe_info.pitch / sizeof(uint32_t);
+            uint32_t stride_px = pitch / bpp;
             uint32_t *bb = vbe_info.backbuffer;
             for (uint32_t row = 0; row < VBE_FONT_HEIGHT; row++) {
                 if (cy + row >= y0 && cy + row < y1) {
-                    uint32_t *px = bb + (cy + row) * stride + cx;
+                    uint32_t *px = bb + (cy + row) * stride_px + cx;
                     for (uint32_t col = 0; col < VBE_FONT_WIDTH; col++)
                         px[col] ^= 0x00FFFFFF;
                 }
@@ -713,8 +722,14 @@ void vbe_flip(void)
         }
     }
 
-    memcpy_nt(fb_ptr, bb_ptr, rect_bytes);
+    /* Step 4: Copy only the dirty columns from backbuffer to VRAM */
+    for (uint16_t y = y0; y < y1; y++) {
+        uint8_t *bb_row = (uint8_t *)vbe_info.backbuffer    + y * pitch + x0 * bpp;
+        uint8_t *fb_row = (uint8_t *)vbe_info.framebuffer   + y * pitch + x0 * bpp;
+        memcpy_nt(fb_row, bb_row, dirty_row_bytes);
+    }
 
+reset:
     dbb->x0 = (uint16_t)-1;
     dbb->x1 = (uint16_t)-1;
     dbb->y0 = (uint16_t)-1;

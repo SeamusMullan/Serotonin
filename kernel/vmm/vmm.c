@@ -781,15 +781,21 @@ void unmap_page(address_space_t *as, uint32_t vaddr, int free_frame_flag)
         pt[pti] = 0;
         invlpg((void*)vaddr);
 
-        int empty = 1;
-        for (int i = 0; i < PAGE_ENTRIES; ++i) {
-            if (pt[i] & PAGE_PRESENT) { empty = 0; break; }
-        }
-        if (empty) {
-            uint32_t pt_phys = pd[pdi] & PAGE_MASK;
-            pd[pdi] = 0;
-            write_cr3(cur);  // flush
-            free_frame((void*)pt_phys);
+        /* Only reclaim empty page tables for user-space PDEs.
+           Kernel-space page tables (heap, FB, layers, stack) are
+           statically allocated and shared across all address spaces —
+           freeing them would corrupt every process. */
+        if (pdi < KERNEL_PDE_BASE) {
+            int empty = 1;
+            for (int i = 0; i < PAGE_ENTRIES; ++i) {
+                if (pt[i] & PAGE_PRESENT) { empty = 0; break; }
+            }
+            if (empty) {
+                uint32_t pt_phys = pd[pdi] & PAGE_MASK;
+                pd[pdi] = 0;
+                write_cr3(cur);  // flush
+                free_frame((void*)pt_phys);
+            }
         }
         return;
     }
@@ -809,17 +815,22 @@ void unmap_page(address_space_t *as, uint32_t vaddr, int free_frame_flag)
     if (free_frame_flag) free_frame((void*)(entry & PAGE_MASK));
     pt[pti] = 0;
 
-    int empty = 1;
-    for (int i = 0; i < PAGE_ENTRIES; ++i) {
-        if (pt[i] & PAGE_PRESENT) { empty = 0; break; }
-    }
-    kunmap();
-
-    if (empty) {
-        uint32_t *pd2 = (uint32_t*)kmap(as_cr3);
-        pd2[pdi] = 0;
+    /* Only reclaim empty page tables for user-space PDEs (see above). */
+    if (pdi < KERNEL_PDE_BASE) {
+        int empty = 1;
+        for (int i = 0; i < PAGE_ENTRIES; ++i) {
+            if (pt[i] & PAGE_PRESENT) { empty = 0; break; }
+        }
         kunmap();
-        free_frame((void*)pt_phys);
+
+        if (empty) {
+            uint32_t *pd2 = (uint32_t*)kmap(as_cr3);
+            pd2[pdi] = 0;
+            kunmap();
+            free_frame((void*)pt_phys);
+        }
+    } else {
+        kunmap();
     }
 }
 

@@ -72,6 +72,8 @@ void term_init(term_state_t *ts, uint32_t cols, uint32_t rows) {
     ts->cursor_visible = 1;
     ts->scroll_top = 0;
     ts->scroll_bot = 0; /* 0 = use rows-1 */
+    ts->render_cursor_col = 0;
+    ts->render_cursor_row = 0;
 
     size_t sz = cols * rows * sizeof(term_cell_t);
     ts->cells = malloc(sz);
@@ -618,8 +620,25 @@ void term_render(wm_window_t *win) {
     uint32_t *fb = win->fb;
     uint32_t stride = win->fb_stride_px;
     /* offset into content area */
-    uint32_t ox = win->cx - win->x;
-    uint32_t oy = win->cy - win->y;
+    uint32_t ox = BORDER_W;
+    uint32_t oy = TITLEBAR_H;
+
+    /*
+     * Cursor rendering strategy: instead of XOR (which accumulates state
+     * and breaks on blink), we redraw cursor cells with swapped fg/bg.
+     *
+     * Always mark the previous and current cursor cells dirty so they
+     * get redrawn from the grid. The previous cell restores normal colors;
+     * the current cell gets inverted colors if the cursor is visible.
+     */
+    if (ts->render_cursor_col < ts->cols && ts->render_cursor_row < ts->rows)
+        ts->cells[ts->render_cursor_row * ts->cols + ts->render_cursor_col].dirty = 1;
+    if (ts->cursor_col < ts->cols && ts->cursor_row < ts->rows)
+        ts->cells[ts->cursor_row * ts->cols + ts->cursor_col].dirty = 1;
+
+    /* track dirty cell bounding box to batch into one dirty expand */
+    uint32_t min_c = ts->cols, min_r = ts->rows;
+    uint32_t max_c = 0, max_r = 0;
 
     for (uint32_t r = 0; r < ts->rows; r++) {
         for (uint32_t c = 0; c < ts->cols; c++) {
@@ -630,21 +649,30 @@ void term_render(wm_window_t *win) {
             int px = ox + c * FONT_W;
             int py = oy + r * FONT_H;
 
-            draw_char(fb, stride, px, py, cell->ch, cell->bold,
-                      cell->fg, cell->bg);
+            uint32_t fg = cell->fg, bg = cell->bg;
+
+            /* Cursor cell: swap fg/bg to show block cursor */
+            if (ts->cursor_visible &&
+                c == ts->cursor_col && r == ts->cursor_row) {
+                uint32_t tmp = fg; fg = bg; bg = tmp;
+            }
+
+            draw_char(fb, stride, px, py, cell->ch, cell->bold, fg, bg);
+
+            if (c < min_c) min_c = c;
+            if (c > max_c) max_c = c;
+            if (r < min_r) min_r = r;
+            if (r > max_r) max_r = r;
         }
     }
 
-    /* draw cursor */
-    if (ts->cursor_visible && ts->cursor_col < ts->cols && ts->cursor_row < ts->rows) {
-        int cx = ox + ts->cursor_col * FONT_W;
-        int cy = oy + ts->cursor_row * FONT_H;
-        /* invert block cursor */
-        for (int row = 0; row < FONT_H; row++) {
-            uint32_t *p = fb + (cy + row) * stride + cx;
-            for (int col = 0; col < FONT_W; col++) {
-                p[col] ^= 0x00FFFFFF; /* XOR RGB, keep alpha */
-            }
-        }
+    if (min_c <= max_c && min_r <= max_r) {
+        wm_dirty_expand(win,
+                        ox + min_c * FONT_W, oy + min_r * FONT_H,
+                        (max_c - min_c + 1) * FONT_W, (max_r - min_r + 1) * FONT_H);
     }
+
+    /* Update render cursor tracking */
+    ts->render_cursor_col = ts->cursor_col;
+    ts->render_cursor_row = ts->cursor_row;
 }

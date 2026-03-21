@@ -13,7 +13,7 @@
 #define BPP          4
 
 /* Window limits */
-#define MAX_WINDOWS  12
+#define MAX_WINDOWS  11
 
 /* Decoration dimensions */
 #define TITLEBAR_H   20
@@ -24,8 +24,16 @@
 /* Taskbar */
 #define TASKBAR_H    24
 
+/* Launcher */
+#define LAUNCHER_W       400
+#define LAUNCHER_H       500
+#define LAUNCHER_ITEM_H  20
+#define LAUNCHER_PAD     8
+#define LAUNCHER_MAX_ITEMS 64
+
 /* Layer assignments */
-#define LAYER_WIN_BASE  1
+#define LAYER_DESKTOP   1
+#define LAYER_WIN_BASE  2
 #define LAYER_WIN_MAX   12
 #define LAYER_LAUNCHER  13
 #define LAYER_TASKBAR   14
@@ -98,6 +106,8 @@ typedef struct {
     uint32_t cols, rows;
     term_cell_t *cells;
     term_cell_t *alt_cells;
+    /* Last rendered cursor position (for clean blink transitions) */
+    uint32_t render_cursor_col, render_cursor_row;
 } term_state_t;
 
 /* Window mode */
@@ -132,6 +142,8 @@ typedef struct {
     /* Mode and focus */
     win_mode_t mode;
     uint8_t    focused;
+    /* Dirty region (local to layer fb) */
+    uint16_t dirty_x0, dirty_y0, dirty_x1, dirty_y1;
     /* Title */
     char title[64];
 } wm_window_t;
@@ -173,8 +185,18 @@ typedef struct {
     tiling_state_t tiling;
     /* Drag */
     drag_state_t drag;
-    /* Launcher active */
-    uint8_t launcher_active;
+    /* Launcher */
+    uint8_t  launcher_active;
+    uint32_t *launcher_fb;
+    volatile fb_layer_metadata_t *launcher_meta;
+    int      launcher_selected;
+    int      launcher_scroll;
+    int      launcher_count;
+    char     launcher_items[LAUNCHER_MAX_ITEMS][32];
+    /* Desktop background layer */
+    uint32_t    *desktop_fb;
+    volatile fb_layer_metadata_t *desktop_meta;
+    uint16_t     desk_dirty_x0, desk_dirty_y0, desk_dirty_x1, desk_dirty_y1;
     /* 256-color palette */
     uint32_t palette[256];
 } wm_state_t;
@@ -207,11 +229,20 @@ void wm_handle_mouse(wm_state_t *wm, mouse_event_t *ev);
 
 /* --- wm.c --- */
 int  wm_create_window(wm_state_t *wm);
+int  wm_launch_window(wm_state_t *wm, const char *program);
 void wm_close_window(wm_state_t *wm, int idx);
 void wm_focus_window(wm_state_t *wm, int idx);
 void wm_render_window(wm_state_t *wm, int idx);
 void wm_render_decorations(wm_state_t *wm, int idx);
 void wm_submit_frame(wm_window_t *win);
+void wm_dirty_reset(wm_window_t *win);
+void wm_dirty_expand(wm_window_t *win, uint16_t x, uint16_t y, uint16_t w, uint16_t h);
 void wm_init_palette(wm_state_t *wm);
+void desktop_mark_dirty(wm_state_t *wm, uint16_t x, uint16_t y, uint16_t w, uint16_t h);
+void desktop_submit(wm_state_t *wm);
+void launcher_open(wm_state_t *wm);
+void launcher_close(wm_state_t *wm);
+void launcher_render(wm_state_t *wm);
+void launcher_key(wm_state_t *wm, keyboard_event_t *ev);
 
 #endif

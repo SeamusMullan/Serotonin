@@ -143,6 +143,73 @@ static void init_taskbar(wm_state_t *wm) {
     wm->taskbar_meta = (volatile fb_layer_metadata_t *)(uintptr_t)info.metadata_user_va;
 }
 
+/* --- desktop background layer --- */
+
+static void init_desktop(wm_state_t *wm) {
+    fb_layer_config_t cfg = {0};
+    cfg.size = sizeof(cfg);
+    cfg.x0 = 0; cfg.y0 = 0;
+    cfg.x1 = SCREEN_W; cfg.y1 = SCREEN_H;
+    cfg.alpha = 0;
+    cfg.stride = SCREEN_W * BPP;
+
+    fb_layer_info_t info = {0};
+    if (sys_5ht_req_buf(LAYER_DESKTOP, &cfg, &info) != 0) return;
+
+    wm->desktop_fb = (uint32_t *)(uintptr_t)info.fb_user_va;
+    wm->desktop_meta = (volatile fb_layer_metadata_t *)(uintptr_t)info.metadata_user_va;
+
+    /* Fill with desktop background color */
+    for (int i = 0; i < SCREEN_W * SCREEN_H; i++)
+        wm->desktop_fb[i] = THEME_BG_DARK;
+
+    /* Reset desktop dirty tracking */
+    wm->desk_dirty_x0 = SCREEN_W;
+    wm->desk_dirty_y0 = SCREEN_H;
+    wm->desk_dirty_x1 = 0;
+    wm->desk_dirty_y1 = 0;
+
+    /* Submit full desktop as first frame */
+    wm->desktop_meta->dx0 = 0;
+    wm->desktop_meta->dy0 = 0;
+    wm->desktop_meta->dx1 = SCREEN_W;
+    wm->desktop_meta->dy1 = SCREEN_H;
+    wm->desktop_meta->frame_id = 1;
+    wm->desktop_meta->ready = 1;
+}
+
+void desktop_mark_dirty(wm_state_t *wm, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+    uint16_t x1 = x + w;
+    uint16_t y1 = y + h;
+    if (x1 > SCREEN_W) x1 = SCREEN_W;
+    if (y1 > SCREEN_H) y1 = SCREEN_H;
+    if (x < wm->desk_dirty_x0) wm->desk_dirty_x0 = x;
+    if (y < wm->desk_dirty_y0) wm->desk_dirty_y0 = y;
+    if (x1 > wm->desk_dirty_x1) wm->desk_dirty_x1 = x1;
+    if (y1 > wm->desk_dirty_y1) wm->desk_dirty_y1 = y1;
+}
+
+void desktop_submit(wm_state_t *wm) {
+    if (!wm->desktop_meta) return;
+    if (wm->desktop_meta->ready) return;
+    if (wm->desk_dirty_x0 >= wm->desk_dirty_x1 ||
+        wm->desk_dirty_y0 >= wm->desk_dirty_y1) return;
+
+    wm->desktop_meta->dx0 = wm->desk_dirty_x0;
+    wm->desktop_meta->dy0 = wm->desk_dirty_y0;
+    wm->desktop_meta->dx1 = wm->desk_dirty_x1;
+    wm->desktop_meta->dy1 = wm->desk_dirty_y1;
+    wm->desktop_meta->frame_id++;
+    wm->desktop_meta->ready = 1;
+
+    wm->desk_dirty_x0 = SCREEN_W;
+    wm->desk_dirty_y0 = SCREEN_H;
+    wm->desk_dirty_x1 = 0;
+    wm->desk_dirty_y1 = 0;
+}
+
+/* --- taskbar --- */
+
 static void render_taskbar(wm_state_t *wm) {
     if (!wm->taskbar_fb) return;
 
@@ -186,6 +253,170 @@ static void render_taskbar(wm_state_t *wm) {
     wm->taskbar_meta->ready = 1;
 }
 
+/* --- program launcher --- */
+
+static const char *launcher_filter[] = {
+    "init", "getty", "seriald", "lwipd", "wm", NULL
+};
+
+static int is_filtered(const char *name) {
+    for (int i = 0; launcher_filter[i]; i++)
+        if (strcmp(name, launcher_filter[i]) == 0) return 1;
+    return 0;
+}
+
+void launcher_open(wm_state_t *wm) {
+    if (wm->launcher_active) return;
+
+    /* enumerate /bin */
+    char buf[2048];
+    int rc = listdir("/bin", buf, sizeof(buf));
+    if (rc < 0) return;
+
+    wm->launcher_count = 0;
+    char *p = buf;
+    while (*p && wm->launcher_count < LAUNCHER_MAX_ITEMS) {
+        char *nl = strchr(p, '\n');
+        if (!nl) break;
+        *nl = '\0';
+        if (strlen(p) > 0 && !is_filtered(p)) {
+            strncpy(wm->launcher_items[wm->launcher_count], p, 31);
+            wm->launcher_items[wm->launcher_count][31] = '\0';
+            wm->launcher_count++;
+        }
+        p = nl + 1;
+    }
+
+    if (wm->launcher_count == 0) return;
+
+    wm->launcher_selected = 0;
+    wm->launcher_scroll = 0;
+
+    /* allocate layer */
+    int lx = (SCREEN_W - LAUNCHER_W) / 2;
+    int ly = (SCREEN_H - LAUNCHER_H) / 2;
+
+    fb_layer_config_t cfg = {0};
+    cfg.size = sizeof(cfg);
+    cfg.x0 = lx; cfg.y0 = ly;
+    cfg.x1 = lx + LAUNCHER_W; cfg.y1 = ly + LAUNCHER_H;
+    cfg.alpha = 0;
+    cfg.stride = LAUNCHER_W * BPP;
+
+    fb_layer_info_t info = {0};
+    if (sys_5ht_req_buf(LAYER_LAUNCHER, &cfg, &info) != 0) return;
+
+    wm->launcher_fb = (uint32_t *)(uintptr_t)info.fb_user_va;
+    wm->launcher_meta = (volatile fb_layer_metadata_t *)(uintptr_t)info.metadata_user_va;
+    wm->launcher_active = 1;
+
+    launcher_render(wm);
+}
+
+void launcher_close(wm_state_t *wm) {
+    if (!wm->launcher_active) return;
+    sys_5ht_rel_buf(LAYER_LAUNCHER);
+    wm->launcher_fb = NULL;
+    wm->launcher_meta = NULL;
+    wm->launcher_active = 0;
+}
+
+void launcher_render(wm_state_t *wm) {
+    if (!wm->launcher_fb) return;
+
+    uint32_t stride = LAUNCHER_W;
+
+    /* background */
+    draw_fill_rect(wm->launcher_fb, stride, 0, 0, LAUNCHER_W, LAUNCHER_H, THEME_BG_DARK);
+
+    /* border */
+    draw_fill_rect(wm->launcher_fb, stride, 0, 0, LAUNCHER_W, 2, THEME_ACCENT);
+    draw_fill_rect(wm->launcher_fb, stride, 0, LAUNCHER_H - 2, LAUNCHER_W, 2, THEME_ACCENT);
+    draw_fill_rect(wm->launcher_fb, stride, 0, 0, 2, LAUNCHER_H, THEME_ACCENT);
+    draw_fill_rect(wm->launcher_fb, stride, LAUNCHER_W - 2, 0, 2, LAUNCHER_H, THEME_ACCENT);
+
+    /* title */
+    draw_text(wm->launcher_fb, stride, LAUNCHER_PAD, LAUNCHER_PAD,
+              "Launch Program", THEME_ACCENT, THEME_BG_DARK);
+
+    /* separator */
+    int sep_y = LAUNCHER_PAD + FONT_H + 4;
+    draw_fill_rect(wm->launcher_fb, stride, LAUNCHER_PAD, sep_y,
+                   LAUNCHER_W - LAUNCHER_PAD * 2, 1, THEME_BORDER);
+
+    /* item list */
+    int list_y = sep_y + 6;
+    int visible = (LAUNCHER_H - list_y - LAUNCHER_PAD) / LAUNCHER_ITEM_H;
+
+    for (int i = 0; i < visible && (i + wm->launcher_scroll) < wm->launcher_count; i++) {
+        int idx = i + wm->launcher_scroll;
+        int iy = list_y + i * LAUNCHER_ITEM_H;
+        int selected = (idx == wm->launcher_selected);
+
+        uint32_t bg = selected ? THEME_ACCENT : THEME_BG_DARK;
+        uint32_t fg = selected ? 0xFF000000 : THEME_TEXT_PRIMARY;
+
+        draw_fill_rect(wm->launcher_fb, stride,
+                       LAUNCHER_PAD, iy,
+                       LAUNCHER_W - LAUNCHER_PAD * 2, LAUNCHER_ITEM_H, bg);
+        draw_text(wm->launcher_fb, stride,
+                  LAUNCHER_PAD + 8, iy + (LAUNCHER_ITEM_H - FONT_H) / 2,
+                  wm->launcher_items[idx], fg, bg);
+    }
+
+    /* hint text */
+    draw_text(wm->launcher_fb, stride,
+              LAUNCHER_PAD, LAUNCHER_H - LAUNCHER_PAD - FONT_H,
+              "Enter=launch  Esc=close  \x18\x19=navigate",
+              THEME_TEXT_DIM, THEME_BG_DARK);
+
+    /* submit */
+    wm->launcher_meta->dx0 = 0; wm->launcher_meta->dy0 = 0;
+    wm->launcher_meta->dx1 = LAUNCHER_W; wm->launcher_meta->dy1 = LAUNCHER_H;
+    wm->launcher_meta->frame_id++;
+    wm->launcher_meta->ready = 1;
+}
+
+void launcher_key(wm_state_t *wm, keyboard_event_t *ev) {
+    if (ev->flags & KEY_FLAG_RELEASED) return;
+
+    int sep_y = LAUNCHER_PAD + FONT_H + 4 + 6;
+    int visible = (LAUNCHER_H - sep_y - LAUNCHER_PAD) / LAUNCHER_ITEM_H;
+
+    switch (ev->scancode) {
+    case 0x01: /* Escape */
+        launcher_close(wm);
+        return;
+    case 0x1C: /* Enter */ {
+        if (wm->launcher_selected >= 0 && wm->launcher_selected < wm->launcher_count) {
+            char name[32];
+            strncpy(name, wm->launcher_items[wm->launcher_selected], sizeof(name));
+            name[31] = '\0';
+            launcher_close(wm);
+            wm_launch_window(wm, name);
+        }
+        return;
+    }
+    case 0x48: /* Up arrow */
+        if (wm->launcher_selected > 0) {
+            wm->launcher_selected--;
+            if (wm->launcher_selected < wm->launcher_scroll)
+                wm->launcher_scroll = wm->launcher_selected;
+        }
+        break;
+    case 0x50: /* Down arrow */
+        if (wm->launcher_selected < wm->launcher_count - 1) {
+            wm->launcher_selected++;
+            if (wm->launcher_selected >= wm->launcher_scroll + visible)
+                wm->launcher_scroll = wm->launcher_selected - visible + 1;
+        }
+        break;
+    default:
+        return;
+    }
+    launcher_render(wm);
+}
+
 /* --- window decorations --- */
 
 void wm_render_decorations(wm_state_t *wm, int idx) {
@@ -222,21 +453,55 @@ void wm_render_decorations(wm_state_t *wm, int idx) {
                    win->h - TITLEBAR_H, border);
     /* bottom */
     draw_fill_rect(win->fb, stride, 0, win->h - BORDER_W, win->w, BORDER_W, border);
+
+    /* titlebar + borders dirty */
+    wm_dirty_expand(win, 0, 0, win->w, TITLEBAR_H);
+    wm_dirty_expand(win, 0, TITLEBAR_H, BORDER_W, win->h - TITLEBAR_H);
+    wm_dirty_expand(win, win->w - BORDER_W, TITLEBAR_H, BORDER_W, win->h - TITLEBAR_H);
+    wm_dirty_expand(win, 0, win->h - BORDER_W, win->w, BORDER_W);
+}
+
+/* --- dirty region tracking --- */
+
+void wm_dirty_reset(wm_window_t *win) {
+    win->dirty_x0 = win->w;
+    win->dirty_y0 = win->h;
+    win->dirty_x1 = 0;
+    win->dirty_y1 = 0;
+}
+
+void wm_dirty_expand(wm_window_t *win, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+    uint16_t x1 = x + w;
+    uint16_t y1 = y + h;
+    if (x < win->dirty_x0) win->dirty_x0 = x;
+    if (y < win->dirty_y0) win->dirty_y0 = y;
+    if (x1 > win->dirty_x1) win->dirty_x1 = x1;
+    if (y1 > win->dirty_y1) win->dirty_y1 = y1;
 }
 
 /* --- frame submission --- */
 
 void wm_submit_frame(wm_window_t *win) {
     if (!win->meta) return;
-    /* Non-blocking: skip if compositor hasn't consumed previous frame */
     if (win->meta->ready) return;
+    if (win->dirty_x0 >= win->dirty_x1 || win->dirty_y0 >= win->dirty_y1) return;
 
-    win->meta->dx0 = 0;
-    win->meta->dy0 = 0;
-    win->meta->dx1 = win->w;
-    win->meta->dy1 = win->h;
+    /* Clamp dirty rect to window bounds */
+    uint16_t dx0 = win->dirty_x0;
+    uint16_t dy0 = win->dirty_y0;
+    uint16_t dx1 = win->dirty_x1;
+    uint16_t dy1 = win->dirty_y1;
+    if (dx1 > win->w) dx1 = win->w;
+    if (dy1 > win->h) dy1 = win->h;
+    if (dx0 >= dx1 || dy0 >= dy1) { wm_dirty_reset(win); return; }
+
+    win->meta->dx0 = dx0;
+    win->meta->dy0 = dy0;
+    win->meta->dx1 = dx1;
+    win->meta->dy1 = dy1;
     win->meta->frame_id++;
     win->meta->ready = 1;
+    wm_dirty_reset(win);
 }
 
 /* --- window render (decorations + terminal) --- */
@@ -284,8 +549,12 @@ void wm_render_window(wm_state_t *wm, int idx) {
         sys_5ht_pty_winsize(win->pty_master_fd, &ws, 0);
     }
 
+    /* Full re-render: reset dirty and mark everything */
+    wm_dirty_reset(win);
+
     /* Clear the full fb first */
     draw_fill_rect(win->fb, win->fb_stride_px, 0, 0, win->w, win->h, THEME_TERM_BG);
+    wm_dirty_expand(win, 0, 0, win->w, win->h);
 
     /* Render decorations */
     wm_render_decorations(wm, idx);
@@ -294,12 +563,24 @@ void wm_render_window(wm_state_t *wm, int idx) {
     term_mark_all_dirty(&win->term);
     term_render(win);
 
-    wm_submit_frame(win);
+    /* Force-submit: after a full reconfigure + redraw, we must submit
+       regardless of whether the compositor consumed the previous frame */
+    win->meta->dx0 = 0;
+    win->meta->dy0 = 0;
+    win->meta->dx1 = win->w;
+    win->meta->dy1 = win->h;
+    win->meta->frame_id++;
+    win->meta->ready = 1;
+    wm_dirty_reset(win);
 }
 
 /* --- window lifecycle --- */
 
 int wm_create_window(wm_state_t *wm) {
+    return wm_launch_window(wm, NULL);
+}
+
+int wm_launch_window(wm_state_t *wm, const char *program) {
     /* find free slot */
     int idx = -1;
     for (int i = 0; i < MAX_WINDOWS; i++) {
@@ -324,7 +605,10 @@ int wm_create_window(wm_state_t *wm) {
     win->active = 1;
     win->layer_id = (uint16_t)layer_id;
     win->mode = WIN_TILED;
-    snprintf(win->title, sizeof(win->title), "Terminal %d", idx + 1);
+    if (program)
+        snprintf(win->title, sizeof(win->title), "%s", program);
+    else
+        snprintf(win->title, sizeof(win->title), "Terminal %d", idx + 1);
 
     wm->num_windows++;
 
@@ -400,12 +684,19 @@ int wm_create_window(wm_state_t *wm) {
 
         sys_5ht_pty_setpgrp(0);
 
-        char *argv[] = { "/bin/login", NULL };
         char *envp[] = { "TERM=xterm", "HOME=/root", NULL };
-        execve("/bin/login", argv, envp);
-        /* fallback to shell */
-        argv[0] = "/bin/sh";
-        execve("/bin/sh", argv, envp);
+        if (program) {
+            char path[64];
+            snprintf(path, sizeof(path), "/bin/%s", program);
+            char *argv[] = { path, NULL };
+            execve(path, argv, envp);
+        } else {
+            char *argv[] = { "/bin/login", NULL };
+            execve("/bin/login", argv, envp);
+            /* fallback to shell */
+            argv[0] = "/bin/sh";
+            execve("/bin/sh", argv, envp);
+        }
         _exit(127);
     }
 
@@ -419,6 +710,7 @@ int wm_create_window(wm_state_t *wm) {
     wm_focus_window(wm, idx);
 
     /* render all windows (layout may have changed) */
+    desktop_mark_dirty(wm, 0, 0, SCREEN_W, SCREEN_H - TASKBAR_H);
     for (int i = 0; i < MAX_WINDOWS; i++) {
         if (wm->windows[i].active)
             wm_render_window(wm, i);
@@ -466,7 +758,8 @@ void wm_close_window(wm_state_t *wm, int idx) {
         }
     }
 
-    /* recompute layout */
+    /* recompute layout — mark full desktop dirty to erase closed window */
+    desktop_mark_dirty(wm, 0, 0, SCREEN_W, SCREEN_H - TASKBAR_H);
     layout_compute(wm);
     for (int i = 0; i < MAX_WINDOWS; i++) {
         if (wm->windows[i].active)
@@ -532,7 +825,8 @@ int main(void) {
         return 1;
     }
 
-    /* init cursor and taskbar */
+    /* init layers: desktop first (z=1), then cursor, taskbar */
+    init_desktop(&wm);
     init_cursor_layer(&wm);
     init_taskbar(&wm);
     render_taskbar(&wm);
@@ -622,6 +916,9 @@ int main(void) {
                 wm_submit_frame(win);
             }
         }
+
+        /* Flush desktop dirty rect (ghost cleanup for window moves) */
+        desktop_submit(&wm);
 
         /* Dead children are detected via POLLHUP on PTY master fd.
            SIGCHLD handler reaps zombies. */
