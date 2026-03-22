@@ -31,6 +31,13 @@ static volatile uint32_t event_count = 0;  /**< Number of events in buffer */
 /** VFS node for /dev/keyboard/event, used for wake queue access */
 vfs_node_t *dev_keyboard_event_node = NULL;
 
+static int dev_keyboard_poll(vfs_node_t *node) {
+    (void)node;
+    if (event_count > 0)
+        return POLLIN;
+    return 0;
+}
+
 /** VFS operations for /dev/keyboard/event */
 static vfs_ops_t dev_keyboard_event_ops = {
     .read = dev_keyboard_read_event,
@@ -43,7 +50,8 @@ static vfs_ops_t dev_keyboard_event_ops = {
     .readdir = NULL,
     .finddir = NULL,
     .create = NULL,
-    .mkdir = NULL
+    .mkdir = NULL,
+    .poll = dev_keyboard_poll
 };
 
 int dev_keyboard_read_event(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer) {

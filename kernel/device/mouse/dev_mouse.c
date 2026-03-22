@@ -46,6 +46,13 @@ static vfs_ops_t dev_mouse_read_pos_ops = {
     .mkdir = NULL
 };
 
+static int dev_mouse_poll(vfs_node_t *node) {
+    (void)node;
+    if (event_count > 0)
+        return POLLIN;
+    return 0;
+}
+
 /** VFS operations for /dev/mouse/event */
 static vfs_ops_t dev_mouse_event_ops = {
     .read = dev_mouse_read_event,
@@ -58,7 +65,8 @@ static vfs_ops_t dev_mouse_event_ops = {
     .readdir = NULL,
     .finddir = NULL,
     .create = NULL,
-    .mkdir = NULL
+    .mkdir = NULL,
+    .poll = dev_mouse_poll
 };
 
 int dev_mouse_read_pos(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer) {
