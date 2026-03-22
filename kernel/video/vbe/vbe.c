@@ -1721,7 +1721,9 @@ void vbe_worker(void) {
                 continue;
 
             fb_layer_metadata_t *meta = vbe_layer_meta[z];
-            if (!meta || !meta->ready)
+            if (!meta)
+                continue;
+            if (!meta->ready)
                 continue;
 
             vbe_z_layer_t *layer = vbe_z_layers[z];

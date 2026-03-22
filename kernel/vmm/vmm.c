@@ -35,6 +35,7 @@ buddy_state_t g_buddy = {0};
 shm_object_t* shm_table[MAX_SHM_OBJECTS] = {0};
 uint32_t kmap_pt_phys = 0;
 
+
 /**
  * @brief Get the virtual address of the kernel mapping page table
  *
@@ -473,7 +474,7 @@ void buddy_init(multiboot_info_t *mbi, uint32_t kernel_phys_start, uint32_t kern
     memset(&g_buddy, 0, sizeof(g_buddy));
 
     // Collect exclusions
-    range64_t excl[4];
+    range64_t excl[6];
     int excl_n = 0;
 
     // exclude <1 MiB (identity map)
@@ -487,6 +488,12 @@ void buddy_init(multiboot_info_t *mbi, uint32_t kernel_phys_start, uint32_t kern
     if (fb_length)
         excl[excl_n++] = (range64_t){ fb_phys_base, (uint64_t)fb_phys_base + fb_length };
 
+    // exclude kernel heap (physically mapped at boot)
+    excl[excl_n++] = (range64_t){ KERNEL_HEAP_PHYS, (uint64_t)KERNEL_HEAP_PHYS + KERNEL_HEAP_SIZE };
+
+    // exclude kernel stack (full 4 MiB page table mapping at boot)
+    excl[excl_n++] = (range64_t){ KERNEL_STACK_PHYS, (uint64_t)KERNEL_STACK_PHYS + (PAGE_ENTRIES * PAGE_SIZE) };
+
     uint32_t mmap_len  = mbi->mmap_length;
     uint32_t mmap_addr = mbi->mmap_addr;
 
@@ -499,19 +506,18 @@ void buddy_init(multiboot_info_t *mbi, uint32_t kernel_phys_start, uint32_t kern
 
         if (m->type != MULTIBOOT_MEMORY_AVAILABLE || len == 0) continue; // only "available"
 
-        range64_t todo[2] = { {base, end} };
+        range64_t todo[8] = { {base, end} };
         int todo_n = 1;
 
         for (int e = 0; e < excl_n; ++e) {
-            range64_t next[2];
+            range64_t next[8];
             int next_n = 0;
-            for (int t = 0; t < todo_n; ++t) {
+            for (int t = 0; t < todo_n && next_n + 2 <= 8; ++t) {
                 next_n += carve_exclusion(todo[t].start, todo[t].end, excl[e].start, excl[e].end, &next[next_n]);
             }
-            // copy back
-            todo[0] = next[0];
-            todo[1] = (next_n > 1) ? next[1] : (range64_t){0,0};
-            todo_n  = next_n;
+            for (int k = 0; k < next_n && k < 8; ++k)
+                todo[k] = next[k];
+            todo_n = next_n;
             if (todo_n == 0) break;
         }
 
@@ -726,7 +732,6 @@ void map_page(address_space_t *as, uint32_t vaddr, uint32_t paddr, uint32_t flag
         if (!pt_phys) { kunmap(); kernel_panic("map_page: out of memory while mapping page table (foreign)"); }
         pd[pdi] = (pt_phys & PAGE_MASK) | pde_flags | PAGE_PRESENT;
         kunmap();
-
 
         uint32_t *newpt = (uint32_t*)kmap(pt_phys);
         memset(newpt, 0, PAGE_SIZE);
@@ -1012,7 +1017,7 @@ address_space_t *create_address_space(void) {
     void *pd_tmp = kmap(pd_phys);
     memset(pd_tmp, 0, PAGE_SIZE);
 
-    // clone kernel half pdes from current pd
+    // clone kernel PDEs from canonical table
     vmm_page_directory_t *cur = cur_pd_va();
     vmm_page_directory_t *newp = (vmm_page_directory_t*)pd_tmp;
 
@@ -1148,8 +1153,11 @@ uint32_t shm_map(process_control_block_t* pcb, shm_object_t *shm) {
     m->size = shm->size;
     m->shm = shm;
 
-    m->next = as->shmem_list;
-    as->shmem_list = m;
+    shmem_map_t **pp = &as->shmem_list;
+    while (*pp && (*pp)->start < m->start)
+        pp = &(*pp)->next;
+    m->next = *pp;
+    *pp = m;
 
     shm->refcount++;
 

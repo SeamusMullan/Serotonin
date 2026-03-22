@@ -20,6 +20,8 @@
 
 #define SOCK_BUFFER_SIZE_ALLOC 4096
 
+#define SYSCALL_STACK_BUF 4096
+
 typedef struct { uint32_t bits[_FD_WORDS]; } kernel_fd_set;
 
 struct kernel_pollfd {
@@ -162,6 +164,7 @@ enum {
 
 void system_call(processor_context_t *ctx);
 void poll_waiter_tick(void);
+void cleanup_layers(process_control_block_t *task);
 extern void isr_syscall(void);
 
 #endif

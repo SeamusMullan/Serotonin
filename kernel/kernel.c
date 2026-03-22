@@ -1082,7 +1082,7 @@ __attribute__((target("no-sse"))) __attribute__((section(".identity"))) void ker
     serial_puts(COM1_BASE, "init: fpu, sse2 enabled\n");
 
     uint32_t kernel_phys_start = (uint32_t)__kernel_load_base;
-    uint32_t kernel_phys_end   = (uint32_t)__kernel_end - (uint32_t)__kernel_virtual_base + (uint32_t)__kernel_load_base;
+    uint32_t kernel_phys_end   = (uint32_t)__kernel_end - KERNEL_VMA_BASE + KERNEL_PHYS_BASE;
     buddy_init(mbi, kernel_phys_start, kernel_phys_end, (uint32_t)mbi->framebuffer_addr, (uint32_t)(mbi->framebuffer_height) * (uint32_t)(mbi->framebuffer_pitch));
 
     serial_puts(COM1_BASE, "init: physical memory manager initialized\n");

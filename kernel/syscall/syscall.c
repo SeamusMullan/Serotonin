@@ -68,33 +68,20 @@ static uint32_t layer_priv_find_free(uint32_t size) {
     uint32_t end = layer_priv_end();
 
     while (addr + size <= end) {
-        uint32_t next_start = end;
-        uint32_t next_size = 0;
-        int found = 0;
-
+        int collision = 0;
         for (uint32_t i = 0; i < VBE_NUM_Z_LAYERS; i++) {
             if (!layer_states[i].allocated)
                 continue;
             uint32_t start = layer_states[i].fb_priv_va;
             uint32_t stop = start + layer_states[i].priv_region_size;
-            if (stop <= addr)
-                continue;
-            if (start <= addr && stop > addr) {
+            if (addr < stop && addr + size > start) {
                 addr = align_up(stop, PAGE_SIZE);
-                found = 1;
+                collision = 1;
                 break;
             }
-            if (start < next_start) {
-                next_start = start;
-                next_size = layer_states[i].priv_region_size;
-                found = 1;
-            }
         }
-
-        if (!found || addr + size <= next_start)
+        if (!collision)
             return addr;
-
-        addr = align_up(next_start + next_size, PAGE_SIZE);
     }
 
     return 0;
@@ -164,6 +151,16 @@ static void layer_release_state(uint16_t id, layer_state_t *state, address_space
     layer_free_shm(state->fb_shm);
     layer_free_shm(state->meta_shm);
     memset(state, 0, sizeof(*state));
+}
+
+void cleanup_layers(process_control_block_t *task) {
+    for (uint16_t i = 1; i < VBE_NUM_Z_LAYERS; i++) {
+        layer_state_t *state = &layer_states[i];
+        if (state->allocated && state->owner_pid == task->pid) {
+            vbe_layer_detach((uint8_t)i);
+            layer_release_state(i, state, task->address_space);
+        }
+    }
 }
 
 static int layer_config_valid(const fb_layer_config_t *cfg) {
@@ -371,19 +368,20 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
             handle->offset = handle->node->size;
         }
 
-        char *kbuf = (char*)kernel_malloc(buf_size);
+        char stack_buf[SYSCALL_STACK_BUF];
+        char *kbuf = (buf_size <= SYSCALL_STACK_BUF) ? stack_buf : (char*)kernel_malloc(buf_size);
         if (!kbuf) {
             errno = -ENOMEM;
             return;
         }
         if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
-            kernel_free(kbuf);
+            if (kbuf != stack_buf) kernel_free(kbuf);
             errno = -EFAULT;
             return;
         }
 
         int written = vfs_write(handle->node, handle->offset, buf_size, kbuf);
-        kernel_free(kbuf);
+        if (kbuf != stack_buf) kernel_free(kbuf);
         if (written < 0) {
             errno = (written == -1) ? -EIO : written;
             return;
@@ -397,20 +395,21 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
     // fd 1 (stdout) or fd 2 (stderr) without file handle, write thru PTY slave
     if (fd == WRITE_STDOUT || fd == WRITE_STDERR) {
         if (buf_size) {
-            char *kbuf = (char*)kernel_malloc(buf_size);
+            char stack_buf[SYSCALL_STACK_BUF];
+            char *kbuf = (buf_size <= SYSCALL_STACK_BUF) ? stack_buf : (char*)kernel_malloc(buf_size);
             if (!kbuf) {
                 errno = -ENOMEM;
                 return;
             }
             if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
-                kernel_free(kbuf);
+                if (kbuf != stack_buf) kernel_free(kbuf);
                 errno = -EFAULT;
                 return;
             }
             // route thru PTY slave write
             pty_t *pty = &pty_table[active_vty];
             pty_slave_write(pty->slave_node, 0, buf_size, kbuf);
-            kernel_free(kbuf);
+            if (kbuf != stack_buf) kernel_free(kbuf);
         }
         errno = (int)buf_size;
         return;
@@ -445,7 +444,8 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
             return;
         }
 
-        char* read_buf = kernel_malloc(buf_size);
+        char stack_buf[SYSCALL_STACK_BUF];
+        char *read_buf = (buf_size <= SYSCALL_STACK_BUF) ? stack_buf : (char*)kernel_malloc(buf_size);
         if (!read_buf) {
             errno = -ENOMEM;
             return;
@@ -455,20 +455,20 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
     current_task->current_user_buf = (uint32_t)read_ptr;
     int read_bytes = vfs_read(handle->node, handle->offset, buf_size, read_buf);
     if (read_bytes < 0) {
-        kernel_free(read_buf);
+        if (read_buf != stack_buf) kernel_free(read_buf);
         errno = (read_bytes == -1) ? -EIO : read_bytes;
         return;
     }
 
         if (copy_to_user(current_task->address_space, (uint32_t)read_ptr, read_buf, (size_t)read_bytes) != 0) {
-            kernel_free(read_buf);
+            if (read_buf != stack_buf) kernel_free(read_buf);
             errno = -EFAULT;
             return;
         }
         handle->offset += read_bytes;
         errno = read_bytes;
 
-        kernel_free(read_buf);
+        if (read_buf != stack_buf) kernel_free(read_buf);
         return;
     }
 
@@ -1308,11 +1308,7 @@ static void sys_sbrk(uint32_t arg2, processor_context_t *ctx) {
         }
     } else if (increment < 0) {
         for (uint32_t va = new_brk; va < old_brk; va += PAGE_SIZE) {
-            uint32_t phys = get_mapping(current_task->address_space, va);
-            if (phys) {
-                unmap_page(current_task->address_space, va, 1);
-                free_frame((void*)phys);
-            }
+            unmap_page(current_task->address_space, va, 1);
         }
     }
 
@@ -1863,24 +1859,20 @@ static void sys_listdir(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
 
         size_t len = strlen(child->name);
         if (off + len + 1 >= size) {
-            vfs_close(child);
             errno = off;
             return;
         }
 
         if (copy_to_user(current_task->address_space, (uint32_t)(buf + off), child->name, len) != 0) {
-            vfs_close(child);
             errno = -EFAULT;
             return;
         }
         off += len;
         if (copy_to_user(current_task->address_space, (uint32_t)(buf + off), "\n", 1) != 0) {
-            vfs_close(child);
             errno = -EFAULT;
             return;
         }
         off += 1;
-        vfs_close(child);
     }
 
     if (off < size) {
@@ -2807,11 +2799,11 @@ static void sys_poll(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
     }
 
     uint32_t pfd_size = nfds * sizeof(struct kernel_pollfd);
-    struct kernel_pollfd *pfds = kernel_malloc(pfd_size);
-    if (!pfds) { errno = -ENOMEM; return; }
+
+    struct kernel_pollfd stack_pfds[FD_SETSIZE];
+    struct kernel_pollfd *pfds = stack_pfds;
 
     if (copy_from_user(current_task->address_space, pfds, fds_ptr, pfd_size) != 0) {
-        kernel_free(pfds);
         errno = -EFAULT;
         return;
     }
@@ -2836,19 +2828,22 @@ static void sys_poll(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
 
     if (ready > 0 || timeout == 0) {
         copy_to_user(current_task->address_space, fds_ptr, pfds, pfd_size);
-        kernel_free(pfds);
         errno = ready;
         return;
     }
 
+    struct kernel_pollfd *heap_pfds = kernel_malloc(pfd_size);
+    if (!heap_pfds) { errno = -ENOMEM; return; }
+    __builtin_memcpy(heap_pfds, pfds, pfd_size);
+
     poll_waiter_t *w = kernel_malloc(sizeof(poll_waiter_t));
-    if (!w) { kernel_free(pfds); errno = -ENOMEM; return; }
+    if (!w) { kernel_free(heap_pfds); errno = -ENOMEM; return; }
 
     w->task          = current_task;
     w->type          = POLL_WAITER_POLL;
     w->has_timeout   = (timeout >= 0);
     w->deadline      = (timeout >= 0) ? timer_ticks + (uint64_t)timeout : 0;
-    w->pfds          = pfds;
+    w->pfds          = heap_pfds;
     w->poll_nfds     = nfds;
     w->poll_fds_ptr  = fds_ptr;
     w->nfds          = 0;

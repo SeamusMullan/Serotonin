@@ -293,14 +293,14 @@ void page_fault_handler(uint32_t *stack) {
     uint32_t faulting_address;
     asm volatile ("mov %%cr2, %0" : "=r"(faulting_address));
 
-    printfs(PRINT_STATUS_ERROR,"--- Exception: Page Fault ---\n");
-    printfs(PRINT_STATUS_ERROR,"FAULT:0x%08x ERR:0x%08x\n", faulting_address,frame.error_code);
-
     int present   =  frame.error_code & (1<<0);
     int write     =  frame.error_code & (1<<1);
     int user      =  frame.error_code & (1<<2);
     int rsvd      =  frame.error_code & (1<<3);
     int ifetch    =  frame.error_code & (1<<4);
+
+    printfs(PRINT_STATUS_ERROR,"--- Exception: Page Fault ---\n");
+    printfs(PRINT_STATUS_ERROR,"FAULT:0x%08x ERR:0x%08x\n", faulting_address,frame.error_code);
 
     // Decode the error code
     if (rsvd) {

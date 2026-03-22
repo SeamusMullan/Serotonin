@@ -14,6 +14,7 @@
 #include "../video/vbe/vbe.h"
 #include "../gdt.h"
 #include "../syscall/sys/errno.h"
+#include "../syscall/syscall.h"
 
 process_control_block_t *current_task = NULL;
 process_control_block_t *task_list    = NULL;
@@ -345,6 +346,8 @@ void task_exit(process_control_block_t* task_exited, uint8_t exit) {
         prev_task = task;
         task = task->next;
     }
+    cleanup_layers(task_exited);
+
     address_space_t *as = task_exited->address_space;
     if (as) {
         while (as->shmem_list) {
