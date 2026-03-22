@@ -33,17 +33,29 @@ static void scroll_up(term_state_t *ts, uint32_t top, uint32_t bot, uint32_t n) 
     if (n > bot - top + 1) n = bot - top + 1;
 
     uint32_t cols = ts->cols;
-    /* move rows up */
+    /* move cell rows up */
     memmove(&ts->cells[top * cols],
             &ts->cells[(top + n) * cols],
             (bot - top + 1 - n) * cols * sizeof(term_cell_t));
-    /* clear bottom n rows */
+    /* clear bottom n rows (clear_row marks them dirty) */
     for (uint32_t r = bot - n + 1; r <= bot; r++)
         clear_row(ts, r);
-    /* mark all visible rows dirty */
-    for (uint32_t r = top; r <= bot; r++)
-        for (uint32_t c = 0; c < cols; c++)
-            ts->cells[r * cols + c].dirty = 1;
+
+    /* Accumulate FB scroll: if the region matches the pending one (or no
+       pending scroll yet), we can batch.  Otherwise flush to dirty-all. */
+    if (ts->fb_scroll_delta >= 0 &&
+        (ts->fb_scroll_delta == 0 ||
+         (ts->fb_scroll_top == top && ts->fb_scroll_bot == bot))) {
+        ts->fb_scroll_delta += (int32_t)n;
+        ts->fb_scroll_top = top;
+        ts->fb_scroll_bot = bot;
+    } else {
+        /* Mixed scroll directions or region change — fall back to dirty-all */
+        ts->fb_scroll_delta = 0;
+        for (uint32_t r = top; r <= bot; r++)
+            for (uint32_t c = 0; c < cols; c++)
+                ts->cells[r * cols + c].dirty = 1;
+    }
 }
 
 static void scroll_down(term_state_t *ts, uint32_t top, uint32_t bot, uint32_t n) {
@@ -56,9 +68,19 @@ static void scroll_down(term_state_t *ts, uint32_t top, uint32_t bot, uint32_t n
             (bot - top + 1 - n) * cols * sizeof(term_cell_t));
     for (uint32_t r = top; r < top + n; r++)
         clear_row(ts, r);
-    for (uint32_t r = top; r <= bot; r++)
-        for (uint32_t c = 0; c < cols; c++)
-            ts->cells[r * cols + c].dirty = 1;
+
+    if (ts->fb_scroll_delta <= 0 &&
+        (ts->fb_scroll_delta == 0 ||
+         (ts->fb_scroll_top == top && ts->fb_scroll_bot == bot))) {
+        ts->fb_scroll_delta -= (int32_t)n;
+        ts->fb_scroll_top = top;
+        ts->fb_scroll_bot = bot;
+    } else {
+        ts->fb_scroll_delta = 0;
+        for (uint32_t r = top; r <= bot; r++)
+            for (uint32_t c = 0; c < cols; c++)
+                ts->cells[r * cols + c].dirty = 1;
+    }
 }
 
 /* --- init / free --- */
@@ -615,54 +637,135 @@ void term_process(term_state_t *ts, const char *data, int len) {
 
 /* --- render --- */
 
+/*
+ * Framebuffer-level scroll: memmove pixel rows instead of re-rendering
+ * every cell. Only the newly exposed rows need character rendering.
+ */
+static void fb_apply_scroll(wm_window_t *win) {
+    term_state_t *ts = &win->term;
+    int32_t delta = ts->fb_scroll_delta;
+    if (delta == 0) return;
+    ts->fb_scroll_delta = 0;
+
+    uint32_t *fb = win->fb;
+    uint32_t stride = win->fb_stride_px;
+    uint32_t oy = TITLEBAR_H;
+    uint32_t top = ts->fb_scroll_top;
+    uint32_t bot = ts->fb_scroll_bot;
+    uint32_t region_rows = bot - top + 1;
+
+    if (delta > 0) {
+        /* Scrolled up by delta lines */
+        uint32_t n = (uint32_t)delta;
+        if (n >= region_rows) return;
+
+        /* Copy full-stride rows (includes borders — they're identical on
+           every row so copying them is harmless and lets us do one big
+           contiguous SSE2 copy instead of per-scanline memmove). */
+        uint32_t src_py = oy + (top + n) * FONT_H;
+        uint32_t dst_py = oy + top * FONT_H;
+        uint32_t move_rows_px = (region_rows - n) * FONT_H;
+
+        /* dst < src for scroll-up → forward copy is safe */
+        sse2_copy_fwd(fb + dst_py * stride,
+                      fb + src_py * stride,
+                      move_rows_px * stride);
+
+        wm_dirty_expand(win, 0, oy + top * FONT_H,
+                        win->w, region_rows * FONT_H);
+    } else {
+        uint32_t n = (uint32_t)(-delta);
+        if (n >= region_rows) return;
+
+        uint32_t src_py = oy + top * FONT_H;
+        uint32_t dst_py = oy + (top + n) * FONT_H;
+        uint32_t move_rows_px = (region_rows - n) * FONT_H;
+
+        /* dst > src for scroll-down → backward copy */
+        sse2_copy_bwd(fb + dst_py * stride,
+                      fb + src_py * stride,
+                      move_rows_px * stride);
+
+        wm_dirty_expand(win, 0, oy + top * FONT_H,
+                        win->w, region_rows * FONT_H);
+    }
+}
+
 void term_render(wm_window_t *win) {
     term_state_t *ts = &win->term;
     uint32_t *fb = win->fb;
     uint32_t stride = win->fb_stride_px;
-    /* offset into content area */
     uint32_t ox = BORDER_W;
     uint32_t oy = TITLEBAR_H;
+    uint32_t cols = ts->cols;
+    uint32_t rows = ts->rows;
+
+    /* Save scroll delta before fb_apply_scroll clears it */
+    int32_t scroll_delta = ts->fb_scroll_delta;
+
+    /* Apply pending FB-level scroll before rendering dirty cells */
+    fb_apply_scroll(win);
 
     /*
-     * Cursor rendering strategy: instead of XOR (which accumulates state
-     * and breaks on blink), we redraw cursor cells with swapped fg/bg.
-     *
-     * Always mark the previous and current cursor cells dirty so they
-     * get redrawn from the grid. The previous cell restores normal colors;
-     * the current cell gets inverted colors if the cursor is visible.
+     * Cursor ghost cleanup: fb_apply_scroll shifted the pixels, so the
+     * previously-rendered cursor block moved with them.  Mark the
+     * *shifted* position dirty (not the original render_cursor_row)
+     * so it gets redrawn with normal colors.
      */
-    if (ts->render_cursor_col < ts->cols && ts->render_cursor_row < ts->rows)
-        ts->cells[ts->render_cursor_row * ts->cols + ts->render_cursor_col].dirty = 1;
-    if (ts->cursor_col < ts->cols && ts->cursor_row < ts->rows)
-        ts->cells[ts->cursor_row * ts->cols + ts->cursor_col].dirty = 1;
+    int32_t ghost_row = (int32_t)ts->render_cursor_row - scroll_delta;
+    if (ghost_row >= 0 && ghost_row < (int32_t)rows && ts->render_cursor_col < cols)
+        ts->cells[ghost_row * cols + ts->render_cursor_col].dirty = 1;
+    /* Also mark the original position (handles the non-scroll case) */
+    if (ts->render_cursor_col < cols && ts->render_cursor_row < rows)
+        ts->cells[ts->render_cursor_row * cols + ts->render_cursor_col].dirty = 1;
+    /* Mark current cursor position */
+    if (ts->cursor_col < cols && ts->cursor_row < rows)
+        ts->cells[ts->cursor_row * cols + ts->cursor_col].dirty = 1;
 
-    /* track dirty cell bounding box to batch into one dirty expand */
-    uint32_t min_c = ts->cols, min_r = ts->rows;
+    uint32_t min_c = cols, min_r = rows;
     uint32_t max_c = 0, max_r = 0;
 
-    for (uint32_t r = 0; r < ts->rows; r++) {
-        for (uint32_t c = 0; c < ts->cols; c++) {
-            term_cell_t *cell = &ts->cells[r * ts->cols + c];
+    uint32_t cursor_col = ts->cursor_col;
+    uint32_t cursor_row = ts->cursor_row;
+    uint8_t  cursor_vis = ts->cursor_visible;
+
+    for (uint32_t r = 0; r < rows; r++) {
+        term_cell_t *row_start = &ts->cells[r * cols];
+
+        /* Quick scan: skip entirely clean rows */
+        uint32_t any_dirty = 0;
+        uint32_t c = 0;
+        for (; c + 3 < cols; c += 4) {
+            any_dirty |= row_start[c].dirty | row_start[c+1].dirty |
+                         row_start[c+2].dirty | row_start[c+3].dirty;
+            if (any_dirty) break;
+        }
+        if (!any_dirty) {
+            for (; c < cols; c++)
+                if (row_start[c].dirty) { any_dirty = 1; break; }
+        }
+        if (!any_dirty) continue;
+
+        int py = oy + r * FONT_H;
+        if (r < min_r) min_r = r;
+        if (r > max_r) max_r = r;
+
+        for (c = 0; c < cols; c++) {
+            term_cell_t *cell = &row_start[c];
             if (!cell->dirty) continue;
             cell->dirty = 0;
 
-            int px = ox + c * FONT_W;
-            int py = oy + r * FONT_H;
-
             uint32_t fg = cell->fg, bg = cell->bg;
 
-            /* Cursor cell: swap fg/bg to show block cursor */
-            if (ts->cursor_visible &&
-                c == ts->cursor_col && r == ts->cursor_row) {
+            if (cursor_vis && c == cursor_col && r == cursor_row) {
                 uint32_t tmp = fg; fg = bg; bg = tmp;
             }
 
-            draw_char(fb, stride, px, py, cell->ch, cell->bold, fg, bg);
+            draw_char(fb, stride, ox + c * FONT_W, py,
+                      cell->ch, cell->bold, fg, bg);
 
             if (c < min_c) min_c = c;
             if (c > max_c) max_c = c;
-            if (r < min_r) min_r = r;
-            if (r > max_r) max_r = r;
         }
     }
 
@@ -672,7 +775,6 @@ void term_render(wm_window_t *win) {
                         (max_c - min_c + 1) * FONT_W, (max_r - min_r + 1) * FONT_H);
     }
 
-    /* Update render cursor tracking */
     ts->render_cursor_col = ts->cursor_col;
     ts->render_cursor_row = ts->cursor_row;
 }

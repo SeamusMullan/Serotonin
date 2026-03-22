@@ -108,6 +108,11 @@ typedef struct {
     term_cell_t *alt_cells;
     /* Last rendered cursor position (for clean blink transitions) */
     uint32_t render_cursor_col, render_cursor_row;
+    /* Framebuffer scroll accumulator: renderer can memmove pixels
+       instead of re-rendering every cell after a scroll. */
+    int32_t  fb_scroll_delta;   /* >0 = scrolled up N lines, <0 = down */
+    uint32_t fb_scroll_top;     /* top row of scroll region */
+    uint32_t fb_scroll_bot;     /* bottom row of scroll region */
 } term_state_t;
 
 /* Window mode */
@@ -202,6 +207,8 @@ typedef struct {
 } wm_state_t;
 
 /* --- wm_draw.c --- */
+void sse2_copy_fwd(uint32_t *dst, const uint32_t *src, uint32_t count);
+void sse2_copy_bwd(uint32_t *dst, const uint32_t *src, uint32_t count);
 void draw_fill_rect(uint32_t *fb, uint32_t stride_px, int x, int y,
                     int w, int h, uint32_t color);
 void draw_glyph(uint32_t *fb, uint32_t stride_px, int x, int y,

@@ -160,8 +160,7 @@ static void init_desktop(wm_state_t *wm) {
     wm->desktop_meta = (volatile fb_layer_metadata_t *)(uintptr_t)info.metadata_user_va;
 
     /* Fill with desktop background color */
-    for (int i = 0; i < SCREEN_W * SCREEN_H; i++)
-        wm->desktop_fb[i] = THEME_BG_DARK;
+    draw_fill_rect(wm->desktop_fb, SCREEN_W, 0, 0, SCREEN_W, SCREEN_H, THEME_BG_DARK);
 
     /* Reset desktop dirty tracking */
     wm->desk_dirty_x0 = SCREEN_W;
@@ -483,7 +482,6 @@ void wm_dirty_expand(wm_window_t *win, uint16_t x, uint16_t y, uint16_t w, uint1
 
 void wm_submit_frame(wm_window_t *win) {
     if (!win->meta) return;
-    if (win->meta->ready) return;
     if (win->dirty_x0 >= win->dirty_x1 || win->dirty_y0 >= win->dirty_y1) return;
 
     /* Clamp dirty rect to window bounds */
@@ -494,6 +492,14 @@ void wm_submit_frame(wm_window_t *win) {
     if (dx1 > win->w) dx1 = win->w;
     if (dy1 > win->h) dy1 = win->h;
     if (dx0 >= dx1 || dy0 >= dy1) { wm_dirty_reset(win); return; }
+
+    /* Widen the dirty rect if compositor hasn't consumed the previous one yet */
+    if (win->meta->ready) {
+        if (dx0 > win->meta->dx0) dx0 = win->meta->dx0;
+        if (dy0 > win->meta->dy0) dy0 = win->meta->dy0;
+        if (dx1 < win->meta->dx1) dx1 = win->meta->dx1;
+        if (dy1 < win->meta->dy1) dy1 = win->meta->dy1;
+    }
 
     win->meta->dx0 = dx0;
     win->meta->dy0 = dy0;
@@ -691,9 +697,7 @@ int wm_launch_window(wm_state_t *wm, const char *program) {
             char *argv[] = { path, NULL };
             execve(path, argv, envp);
         } else {
-            char *argv[] = { "/bin/login", NULL };
-            execve("/bin/login", argv, envp);
-            /* fallback to shell */
+            char *argv[] = { "/bin/sh", NULL };
             argv[0] = "/bin/sh";
             execve("/bin/sh", argv, envp);
         }
@@ -875,32 +879,46 @@ int main(void) {
             }
         }
 
-        /* handle mouse */
+        /* handle mouse — drain all events, update cursor position once */
         if (pfds[mouse_idx].revents & POLLIN) {
             mouse_event_t ev;
+            int mouse_moved = 0;
             while (read(wm.mouse_fd, &ev, sizeof(ev)) == sizeof(ev)) {
                 wm_handle_mouse(&wm, &ev);
+                mouse_moved = 1;
+            }
+            if (mouse_moved)
                 move_cursor(&wm, wm.mouse_x, wm.mouse_y);
+        }
+
+        /* handle PTY output - batch: process all data, then render once per window */
+        uint8_t pty_got_data[MAX_WINDOWS] = {0};
+        int pty_closed = -1;
+        for (int p = 2; p < npfds; p++) {
+            if (!(pfds[p].revents & (POLLIN | POLLHUP))) continue;
+
+            int win_idx = pfd_map[p];
+            wm_window_t *win = &wm.windows[win_idx];
+            char buf[4096];
+            int n = read(win->pty_master_fd, buf, sizeof(buf));
+            if (n > 0) {
+                term_process(&win->term, buf, n);
+                pty_got_data[win_idx] = 1;
+            } else if (n <= 0 && (pfds[p].revents & POLLHUP)) {
+                pty_closed = win_idx;
+                break;
             }
         }
 
-        /* handle PTY output */
-        for (int p = 2; p < npfds; p++) {
-            int win_idx = pfd_map[p];
-            wm_window_t *win = &wm.windows[win_idx];
-
-            if (pfds[p].revents & (POLLIN | POLLHUP)) {
-                char buf[4096];
-                int n = read(win->pty_master_fd, buf, sizeof(buf));
-                if (n > 0) {
-                    term_process(&win->term, buf, n);
-                    /* render only terminal content (not full rerender) */
-                    term_render(win);
-                    wm_submit_frame(win);
-                } else if (n <= 0 && (pfds[p].revents & POLLHUP)) {
-                    wm_close_window(&wm, win_idx);
-                    break; /* pfds invalidated, restart loop */
-                }
+        if (pty_closed >= 0) {
+            wm_close_window(&wm, pty_closed);
+        } else {
+            /* Render + submit only windows that received data */
+            for (int i = 0; i < MAX_WINDOWS; i++) {
+                if (!pty_got_data[i]) continue;
+                wm_window_t *win = &wm.windows[i];
+                term_render(win);
+                wm_submit_frame(win);
             }
         }
 
@@ -911,17 +929,34 @@ int main(void) {
             cursor_blink_on ^= 1;
             if (wm.focused_idx >= 0 && wm.windows[wm.focused_idx].active) {
                 wm_window_t *win = &wm.windows[wm.focused_idx];
-                win->term.cursor_visible = cursor_blink_on;
-                term_render(win);
-                wm_submit_frame(win);
+                if (win->term.cursor_visible != cursor_blink_on) {
+                    win->term.cursor_visible = cursor_blink_on;
+                    term_render(win);
+                    wm_submit_frame(win);
+                }
             }
         }
 
         /* Flush desktop dirty rect (ghost cleanup for window moves) */
         desktop_submit(&wm);
 
-        /* Dead children are detected via POLLHUP on PTY master fd.
-           SIGCHLD handler reaps zombies. */
+        /* Re-stamp ready on all layers the compositor has consumed.
+           The compositor clears ready after compositing; if we don't
+           re-set it, the layer is skipped next frame.  No re-rendering
+           needed — the framebuffer content is still valid. */
+        for (int i = 0; i < MAX_WINDOWS; i++) {
+            if (!wm.windows[i].active || !wm.windows[i].meta) continue;
+            volatile fb_layer_metadata_t *m = wm.windows[i].meta;
+            if (!m->ready) {
+                m->ready = 1;
+            }
+        }
+        if (wm.taskbar_meta && !wm.taskbar_meta->ready)
+            wm.taskbar_meta->ready = 1;
+        if (wm.desktop_meta && !wm.desktop_meta->ready)
+            wm.desktop_meta->ready = 1;
+        if (wm.launcher_active && wm.launcher_meta && !wm.launcher_meta->ready)
+            wm.launcher_meta->ready = 1;
     }
 
     return 0;
