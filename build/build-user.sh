@@ -57,6 +57,7 @@ i686-elf-gcc -c ping.c -o ping.o $CFLAGS -Ilwip/serotonin
 i686-elf-gcc -c httpd.c -o httpd.o $CFLAGS -Ilwip/serotonin
 i686-elf-gcc -c seriald.c -o seriald.o $CFLAGS
 i686-elf-gcc -c initctl.c -o initctl.o $CFLAGS -Iinit
+i686-elf-gcc -c cortex/cortex.c -o cortex/cortex.o $CFLAGS
 
 # --- Link C programs ---
 
@@ -84,6 +85,7 @@ i686-elf-gcc $LDFLAGS $CRT0 nettest.o $LDLIBS -o nettest.elf
 i686-elf-gcc $LDFLAGS $CRT0 socket_test.o $LDLIBS -o socktest.elf
 i686-elf-gcc $LDFLAGS $CRT0 seriald.o $LDLIBS -o seriald.elf
 i686-elf-gcc $LDFLAGS $CRT0 initctl.o $LDLIBS -o initctl.elf
+i686-elf-gcc $LDFLAGS $CRT0 cortex/cortex.o $LDLIBS -o cortex.elf
 
 # ifconfig (uses lwip client library)
 i686-elf-gcc -c lwip/serotonin/lwip_client.c -o lwip/serotonin/lwip_client.o $CFLAGS

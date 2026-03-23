@@ -7,3 +7,4 @@ receiver.elf /bin/receiver
 devfs_example.elf /bin/devfs_example
 cat.elf /bin/cat
 kbtest.elf /bin/kbtest
+cortex.elf /bin/cortex
