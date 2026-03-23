@@ -22,6 +22,10 @@ static disk_work_t work_queue[IDE_WORK_QUEUE_SIZE];
 static volatile uint32_t work_head;
 static volatile uint32_t work_tail;
 static lock_semaphore_t work_count;
+static volatile uint8_t dma_complete[2];
+static volatile uint8_t dma_error[2];
+static process_control_block_t *ide_worker_pcb;
+static lock_semaphore_t channel_lock[2];
 
 static inline void ide_select_drive(ide_channel_t *ch, uint8_t drv, uint32_t lba) {
     uint8_t sel = (drv ? ATA_DRIVE_SLAVE : ATA_DRIVE_MASTER) | ((lba >> 24) & 0x0F);
@@ -112,12 +116,32 @@ static int ide_pio_write_sector(ide_channel_t *ch, uint8_t drv, uint32_t lba, co
     return 0;
 }
 
+static inline void ide_mask_irq(uint8_t irq) {
+    uint16_t port = (irq < 8) ? 0x21 : 0xA1;
+    uint8_t line = (irq < 8) ? irq : irq - 8;
+    outb(port, inb(port) | (1 << line));
+}
+
+static inline void ide_unmask_irq(uint8_t irq) {
+    uint16_t port = (irq < 8) ? 0x21 : 0xA1;
+    uint8_t line = (irq < 8) ? irq : irq - 8;
+    outb(port, inb(port) & ~(1 << line));
+}
+
 static int ide_dma_read_sector(ide_channel_t *ch, uint8_t ch_idx, uint8_t drv, uint32_t lba, uint8_t *buf) {
     uint16_t bmide = ch->bmide_base;
+    int use_irq = multitasking_ready && current_task == ide_worker_pcb;
 
     // stop dma
     outb(bmide + BMIDE_REG_CMD, 0);
     outb(bmide + BMIDE_REG_STATUS, inb(bmide + BMIDE_REG_STATUS) | BMIDE_STATUS_ERR | BMIDE_STATUS_IRQ);
+
+    dma_complete[ch_idx] = 0;
+    dma_error[ch_idx] = 0;
+
+    // mask irq at PIC when polling so handler doesn't steal completion
+    if (!use_irq)
+        ide_mask_irq(ch->irq);
 
     // build prdt
     prdt[ch_idx][0].phys_addr  = dma_buf_phys[ch_idx];
@@ -144,37 +168,58 @@ static int ide_dma_read_sector(ide_channel_t *ch, uint8_t ch_idx, uint8_t drv, u
     // start bus master
     outb(bmide + BMIDE_REG_CMD, BMIDE_CMD_START | BMIDE_CMD_READ);
 
-    // wait for completion
-    for (int i = 0; i < 1000000; i++) {
-        uint8_t bm_status = inb(bmide + BMIDE_REG_STATUS);
-        if (bm_status & BMIDE_STATUS_ERR) {
-            outb(bmide + BMIDE_REG_CMD, 0);
-            outb(bmide + BMIDE_REG_STATUS, bm_status);
+    if (use_irq) {
+        // block until irq signals completion
+        for (;;) {
+            asm volatile("cli");
+            if (dma_complete[ch_idx]) {
+                asm volatile("sti");
+                break;
+            }
+            current_task->state = PROCESS_STATE_BLOCKED;
+            kernel_yield();
+        }
+
+        if (dma_error[ch_idx])
             return -1;
+    } else {
+        for (int i = 0; i < 1000000; i++) {
+            uint8_t bm_status = inb(bmide + BMIDE_REG_STATUS);
+            if (bm_status & BMIDE_STATUS_ERR) {
+                outb(bmide + BMIDE_REG_CMD, 0);
+                outb(bmide + BMIDE_REG_STATUS, bm_status);
+                ide_unmask_irq(ch->irq);
+                return -1;
+            }
+            if (bm_status & BMIDE_STATUS_IRQ) {
+                outb(bmide + BMIDE_REG_CMD, 0);
+                outb(bmide + BMIDE_REG_STATUS, bm_status);
+                inb(ch->io_base + ATA_REG_STATUS);
+                break;
+            }
         }
-        if (bm_status & BMIDE_STATUS_IRQ) {
-            // dma complete
-            outb(bmide + BMIDE_REG_CMD, 0);
-            outb(bmide + BMIDE_REG_STATUS, bm_status);
 
-            inb(ch->io_base + ATA_REG_STATUS);
-
-            memcpy(buf, dma_buf[ch_idx], 512);
-            return 0;
-        }
+        ide_unmask_irq(ch->irq);
     }
 
-    // timeout
-    outb(bmide + BMIDE_REG_CMD, 0);
-    return -1;
+    memcpy(buf, dma_buf[ch_idx], 512);
+    return 0;
 }
 
 static int ide_dma_write_sector(ide_channel_t *ch, uint8_t ch_idx, uint8_t drv, uint32_t lba, const uint8_t *buf) {
     uint16_t bmide = ch->bmide_base;
+    int use_irq = multitasking_ready && current_task == ide_worker_pcb;
 
     // stop dma
     outb(bmide + BMIDE_REG_CMD, 0);
     outb(bmide + BMIDE_REG_STATUS, inb(bmide + BMIDE_REG_STATUS) | BMIDE_STATUS_ERR | BMIDE_STATUS_IRQ);
+
+    dma_complete[ch_idx] = 0;
+    dma_error[ch_idx] = 0;
+
+    // mask irq at PIC when polling so handler doesn't steal completion
+    if (!use_irq)
+        ide_mask_irq(ch->irq);
 
     memcpy(dma_buf[ch_idx], buf, 512);
 
@@ -203,29 +248,44 @@ static int ide_dma_write_sector(ide_channel_t *ch, uint8_t ch_idx, uint8_t drv, 
     // start bus master
     outb(bmide + BMIDE_REG_CMD, BMIDE_CMD_START);
 
-    // wait for completion
-    for (int i = 0; i < 1000000; i++) {
-        uint8_t bm_status = inb(bmide + BMIDE_REG_STATUS);
-        if (bm_status & BMIDE_STATUS_ERR) {
-            outb(bmide + BMIDE_REG_CMD, 0);
-            outb(bmide + BMIDE_REG_STATUS, bm_status);
-            return -1;
+    if (use_irq) {
+        // block until irq signals completion
+        for (;;) {
+            asm volatile("cli");
+            if (dma_complete[ch_idx]) {
+                asm volatile("sti");
+                break;
+            }
+            current_task->state = PROCESS_STATE_BLOCKED;
+            kernel_yield();
         }
-        if (bm_status & BMIDE_STATUS_IRQ) {
-            // dma complete
-            outb(bmide + BMIDE_REG_CMD, 0);
-            outb(bmide + BMIDE_REG_STATUS, bm_status);
-            inb(ch->io_base + ATA_REG_STATUS);
 
-            // flush write cache
-            outb(ch->io_base + ATA_REG_COMMAND, ATA_CMD_CACHE_FLUSH);
-            ide_poll_bsy(ch);
-            return 0;
+        if (dma_error[ch_idx])
+            return -1;
+    } else {
+        for (int i = 0; i < 1000000; i++) {
+            uint8_t bm_status = inb(bmide + BMIDE_REG_STATUS);
+            if (bm_status & BMIDE_STATUS_ERR) {
+                outb(bmide + BMIDE_REG_CMD, 0);
+                outb(bmide + BMIDE_REG_STATUS, bm_status);
+                ide_unmask_irq(ch->irq);
+                return -1;
+            }
+            if (bm_status & BMIDE_STATUS_IRQ) {
+                outb(bmide + BMIDE_REG_CMD, 0);
+                outb(bmide + BMIDE_REG_STATUS, bm_status);
+                inb(ch->io_base + ATA_REG_STATUS);
+                break;
+            }
         }
+
+        ide_unmask_irq(ch->irq);
     }
 
-    outb(bmide + BMIDE_REG_CMD, 0);
-    return -1;
+    // flush write cache
+    outb(ch->io_base + ATA_REG_COMMAND, ATA_CMD_CACHE_FLUSH);
+    ide_poll_bsy(ch);
+    return 0;
 }
 
 int ide_read_sector(uint8_t drive, uint32_t lba, uint8_t *buffer) {
@@ -233,10 +293,20 @@ int ide_read_sector(uint8_t drive, uint32_t lba, uint8_t *buffer) {
         return -1;
     ide_drive_t *drv = &drives[drive];
     ide_channel_t *ch = &channels[drv->channel];
+    int r;
+
+    if (multitasking_ready)
+        task_semaphore_acquire(&channel_lock[drv->channel]);
 
     if (dma_capable[drv->channel])
-        return ide_dma_read_sector(ch, drv->channel, drv->drive, lba, buffer);
-    return ide_pio_read_sector(ch, drv->drive, lba, buffer);
+        r = ide_dma_read_sector(ch, drv->channel, drv->drive, lba, buffer);
+    else
+        r = ide_pio_read_sector(ch, drv->drive, lba, buffer);
+
+    if (multitasking_ready)
+        task_semaphore_release(&channel_lock[drv->channel]);
+
+    return r;
 }
 
 int ide_read_sectors(uint8_t drive, uint32_t lba, uint8_t count, uint8_t *buffer) {
@@ -252,10 +322,20 @@ int ide_write_sector(uint8_t drive, uint32_t lba, const uint8_t *buffer) {
         return -1;
     ide_drive_t *drv = &drives[drive];
     ide_channel_t *ch = &channels[drv->channel];
+    int r;
+
+    if (multitasking_ready)
+        task_semaphore_acquire(&channel_lock[drv->channel]);
 
     if (dma_capable[drv->channel])
-        return ide_dma_write_sector(ch, drv->channel, drv->drive, lba, buffer);
-    return ide_pio_write_sector(ch, drv->drive, lba, buffer);
+        r = ide_dma_write_sector(ch, drv->channel, drv->drive, lba, buffer);
+    else
+        r = ide_pio_write_sector(ch, drv->drive, lba, buffer);
+
+    if (multitasking_ready)
+        task_semaphore_release(&channel_lock[drv->channel]);
+
+    return r;
 }
 
 int ide_write_sectors(uint8_t drive, uint32_t lba, uint8_t count, const uint8_t *buffer) {
@@ -399,6 +479,31 @@ static void ide_init_dma(void) {
     }
 }
 
+static void ide_irq_handler(int irq, processor_context_t *ctx) {
+    (void)ctx;
+    int ch_idx = (irq == 14) ? 0 : 1;
+    uint16_t bmide = channels[ch_idx].bmide_base;
+
+    uint8_t bm_status = inb(bmide + BMIDE_REG_STATUS);
+    if (!(bm_status & BMIDE_STATUS_IRQ))
+        return;
+
+    // stop dma
+    outb(bmide + BMIDE_REG_CMD, 0);
+    // ack bus master irq
+    outb(bmide + BMIDE_REG_STATUS, bm_status);
+    // read ata status to clear irq
+    inb(channels[ch_idx].io_base + ATA_REG_STATUS);
+
+    if (bm_status & BMIDE_STATUS_ERR)
+        dma_error[ch_idx] = 1;
+
+    dma_complete[ch_idx] = 1;
+
+    if (ide_worker_pcb && multitasking_ready)
+        task_unblock(ide_worker_pcb);
+}
+
 void ide_init(void) {
     memset(drives, 0, sizeof(drives));
     memset(channels, 0, sizeof(channels));
@@ -431,6 +536,8 @@ void ide_init(void) {
     ide_init_dma();
 
     task_semaphore_init(&work_count, 0);
+    task_semaphore_init(&channel_lock[0], 1);
+    task_semaphore_init(&channel_lock[1], 1);
 }
 
 static void ide_process_work(disk_work_t *w) {
@@ -558,7 +665,19 @@ void ide_submit_disk_write(process_control_block_t *task, file_handle_t *handle,
 }
 
 void ide_start_worker(void) {
-    process_control_block_t *worker = task_create(ide_worker_thread, "kernel: ide worker", CPU_KERNEL_MODE, 254);
-    enqueue(worker);
+    ide_worker_pcb = task_create(ide_worker_thread, "kernel: ide worker", CPU_KERNEL_MODE, 254);
+
+    // drain any pending interrupts before unmasking
+    for (int i = 0; i < 2; i++) {
+        if (channels[i].bmide_base) {
+            uint8_t bm_status = inb(channels[i].bmide_base + BMIDE_REG_STATUS);
+            outb(channels[i].bmide_base + BMIDE_REG_STATUS, bm_status);
+        }
+        inb(channels[i].io_base + ATA_REG_STATUS);
+    }
+
+    irq_register(14, ide_irq_handler);
+    irq_register(15, ide_irq_handler);
+    enqueue(ide_worker_pcb);
     printfs(PRINT_STATUS_INFO, "ide: worker thread started\n");
 }

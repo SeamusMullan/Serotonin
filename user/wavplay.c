@@ -189,7 +189,7 @@ int main(int argc, char **argv) {
     /* Double-buffered streaming: read 512K from disk while the previous
      * 512K chunk is being played back to the DMA ring.  This avoids both
      * loading the entire file into memory AND the stutter from tiny reads. */
-#define IOBUF_SIZE (512 * 1024)
+#define IOBUF_SIZE (1024 * 1024)
 
     int audio_fd = open("/dev/ac97/audio", O_WRONLY);
     if (audio_fd < 0) {
