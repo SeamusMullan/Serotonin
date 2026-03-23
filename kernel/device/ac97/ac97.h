@@ -2,6 +2,7 @@
 #define _DEVICE_AC97
 
 #include <stdint.h>
+#include "../../schedule/schedule.h"
 
 #define AC97_PCI_CLASS      0x04    /* Multimedia */
 #define AC97_PCI_SUBCLASS   0x01    /* Audio device */
@@ -104,9 +105,20 @@ typedef struct ac97_dev {
     uint16_t sample_rate;
 } ac97_dev_t;
 
+/* pending blocked write state */
+static struct {
+    process_control_block_t *task;
+    uint8_t *kbuf;          /* heap copy of remaining data */
+    uint32_t kbuf_size;     /* total size of kbuf */
+    uint32_t kbuf_offset;   /* how far into kbuf we've submitted */
+    uint32_t total;         /* total bytes requested by userspace (for eax) */
+    int active;
+} pending_write;
+
 void ac97_init(void);
 int  ac97_is_up(void);
 int ac97_write_pcm(const void *data, uint32_t size);
+void ac97_block_write(process_control_block_t *task, const void *kbuf, uint32_t total_size, uint32_t already_written);
 int ac97_apply_config(const ac97_config_t *cfg);
 void ac97_read_config(ac97_config_t *cfg);
 

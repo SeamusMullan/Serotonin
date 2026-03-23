@@ -5,6 +5,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#define BAR_WIDTH 30
+
 /* Must match kernel's ac97_config_t exactly */
 typedef struct ac97_config {
     uint16_t master_vol_left;
@@ -42,6 +44,31 @@ typedef struct wav_fmt {
 
 static void usage(const char *prog) {
     printf("usage: %s <file.wav>\n", prog);
+}
+
+static void draw_progress(uint32_t played, uint32_t total, uint32_t sample_rate,
+                          uint16_t num_channels, uint16_t bits_per_sample) {
+    /* avoid 64-bit division (no libgcc on i686) by reducing first */
+    uint32_t scale = total / 1000;
+    if (scale == 0) scale = 1;
+    uint32_t played_k = played / scale;
+    uint32_t total_k  = total  / scale;
+    if (total_k == 0) total_k = 1;
+    uint32_t pct = (played_k * 100) / total_k;
+    int filled = (int)((played_k * BAR_WIDTH) / total_k);
+
+    uint32_t bytes_per_sec = sample_rate * num_channels * (bits_per_sample / 8);
+    uint32_t cur_sec = played / bytes_per_sec;
+    uint32_t tot_sec = total / bytes_per_sec;
+
+    printf("\r  [");
+    for (int i = 0; i < BAR_WIDTH; i++)
+        printf("%c", i < filled ? '=' : '.');
+    printf("] %lu%% %lu:%02lu/%lu:%02lu",
+           (unsigned long)pct,
+           (unsigned long)(cur_sec / 60), (unsigned long)(cur_sec % 60),
+           (unsigned long)(tot_sec / 60), (unsigned long)(tot_sec % 60));
+    fflush(stdout);
 }
 
 int main(int argc, char **argv) {
@@ -183,9 +210,10 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    printf("  playing...\n");
-
     uint32_t remaining = data_size;
+    uint32_t played = 0;
+
+    draw_progress(0, data_size, fmt.sample_rate, fmt.num_channels, fmt.bits_per_sample);
 
     while (remaining > 0) {
         /* Read a large chunk from disk */
@@ -201,6 +229,7 @@ int main(int argc, char **argv) {
             loaded += n;
         }
         remaining -= loaded;
+        played += loaded;
 
         /* Convert / prepare the output data */
         uint8_t *out_ptr = iobuf;
@@ -232,10 +261,13 @@ int main(int argc, char **argv) {
                 goto done;
             offset += n;
         }
+
+        draw_progress(played, data_size, fmt.sample_rate, fmt.num_channels, fmt.bits_per_sample);
     }
 
 done:
-    printf("wavplay: done\n");
+    draw_progress(data_size, data_size, fmt.sample_rate, fmt.num_channels, fmt.bits_per_sample);
+    printf("\nwavplay: done\n");
 
     close(audio_fd);
     close(wav_fd);

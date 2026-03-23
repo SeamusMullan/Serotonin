@@ -708,14 +708,14 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     return pcb;
 }
 
-void task_semaphore_init(lock_semaphore_t *semaphore, uint32_t max_count) {
-    semaphore->max_count = max_count;
-    semaphore->current_count = 0;
+void task_semaphore_init(lock_semaphore_t *semaphore, uint32_t count) {
+    semaphore->max_count = count;
+    semaphore->current_count = count;
     semaphore->waiters_head = NULL;
     semaphore->waiters_tail = NULL;
 }
 
-void enqueue_waiter_semaphore(lock_semaphore_t *semaphore, process_control_block_t *pcb) {
+static void enqueue_waiter_semaphore(lock_semaphore_t *semaphore, process_control_block_t *pcb) {
     wait_node_t *node = kernel_malloc(sizeof(*node));
     node->task = pcb;
     node->next = NULL;
@@ -727,7 +727,7 @@ void enqueue_waiter_semaphore(lock_semaphore_t *semaphore, process_control_block
     }
 }
 
-process_control_block_t *dequeue_waiter_semaphore(lock_semaphore_t *semaphore) {
+static process_control_block_t *dequeue_waiter_semaphore(lock_semaphore_t *semaphore) {
     if (!semaphore->waiters_head) return NULL;
     wait_node_t *node = semaphore->waiters_head;
     process_control_block_t *pcb = node->task;
@@ -741,12 +741,14 @@ process_control_block_t *dequeue_waiter_semaphore(lock_semaphore_t *semaphore) {
 void task_semaphore_acquire(lock_semaphore_t *semaphore) {
     lock_scheduler();
 
-    if (semaphore->current_count < semaphore->max_count) {
-        semaphore->current_count++;
-    } else {
+    while (semaphore->current_count == 0) {
         enqueue_waiter_semaphore(semaphore, current_task);
-        task_block();
+        current_task->state = PROCESS_STATE_BLOCKED;
+        unlock_scheduler();
+        kernel_yield();
+        lock_scheduler();
     }
+    semaphore->current_count--;
 
     unlock_scheduler();
 }
@@ -754,12 +756,11 @@ void task_semaphore_acquire(lock_semaphore_t *semaphore) {
 void task_semaphore_release(lock_semaphore_t *semaphore) {
     lock_scheduler();
 
-    if (semaphore->waiters_head != NULL) {
-        process_control_block_t *pcb = dequeue_waiter_semaphore(semaphore);
+    semaphore->current_count++;
+
+    process_control_block_t *pcb = dequeue_waiter_semaphore(semaphore);
+    if (pcb)
         task_unblock(pcb);
-    } else {
-        semaphore->current_count--;
-    }
 
     unlock_scheduler();
 }

@@ -945,6 +945,11 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     vfs_init();
 
+    printfs(PRINT_STATUS_INFO,"pci: init\n");
+    vbe_flip();
+
+    pci_init();
+
     printfs(PRINT_STATUS_INFO,"ide: init\n");
     vbe_flip();
 
@@ -990,10 +995,6 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         kernel_panic("unable to mount tmpfs on /tmp");
     }
 
-    printfs(PRINT_STATUS_INFO,"pci: init\n");
-    vbe_flip();
-
-    pci_init();
     pci_drivers_init();
 
     printfs(PRINT_STATUS_INFO,"devices: mouse init\n");
@@ -1044,6 +1045,9 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     vbe_worker_task->no_requeue = 1;
 
     enqueue(init);
+
+    ide_start_worker();
+
     multitasking_make_ready();
 
     #ifdef KERNEL_TEST_MODE

@@ -11,6 +11,7 @@ export PATH="$PREFIX/bin:$PATH"
 
 ln -sf $PREFIX/bin/i686-elf-gcc $PREFIX/bin/i686-elf-cc
 
+export CFLAGS_FOR_TARGET="-O2 -msse -msse2 -g"
 ../../newlib/configure \
     --target=i686-elf \
     --prefix="$PREFIX" \

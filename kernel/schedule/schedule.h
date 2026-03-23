@@ -82,7 +82,7 @@ typedef struct process_control_block {
     uint32_t umask;
     uint32_t current_fd_flags;
     uint32_t current_user_buf;
-    uint32_t alarm_ticks;       /* ticks remaining until SIGALRM (0 = inactive) */
+    uint32_t alarm_ticks;
 } process_control_block_t;
 
 typedef struct pipe_waiter {
@@ -212,6 +212,10 @@ typedef struct lock_semaphore {
     wait_node_t *waiters_head;
     wait_node_t *waiters_tail;
 } lock_semaphore_t;
+
+void task_semaphore_init(lock_semaphore_t *semaphore, uint32_t count);
+void task_semaphore_acquire(lock_semaphore_t *semaphore);
+void task_semaphore_release(lock_semaphore_t *semaphore);
 
 typedef struct {
     process_control_block_t *head;

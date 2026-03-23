@@ -6,6 +6,8 @@
 #include "../../kernel.h"
 #include "../../stdio/stdio.h"
 #include "../../stdlib/stdlib.h"
+#include "../../schedule/schedule.h"
+#include "../../syscall/sys/errno.h"
 
 #define AC97_LOG(fmt, ...) printfs(PRINT_STATUS_INFO, "ac97: " fmt, ##__VA_ARGS__)
 
@@ -24,6 +26,8 @@ static inline void nabm_w8(uint16_t reg, uint8_t v)   { outb(ac97.nabm_base + re
 static inline void nabm_w16(uint16_t reg, uint16_t v) { outw(ac97.nabm_base + reg, v); }
 static inline void nabm_w32(uint16_t reg, uint32_t v) { outl(ac97.nabm_base + reg, v); }
 
+static void ac97_drain_pending(void);
+
 int ac97_is_up(void) {
     return ac97_initialised;
 }
@@ -40,6 +44,10 @@ static void ac97_irq_handler(int irq, processor_context_t *ctx) {
 
     // ack
     nabm_w16(NABM_PCM_OUT + NABM_SR, status & 0x1C);
+
+    // continue any blocked write now that a slot freed up
+    if (status & (AC97_SR_BCIS | AC97_SR_LVBCI))
+        ac97_drain_pending();
 }
 
 static int ac97_free_slots(void) {
@@ -49,6 +57,8 @@ static int ac97_free_slots(void) {
     return (AC97_BDL_ENTRIES - 1) - used;
 }
 
+/* submit as many chunks as there are free DMA slots, non-blocking.
+ * returns bytes actually queued (may be less than size). */
 int ac97_write_pcm(const void *data, uint32_t size) {
     if (!ac97_initialised)
         return -1;
@@ -57,14 +67,8 @@ int ac97_write_pcm(const void *data, uint32_t size) {
     uint32_t written = 0;
 
     while (written < size) {
-        // wait for free dma slot
-        // busy wait but idfc
-        while (ac97_free_slots() <= 0) {
-            uint16_t sr = nabm_r16(NABM_PCM_OUT + NABM_SR);
-            if (sr & AC97_SR_DCH)
-                break;
-            io_wait();
-        }
+        if (ac97_free_slots() <= 0)
+            break;
 
         uint32_t chunk = size - written;
         if (chunk > AC97_BUF_SIZE)
@@ -97,6 +101,44 @@ int ac97_write_pcm(const void *data, uint32_t size) {
     }
 
     return (int)written;
+}
+
+static void ac97_drain_pending(void) {
+    if (!pending_write.active)
+        return;
+
+    uint32_t left = pending_write.kbuf_size - pending_write.kbuf_offset;
+    int n = ac97_write_pcm(pending_write.kbuf + pending_write.kbuf_offset, left);
+    if (n > 0)
+        pending_write.kbuf_offset += n;
+
+    if (pending_write.kbuf_offset >= pending_write.kbuf_size) {
+        pending_write.task->processor_context->eax = pending_write.total;
+        kernel_free(pending_write.kbuf);
+        task_unblock(pending_write.task);
+        pending_write.active = 0;
+    }
+}
+
+void ac97_block_write(process_control_block_t *task, const void *kbuf, uint32_t total_size, uint32_t already_written) {
+    uint32_t remaining = total_size - already_written;
+
+    uint8_t *copy = (uint8_t *)kernel_malloc(remaining);
+    if (!copy) {
+        task->processor_context->eax = already_written ? already_written : (uint32_t)-EIO;
+        return;
+    }
+    memcpy(copy, (const uint8_t *)kbuf + already_written, remaining);
+
+    pending_write.task = task;
+    pending_write.kbuf = copy;
+    pending_write.kbuf_size = remaining;
+    pending_write.kbuf_offset = 0;
+    pending_write.total = total_size;
+    pending_write.active = 1;
+
+    task_block();
+    __builtin_unreachable();
 }
 
 int ac97_apply_config(const ac97_config_t *cfg) {

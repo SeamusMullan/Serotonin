@@ -19,6 +19,7 @@
 #include "sys/file.h"
 #include "sys/lib5ht.h"
 #include "../pty/pty.h"
+#include "../device/ide/ide_pci.h"
 #include <stdint.h>
 
 
@@ -364,6 +365,22 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
             return;
         }
 
+        // submit disk based file to worker
+        if (handle->node->flags & VFS_FLAG_DISKIO) {
+            char *kbuf = (char *)kernel_malloc(buf_size);
+            if (!kbuf) {
+                errno = -ENOMEM;
+                return;
+            }
+            if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
+                kernel_free(kbuf);
+                errno = -EFAULT;
+                return;
+            }
+            ide_submit_disk_write(current_task, handle, current_task->address_space, (uint32_t)write_ptr, buf_size, kbuf, handle->flags);
+            __builtin_unreachable();
+        }
+
         if (handle->flags & O_APPEND) {
             handle->offset = handle->node->size;
         }
@@ -444,6 +461,12 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
             return;
         }
 
+        // submit disk based file to worker
+        if (handle->node->flags & VFS_FLAG_DISKIO) {
+            ide_submit_disk_read(current_task, handle,current_task->address_space, (uint32_t)read_ptr, buf_size, handle->flags);
+            __builtin_unreachable();
+        }
+
         char stack_buf[SYSCALL_STACK_BUF];
         char *read_buf = (buf_size <= SYSCALL_STACK_BUF) ? stack_buf : (char*)kernel_malloc(buf_size);
         if (!read_buf) {
@@ -451,14 +474,14 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
             return;
         }
 
-    current_task->current_fd_flags = handle->flags;
-    current_task->current_user_buf = (uint32_t)read_ptr;
-    int read_bytes = vfs_read(handle->node, handle->offset, buf_size, read_buf);
-    if (read_bytes < 0) {
-        if (read_buf != stack_buf) kernel_free(read_buf);
-        errno = (read_bytes == -1) ? -EIO : read_bytes;
-        return;
-    }
+        current_task->current_fd_flags = handle->flags;
+        current_task->current_user_buf = (uint32_t)read_ptr;
+        int read_bytes = vfs_read(handle->node, handle->offset, buf_size, read_buf);
+        if (read_bytes < 0) {
+            if (read_buf != stack_buf) kernel_free(read_buf);
+            errno = (read_bytes == -1) ? -EIO : read_bytes;
+            return;
+        }
 
         if (copy_to_user(current_task->address_space, (uint32_t)read_ptr, read_buf, (size_t)read_bytes) != 0) {
             if (read_buf != stack_buf) kernel_free(read_buf);

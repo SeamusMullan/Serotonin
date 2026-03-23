@@ -386,7 +386,7 @@ static void get_unmet_deps(const struct job *j, char *buf, int bufsz) {
 }
 
 static void render_display(void) {
-    printf("\033[u");
+    printf("\033[%dA", total_display_rows);
 
     for (int di = 0; di < num_jobs; di++) {
         int i = display_order[di];
@@ -741,10 +741,10 @@ static void startup_loop(char **envp) {
     compute_display_layout();
 
     printf("\033[?25l");
-    printf("\033[s");
 
     for (int i = 0; i < total_display_rows; i++)
         printf("\n");
+    fflush(stdout);
 
     render_display();
 
@@ -830,9 +830,6 @@ static void startup_loop(char **envp) {
         }
     }
 
-    printf("\033[u");
-    for (int i = 0; i < total_display_rows; i++)
-        printf("\n");
     printf("\033[?25h");
     fflush(stdout);
 }

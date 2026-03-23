@@ -324,7 +324,7 @@ vfs_node_t *fat32_mount(const char *device) {
     memset(root, 0, sizeof(*root));
     strcpy(root->name, "/");
     root->inode    = 0;
-    root->flags    = VFS_FLAG_DIRECTORY;
+    root->flags    = VFS_FLAG_DIRECTORY | VFS_FLAG_DISKIO;
     root->refcount = 1;
     root->ops      = &fat32_ops;
     root->uid      = 0;
@@ -491,10 +491,10 @@ vfs_node_t *fat32_readdir(vfs_node_t *node, uint32_t index) {
 
                 child->inode = index;
                 if (entries[i].attr & FAT32_ATTR_DIRECTORY) {
-                    child->flags = VFS_FLAG_DIRECTORY;
+                    child->flags = VFS_FLAG_DIRECTORY | VFS_FLAG_DISKIO;
                     child->mode = S_IFDIR | 0755;
                 } else {
-                    child->flags = VFS_FLAG_FILE;
+                    child->flags = VFS_FLAG_FILE | VFS_FLAG_DISKIO;
                     child->mode = S_IFREG | ((entries[i].attr & 0x01) ? 0444 : 0644);
                 }
                 child->size = entries[i].file_size;
@@ -721,8 +721,8 @@ static vfs_node_t *fat32_finddir(vfs_node_t *dir, const char *name) {
                 child->name[sizeof(child->name) - 1] = '\0';
                 child->inode    = (uint32_t)child;
                 child->flags    = (ents[i].attr & FAT32_ATTR_DIRECTORY)
-                                  ? VFS_FLAG_DIRECTORY
-                                  : VFS_FLAG_FILE;
+                                  ? (VFS_FLAG_DIRECTORY | VFS_FLAG_DISKIO)
+                                  : (VFS_FLAG_FILE | VFS_FLAG_DISKIO);
                 child->size     = ents[i].file_size;
                 child->ops      = &fat32_ops;
                 child->refcount = 1;
@@ -1462,7 +1462,7 @@ static vfs_node_t *fat32_create(vfs_node_t *parent, const char *name) {
     memset(child, 0, sizeof(*child));
     strncpy(child->name, name, sizeof(child->name));
     child->name[sizeof(child->name) - 1] = '\0';
-    child->flags = VFS_FLAG_FILE;
+    child->flags = VFS_FLAG_FILE | VFS_FLAG_DISKIO;
     child->refcount = 1;
     child->ops  = &fat32_ops;
     child->uid  = 0;
@@ -1540,7 +1540,7 @@ static vfs_node_t *fat32_mkdir(vfs_node_t *parent, const char *name) {
     memset(child, 0, sizeof(*child));
     strncpy(child->name, name, sizeof(child->name));
     child->name[sizeof(child->name) - 1] = '\0';
-    child->flags    = VFS_FLAG_DIRECTORY;
+    child->flags    = VFS_FLAG_DIRECTORY | VFS_FLAG_DISKIO;
     child->refcount = 1;
     child->ops      = &fat32_ops;
     child->uid      = 0;

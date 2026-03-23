@@ -9,6 +9,7 @@
 #include "../../string.h"
 #include "../../syscall/sys/file.h"
 #include "../../syscall/sys/errno.h"
+#include "../../schedule/schedule.h"
 
 static int dev_ac97_write_audio(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer) {
     (void)node;
@@ -19,7 +20,13 @@ static int dev_ac97_write_audio(vfs_node_t *node, uint32_t offset, uint32_t size
 
     int ret = ac97_write_pcm(buffer, size);
     if (ret < 0) return -EIO;
-    return ret;
+
+    if ((uint32_t)ret >= size)
+        return ret;
+
+    // dma full, block
+    ac97_block_write(current_task, buffer, size, (uint32_t)ret);
+    __builtin_unreachable();
 }
 
 static int dev_ac97_poll_audio(vfs_node_t *node) {
