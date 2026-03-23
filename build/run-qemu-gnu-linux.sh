@@ -34,10 +34,12 @@ fi
 # Compose QEMU command
 QEMU_CMD=(
 	qemu-system-x86_64
-	-m 2048
+	-enable-kvm
+	-m 1024
 	-boot d                     # boot from CD first
 	-cdrom "$ISO"
 	-vga std
+	-device AC97                # audio
 )
 
 # Attach user HDD if present. Use primary slave (index=1) to match IDE probing.
