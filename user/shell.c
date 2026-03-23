@@ -8,6 +8,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <string.h>
@@ -230,6 +231,19 @@ int main(int argc, char **argv, char **envp)
 				printf("cd: failed to change directory\n");
 			}
 			continue;
+		}
+
+		if (strcmp(args[0], "clear") == 0) {
+			write(1, "\033[2J\033[H", 7);
+			continue;
+		}
+
+		if (strcmp(args[0], "exit") == 0) {
+			int code = 0;
+			if (arg_count > 1) {
+				code = atoi(args[1]);
+			}
+			_exit(code);
 		}
 
 		// Fork the process

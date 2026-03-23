@@ -86,6 +86,15 @@ sudo tee "${MOUNT_POINT}/srv/index.html" > /dev/null <<'HTML'
 </html>
 HTML
 
+# === COPY HOME FILES ===
+if [ -d "${SRC_DIR}/home" ]; then
+    echo "[*] Copying home files to /home ..."
+    sudo mkdir -p "${MOUNT_POINT}/home"
+    sudo cp -r "${SRC_DIR}/home/." "${MOUNT_POINT}/home/"
+else
+    echo "[!] No home directory found at ${SRC_DIR}/home, skipping"
+fi
+
 # === COPY SYSROOT ===
 if [ -d "$SYSROOT_DIR" ]; then
     echo "[*] Copying sysroot to /usr ..."
