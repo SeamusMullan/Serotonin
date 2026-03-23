@@ -98,5 +98,5 @@ cp grub.cfg iso/boot/grub/grub.cfg
 if [[ "$OS_TYPE" == "Darwin" ]]; then
     /opt/homebrew/Cellar/i686-elf-grub/2.12/bin/i686-elf-grub-mkrescue -o serotonin.iso iso
 elif [[ "$OS_TYPE" == "Linux" ]]; then
-    grub2-mkrescue -o serotonin.iso iso
+    grub-mkrescue -o serotonin.iso iso
 fi
