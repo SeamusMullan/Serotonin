@@ -74,6 +74,8 @@ i686-elf-gcc -c device/keyboard/dev_keyboard.c -o device/keyboard/dev_keyboard.o
 i686-elf-gcc -c device/serial/dev_serial.c -o device/serial/dev_serial.o $CFLAGS
 i686-elf-gcc -c device/rtl8139/rtl8139.c -o device/rtl8139/rtl8139.o $CFLAGS
 i686-elf-gcc -c device/rtl8139/dev_rtl8139.c -o device/rtl8139/dev_rtl8139.o $CFLAGS
+i686-elf-gcc -c device/ac97/ac97.c -o device/ac97/ac97.o $CFLAGS
+i686-elf-gcc -c device/ac97/dev_ac97.c -o device/ac97/dev_ac97.o $CFLAGS
 i686-elf-gcc -c device/pci_drivers.c -o device/pci_drivers.o $CFLAGS
 
 i686-elf-gcc -c pty/pty.c -o pty/pty.o $CFLAGS
@@ -86,7 +88,7 @@ if [ -n "$TEST_MODE" ]; then
 fi
 
 # da linker
-i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt.o idt.o isr.o fault.o io/irq.o io/pic.o io/keyboard.o vmm/paging_init.o vmm/vmm.o video/vbe/vbe.o video/font.o filesystem/vfs.o filesystem/devfs/devfs.o filesystem/tmpfs/tmpfs.o filesystem/ide.o filesystem/fat32/fat32.o schedule/schedule.o schedule/switch_task.o audio/pcspeaker/pcspeaker.o audio/opl2/opl2.o syscall/isr_syscall.o syscall/syscall.o audio/startup/opl2_sound/opl2_startup.o schedule/kernel_yield.o schedule/signal_trampoline.o filesystem/vfs_perm.o filesystem/user_fs/user_fs.o device/devfs_example.o io/rtc.o io/serial.o io/pci/pci.o device/mouse/dev_mouse.o device/keyboard/dev_keyboard.o device/serial/dev_serial.o device/rtl8139/rtl8139.o device/rtl8139/dev_rtl8139.o device/pci_drivers.o pty/pty.o $TEST_OBJS
+i686-elf-gcc -T linker.ld -o ../build/serotonin.bin -ffreestanding -O2 -nostdlib boot.o kernel.o tty.o string.o stdlib/stdlib.o stdio/stdio.o stdlib/mem.o gdt.o idt.o isr.o fault.o io/irq.o io/pic.o io/keyboard.o vmm/paging_init.o vmm/vmm.o video/vbe/vbe.o video/font.o filesystem/vfs.o filesystem/devfs/devfs.o filesystem/tmpfs/tmpfs.o filesystem/ide.o filesystem/fat32/fat32.o schedule/schedule.o schedule/switch_task.o audio/pcspeaker/pcspeaker.o audio/opl2/opl2.o syscall/isr_syscall.o syscall/syscall.o audio/startup/opl2_sound/opl2_startup.o schedule/kernel_yield.o schedule/signal_trampoline.o filesystem/vfs_perm.o filesystem/user_fs/user_fs.o device/devfs_example.o io/rtc.o io/serial.o io/pci/pci.o device/mouse/dev_mouse.o device/keyboard/dev_keyboard.o device/serial/dev_serial.o device/rtl8139/rtl8139.o device/rtl8139/dev_rtl8139.o device/ac97/ac97.o device/ac97/dev_ac97.o device/pci_drivers.o pty/pty.o $TEST_OBJS
 
 cd ../build
 
@@ -96,5 +98,5 @@ cp grub.cfg iso/boot/grub/grub.cfg
 if [[ "$OS_TYPE" == "Darwin" ]]; then
     /opt/homebrew/Cellar/i686-elf-grub/2.12/bin/i686-elf-grub-mkrescue -o serotonin.iso iso
 elif [[ "$OS_TYPE" == "Linux" ]]; then
-    grub-mkrescue -o serotonin.iso iso
+    grub2-mkrescue -o serotonin.iso iso
 fi

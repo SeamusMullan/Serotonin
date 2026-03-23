@@ -56,7 +56,8 @@ i686-elf-gcc -c ifconfig.c -o ifconfig.o $CFLAGS -Ilwip/serotonin
 i686-elf-gcc -c ping.c -o ping.o $CFLAGS -Ilwip/serotonin
 i686-elf-gcc -c httpd.c -o httpd.o $CFLAGS -Ilwip/serotonin
 i686-elf-gcc -c seriald.c -o seriald.o $CFLAGS
-i686-elf-gcc -c initctl.c -o initctl.o $CFLAGS -Iinit
+i686-elf-gcc -c initctl.c -o initctl.o $CFLAGS
+i686-elf-gcc -c wavplay.c -o wavplay.o $CFLAGS -Iinit
 
 # --- Window Manager ---
 echo "Building window manager..."
@@ -92,6 +93,7 @@ i686-elf-gcc $LDFLAGS $CRT0 nettest.o $LDLIBS -o nettest.elf
 i686-elf-gcc $LDFLAGS $CRT0 socket_test.o $LDLIBS -o socktest.elf
 i686-elf-gcc $LDFLAGS $CRT0 seriald.o $LDLIBS -o seriald.elf
 i686-elf-gcc $LDFLAGS $CRT0 initctl.o $LDLIBS -o initctl.elf
+i686-elf-gcc $LDFLAGS $CRT0 wavplay.o $LDLIBS -o wavplay.elf
 
 # Window Manager
 i686-elf-gcc $LDFLAGS $CRT0 wm/wm.o wm/wm_terminal.o wm/wm_draw.o wm/wm_layout.o wm/wm_input.o $LDLIBS -o wm.elf

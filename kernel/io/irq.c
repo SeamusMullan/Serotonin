@@ -24,7 +24,7 @@ static int ps2_mouse_packet_index = 0;
 static uint8_t prev_mouse_buttons = 0;
 static uint64_t ps2_mouse_last_byte_tick = 0;
 
-static irq_handler_fn irq_handlers[IRQ_MAX] = {0};
+static irq_handler_fn irq_handlers[IRQ_MAX][IRQ_CHAIN_MAX] = {{0}};
 
 static void pic_unmask_irq(int irq) {
     uint16_t port = (irq < 8) ? 0x21 : 0xA1;
@@ -42,17 +42,23 @@ static void pic_mask_irq(int irq) {
 }
 
 void irq_register(int irq, irq_handler_fn handler) {
-    if (irq >= 0 && irq < IRQ_MAX) {
-        irq_handlers[irq] = handler;
-        pic_unmask_irq(irq);
+    if (irq < 0 || irq >= IRQ_MAX)
+        return;
+    for (int i = 0; i < IRQ_CHAIN_MAX; i++) {
+        if (!irq_handlers[irq][i]) {
+            irq_handlers[irq][i] = handler;
+            pic_unmask_irq(irq);
+            return;
+        }
     }
 }
 
 void irq_unregister(int irq) {
-    if (irq >= 0 && irq < IRQ_MAX) {
-        irq_handlers[irq] = 0;
-        pic_mask_irq(irq);
-    }
+    if (irq < 0 || irq >= IRQ_MAX)
+        return;
+    for (int i = 0; i < IRQ_CHAIN_MAX; i++)
+        irq_handlers[irq][i] = 0;
+    pic_mask_irq(irq);
 }
 
 static void irq_pit_handler(int irq, processor_context_t *ctx) {
@@ -215,8 +221,12 @@ static void irq_rtc_handler(int irq, processor_context_t *ctx) {
 }
 
 void irq_handler(int irq, processor_context_t *ctx) {
-    if (irq >= 0 && irq < IRQ_MAX && irq_handlers[irq])
-        irq_handlers[irq](irq, ctx);
+    if (irq >= 0 && irq < IRQ_MAX) {
+        for (int i = 0; i < IRQ_CHAIN_MAX; i++) {
+            if (irq_handlers[irq][i])
+                irq_handlers[irq][i](irq, ctx);
+        }
+    }
 
     if (irq >= 8)
         outb(0xA0, 0x20);  // EOI to slave PIC
