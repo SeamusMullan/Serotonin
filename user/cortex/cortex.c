@@ -14,6 +14,7 @@
 #define CORTEX_EDITOR_VERSION "0.1.0-scaffold"
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define GUTTER_WIDTH 6
+#define DEFAULT_HINT_MSG "CTRL+Q quit | CTRL+S save | CTRL+F find | CTRL+G goto | CTRL+C copy-line | CTRL+V paste"
 
 enum editor_key {
 	KEY_NULL = 0,
@@ -53,6 +54,9 @@ typedef struct editor_config {
 	int raw_enabled;
 	pty_attr_t orig_termios;
 	int kbfd;
+	/* simple clipboard */
+	char *clipboard;
+	int clipboard_len;
 } editor_config_t;
 
 static editor_config_t E;
@@ -118,6 +122,60 @@ static void editor_restore_attr_on_stdio(const pty_attr_t *attr) {
 static void editor_free_rows(void);
 static void disable_raw_mode(void);
 static void editor_refresh_screen(void);
+static int get_window_size(int *rows, int *cols);
+
+static void editor_update_window_size(void) {
+	int rows = 0;
+	int cols = 0;
+
+	if (get_window_size(&rows, &cols) == -1) {
+		rows = 25;
+		cols = 80;
+	}
+
+	if (cols < GUTTER_WIDTH + 1) {
+		cols = GUTTER_WIDTH + 1;
+	}
+
+	rows -= 2; /* status + message bar */
+	if (rows < 1) {
+		rows = 1;
+	}
+
+	E.screenrows = rows;
+	E.screencols = cols;
+}
+
+static void editor_clamp_state(void) {
+	if (E.numrows < 0) {
+		E.numrows = 0;
+	}
+
+	if (E.cy < 0) {
+		E.cy = 0;
+	}
+	if (E.cy > E.numrows) {
+		E.cy = E.numrows;
+	}
+
+	int rowlen = 0;
+	if (E.cy < E.numrows) {
+		rowlen = E.rows[E.cy].size;
+	}
+	if (E.cx < 0) {
+		E.cx = 0;
+	}
+	if (E.cx > rowlen) {
+		E.cx = rowlen;
+	}
+
+	if (E.rowoff < 0) {
+		E.rowoff = 0;
+	}
+	if (E.coloff < 0) {
+		E.coloff = 0;
+	}
+}
 
 static void editor_shutdown(int clear_screen) {
 	disable_raw_mode();
@@ -338,6 +396,55 @@ static int editor_text_cols(void) {
 		cols = 1;
 	}
 	return cols;
+}
+
+static void editor_clipboard_set(const char *buf, int len) {
+	if (E.clipboard) free(E.clipboard);
+	if (!buf || len <= 0) {
+		E.clipboard = NULL;
+		E.clipboard_len = 0;
+		return;
+	}
+	E.clipboard = malloc((size_t)len);
+	if (!E.clipboard) {
+		E.clipboard_len = 0;
+		return;
+	}
+	memcpy(E.clipboard, buf, (size_t)len);
+	E.clipboard_len = len;
+}
+
+static void editor_copy_line(void) {
+	if (E.cy >= E.numrows) return;
+	markup_row_t *row = &E.rows[E.cy];
+	if (row->size <= 0) {
+		editor_clipboard_set(NULL, 0);
+		editor_set_status_message("Copied: <empty>");
+		return;
+	}
+	editor_clipboard_set(row->chars, row->size);
+	editor_set_status_message("Copied line %d", E.cy + 1);
+}
+
+static void editor_paste_clipboard(void) {
+	if (!E.clipboard || E.clipboard_len <= 0) return;
+	/* simple paste: insert bytes, treat \n as newlines */
+	int i = 0;
+	int start = 0;
+	while (i <= E.clipboard_len) {
+		if (i == E.clipboard_len || E.clipboard[i] == '\n') {
+			int seglen = i - start;
+			for (int j = 0; j < seglen; j++) {
+				editor_insert_char((int)E.clipboard[start + j]);
+			}
+			if (i != E.clipboard_len) {
+				editor_insert_newline();
+			}
+			start = i + 1;
+		}
+		i++;
+	}
+	editor_set_status_message("Pasted");
 }
 
 static void editor_insert_row(int at, const char *s, size_t len) {
@@ -804,18 +911,25 @@ static void editor_draw_status_bar(struct abuf *ab) {
 }
 
 static void editor_draw_message_bar(struct abuf *ab) {
-	int msglen = (int)strlen(E.statusmsg);
+	const char *msg = DEFAULT_HINT_MSG;
+	if (E.statusmsg[0] != '\0' && time(NULL) - E.statusmsg_time < 5) {
+		msg = E.statusmsg;
+	}
+
+	int msglen = (int)strlen(msg);
 	if (msglen > E.screencols) {
 		msglen = E.screencols;
 	}
 	ab_move_cursor(ab, E.screenrows + 2, 1);
 	ab_append(ab, "\x1b[K", 3);
-	if (msglen > 0 && time(NULL) - E.statusmsg_time < 5) {
-		ab_append(ab, E.statusmsg, msglen);
+	if (msglen > 0) {
+		ab_append(ab, msg, msglen);
 	}
 }
 
 static void editor_refresh_screen(void) {
+	editor_update_window_size();
+	editor_clamp_state();
 	editor_scroll();
 
 	struct abuf ab = ABUF_INIT;
@@ -891,6 +1005,14 @@ static void editor_process_keypress(void) {
 			}
 			editor_shutdown(1);
 			exit(0);
+			break;
+		case CTRL_KEY('c'):
+			/* copy current line */
+			editor_copy_line();
+			break;
+		case CTRL_KEY('v'):
+			/* paste clipboard */
+			editor_paste_clipboard();
 			break;
 		case CTRL_KEY('s'):
 			editor_save_with_prompt();
@@ -976,11 +1098,14 @@ static void init_editor(void) {
 		E.kbfd = open("/dev/keyboard/event", O_RDONLY);
 	}
 
-	if (get_window_size(&E.screenrows, &E.screencols) == -1) {
-		E.screenrows = 25;
-		E.screencols = 80;
+	editor_update_window_size();
+}
+
+static void editor_ensure_initial_line(void) {
+	if (E.numrows == 0) {
+		editor_insert_row(0, "", 0);
+		E.dirty = 0;
 	}
-	E.screenrows -= 2;
 }
 
 int main(int argc, char **argv) {
@@ -993,7 +1118,9 @@ int main(int argc, char **argv) {
 		editor_open(argv[1]);
 	}
 
-	editor_set_status_message("CTRL+Q quit | CTRL+S save | CTRL+F find | CTRL+G goto");
+	editor_ensure_initial_line();
+
+	editor_set_status_message(DEFAULT_HINT_MSG);
 
 	for (;;) {
 		editor_refresh_screen();
