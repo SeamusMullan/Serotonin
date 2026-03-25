@@ -5,6 +5,12 @@
 *.elf
 build/binutils-user-build
 build/binutils-user-stage
+build/gcc-user-build
+build/gcc-user-stage
+build-tools/cross/
+user/gcc/
+user/vim/
+user/STLport-5.2.1/
 build-tools/bin
 build-tools/src
 sysroot/

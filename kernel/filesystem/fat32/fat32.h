@@ -2,8 +2,8 @@
 #define _FS_FAT32
 
 #include <stdint.h>
-#include "../vfs.h"
-#include "../../stdio/stdio.h"
+#include <kernel/filesystem/vfs.h>
+#include <kernel/stdio/stdio.h>
 
 typedef struct fat_extBS_32
 {
@@ -58,6 +58,12 @@ typedef struct fat32_fs_info {
     uint32_t root_cluster;
     uint32_t fat_start_lba;
     uint32_t cluster_heap_start_lba;
+
+    // FAT entry cache
+    uint8_t *fat_cache;
+    uint32_t fat_cache_start;    // first FAT sector offset (relative to fat_start_lba)
+    uint32_t fat_cache_sectors;  // number of sectors cached
+    uint8_t  fat_cache_dirty;
 } fat32_fs_info_t;
 
 typedef struct fat32_node_info {
@@ -110,35 +116,10 @@ typedef struct fat_lfn_entry {
 
 
 void fat32_init(void);
-static void fat32_parse_bpb(fat32_fs_info_t *info, uint8_t drive, uint32_t partition_start_lba, uint8_t *boot_sector);
-static void fat32_read_cluster(fat32_fs_info_t *fs_info, uint32_t cluster, uint8_t *buffer);
-static uint32_t fat32_read_fat_entry(fat32_fs_info_t *fs_info, uint32_t cluster);
-extern vfs_node_t *fat32_mount(const char *device);
-extern vfs_node_t *fat32_readdir(vfs_node_t *node, uint32_t index);
-static vfs_node_t *fat32_finddir(vfs_node_t *node, const char *name);
-static int fat32_read(vfs_node_t *node,uint32_t offset,uint32_t size,char *buffer);
-static int fat32_open(vfs_node_t *node);
-static int fat32_close(vfs_node_t *node);
-static int fat32_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer);
-static int fat32_truncate(vfs_node_t *node, uint32_t size);
-static int fat32_unlink(vfs_node_t *parent, const char *name);
-static int fat32_rmdir(vfs_node_t *parent, const char *name);
-static vfs_node_t *fat32_create(vfs_node_t *parent, const char *name);
-static vfs_node_t *fat32_mkdir(vfs_node_t *parent, const char *name);
+vfs_node_t *fat32_mount(const char *device);
+vfs_node_t *fat32_readdir(vfs_node_t *node, uint32_t index);
 
-static vfs_ops_t fat32_ops = {
-    .read    = fat32_read,
-    .write   = fat32_write,
-    .truncate = fat32_truncate,
-    .unlink = fat32_unlink,
-    .rmdir = fat32_rmdir,
-    .open    = fat32_open,
-    .close   = fat32_close,
-    .readdir = fat32_readdir,
-    .finddir = fat32_finddir,
-    .create  = fat32_create,
-    .mkdir   = fat32_mkdir
-};
+extern vfs_ops_t fat32_ops;
 
 
 extern filesystem_t fat32_fs;

@@ -1,11 +1,11 @@
-#include "tmpfs.h"
-#include "../vfs.h"
-#include "../../stdlib/stdlib.h"
-#include "../../stdio/stdio.h"
-#include "../../string.h"
-#include "../../kernel.h"
-#include "../../schedule/schedule.h"
-#include "../../syscall/sys/file.h"
+#include <kernel/filesystem/tmpfs/tmpfs.h>
+#include <kernel/filesystem/vfs.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/string.h>
+#include <kernel/kernel.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/syscall/sys/file.h>
 
 // Forward declarations
 static vfs_node_t *tmpfs_mount(const char *device);

@@ -26,7 +26,7 @@
 #include <fcntl.h>
 
 // Serotonin-specific
-#include "syscall/lib5ht/lib5ht.h"
+#include <lib5ht.h>
 
 extern "C"
 {

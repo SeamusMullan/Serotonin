@@ -2,9 +2,9 @@
 #define _VBE_H
 
 #include <stdint.h>
-#include "../../multiboot.h"
-#include "../../schedule/schedule.h"
-#include "../font.h"
+#include <kernel/multiboot.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/video/font.h>
 
 #define VBE_TICKS_PER_FRAME 17
 #define VBE_CURSOR_BLINK_MS 500

@@ -6,7 +6,7 @@
  * process listing and framebuffer layer management.
  */
 
-#include "lib5ht.h"
+#include <lib5ht.h>
 #include "../syscall_table.h"
 #include <unistd.h>
 

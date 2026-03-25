@@ -2,6 +2,6 @@
 #define _IDE_H
 
 // forward to pci ide driver
-#include "../device/ide/ide_pci.h"
+#include <kernel/device/ide/ide_pci.h>
 
 #endif

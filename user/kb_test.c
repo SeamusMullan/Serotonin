@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include "syscall/lib5ht/lib5ht.h"
+#include <lib5ht.h>
 
 static const char *flag_str(uint8_t flags) {
     static char buf[32];

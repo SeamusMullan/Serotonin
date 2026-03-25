@@ -1,15 +1,15 @@
-#include "dev_ac97.h"
-#include "ac97.h"
-#include "../../kernel.h"
-#include "../../filesystem/devfs/devfs.h"
-#include "../../filesystem/vfs.h"
-#include "../../io/io.h"
-#include "../../stdio/stdio.h"
-#include "../../stdlib/stdlib.h"
-#include "../../string.h"
-#include "../../syscall/sys/file.h"
-#include "../../syscall/sys/errno.h"
-#include "../../schedule/schedule.h"
+#include <kernel/device/ac97/dev_ac97.h>
+#include <kernel/device/ac97/ac97.h>
+#include <kernel/kernel.h>
+#include <kernel/filesystem/devfs/devfs.h>
+#include <kernel/filesystem/vfs.h>
+#include <kernel/io/io.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/string.h>
+#include <kernel/syscall/sys/file.h>
+#include <kernel/syscall/sys/errno.h>
+#include <kernel/schedule/schedule.h>
 
 static int dev_ac97_write_audio(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer) {
     (void)node;

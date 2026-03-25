@@ -1,7 +1,7 @@
 #ifndef _SYS_TIMESPEC
 #define _SYS_TIMESPEC
 
-#include "types.h"
+#include <kernel/syscall/sys/types.h>
 
 struct timespec {
     time_t	tv_sec;		/* seconds */

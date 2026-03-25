@@ -1,6 +1,6 @@
-#include "serial.h"
-#include "io.h"
-#include "../stdio/stdio.h"
+#include <kernel/io/serial.h>
+#include <kernel/io/io.h>
+#include <kernel/stdio/stdio.h>
 
 void serial_init(uint16_t port) {
     outb(port + SERIAL_INT_ENABLE, 0x00);    // Disable all interrupts

@@ -1,9 +1,9 @@
 // kernel/test/test_paging.c
-#include "ktest.h"
-#include "../vmm/vmm.h"
-#include "../stdio/stdio.h"
-#include "../stdlib/stdlib.h"
-#include "../kernel.h"
+#include <kernel/test/ktest.h>
+#include <kernel/vmm/vmm.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/kernel.h>
 
 // External functions that may be available
 extern uint32_t get_cr3(void);

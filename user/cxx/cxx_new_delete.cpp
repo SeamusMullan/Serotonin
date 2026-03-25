@@ -1,5 +1,7 @@
-#include <stdlib.h>
 #include <stddef.h>
+extern "C" void *malloc(size_t);
+extern "C" void free(void *);
+extern "C" void abort(void);
 
 // Standard new/delete operators
 void* operator new(size_t n) {

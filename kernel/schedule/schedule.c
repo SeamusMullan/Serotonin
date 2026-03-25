@@ -3,18 +3,18 @@
  * Serotonin Kernel Scheduler
 */
 
-#include "schedule.h"
-#include "../kernel.h"
-#include "../stdlib/stdlib.h"
-#include "../string.h"
-#include "../vmm/paging_init.h"
-#include "../vmm/vmm.h"
-#include "../stdio/stdio.h"
-#include "../io/io.h"
-#include "../video/vbe/vbe.h"
-#include "../gdt.h"
-#include "../syscall/sys/errno.h"
-#include "../syscall/syscall.h"
+#include <kernel/schedule/schedule.h>
+#include <kernel/kernel.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/string.h>
+#include <kernel/vmm/paging_init.h>
+#include <kernel/vmm/vmm.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/io/io.h>
+#include <kernel/video/vbe/vbe.h>
+#include <kernel/gdt.h>
+#include <kernel/syscall/sys/errno.h>
+#include <kernel/syscall/syscall.h>
 
 process_control_block_t *current_task = NULL;
 process_control_block_t *task_list    = NULL;
@@ -24,11 +24,11 @@ static process_control_block_t *runqueue[MAX_TASKS];
 static int rq_head = 0;
 static int rq_tail = 0;
 static uint32_t next_pid = 0;
-static uint32_t next_user_stack = USER_STACK_TOP;
 static uint32_t next_kernel_stack = KERNEL_STACK_TOP;
 static prio_queue_t prio_q[MAX_PRIORITY];
 static uint8_t top_bitmap;
 static uint32_t prio_bitmap[8];
+static void *free_kernel_stacks = NULL;
 volatile uint32_t preempt_count = 0;
 volatile uint32_t lock_count = 0;
 volatile uint8_t pending_schedule = 0;
@@ -69,6 +69,12 @@ static void reap_zombies(void) {
             prev->next = next;
         } else {
             zombie_list = next;
+        }
+
+        /* Reclaim kernel stack (esp0 points to top, base is top - size) */
+        if (task->esp0) {
+            void *kstack_base = (void*)((uint32_t)task->esp0 - KERNEL_STACK_SIZE);
+            free_kernel_stack(kstack_base);
         }
 
         destroy_address_space(task->address_space);
@@ -157,28 +163,26 @@ void preempt_enable() {
         preempt_count--;
 }
 
-void *alloc_user_stack(void) {
-    if (next_user_stack < USER_STACK_BOTTOM + USER_STACK_SIZE) {
-        // TODO: Maybe try terminating some tasks or deny creating a new task.
-        kernel_panic("alloc_user_stack: out of user stack space!");
-        return NULL;
+void *alloc_kernel_stack(void) {
+    if (free_kernel_stacks) {
+        void *base = free_kernel_stacks;
+        free_kernel_stacks = *(void**)base;
+        return base;
     }
 
-    next_user_stack -= USER_STACK_SIZE;
-
-    return (void *)next_user_stack;
-}
-
-void *alloc_kernel_stack(void) {
     if (next_kernel_stack < KERNEL_STACK_BOTTOM + KERNEL_STACK_SIZE) {
-        // TODO: !!
         kernel_panic("alloc_kernel_stack: out of kernel stack space!");
         return NULL;
     }
 
     next_kernel_stack -= KERNEL_STACK_SIZE;
-
     return (void *)next_kernel_stack;
+}
+
+void free_kernel_stack(void *base) {
+    if (!base) return;
+    *(void**)base = free_kernel_stacks;
+    free_kernel_stacks = base;
 }
 
 /**
@@ -320,20 +324,18 @@ void task_exit(process_control_block_t* task_exited, uint8_t exit) {
             task->waiting_on = -1;
             int write_rc = 0;
             if (task->status_ptr) {
-                uint32_t va = (uint32_t)task->status_ptr;
-                uint32_t phys = get_mapping(task->address_space, va);
-                if (phys) {
-                    uint8_t *dst = (uint8_t*)kmap(phys);
-                    dst[va & (PAGE_SIZE - 1)] = exit;
-                    kunmap();
-                } else {
+                /* Encode exit status per POSIX: normal exit → (code << 8) */
+                int wstatus = (exit & 0xFF) << 8;
+                if (copy_to_user(task->address_space,
+                                 (uint32_t)task->status_ptr,
+                                 &wstatus, sizeof(wstatus)) != 0) {
                     write_rc = -EFAULT;
                 }
             } else {
                 write_rc = -EFAULT;
             }
             task->state = PROCESS_STATE_READY;
-            task->processor_context->eax = write_rc ? write_rc : exit;
+            task->processor_context->eax = write_rc ? write_rc : task_exited->pid;
             enqueue(task);
         }
         if (task == task_exited) {
@@ -618,12 +620,7 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
 
     uint8_t *buf = (uint8_t*)kernel_malloc(PAGE_SIZE);
 
-    uint32_t p_stack_base = (uint32_t)parent->esp_max;
-    uint32_t p_stack_top = (uint32_t)parent->esp_min;
-
     for (uint32_t va = USER_SPACE_START; va < USER_SPACE_END; va += PAGE_SIZE) {
-        if (va >= p_stack_base && va < p_stack_top) continue;
-
         uint32_t src_phys = get_mapping(parent->address_space, va);
         if (!src_phys) continue;
 
@@ -641,46 +638,8 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
         kunmap();
     }
 
-    uint32_t c_stack_base = (uint32_t)alloc_user_stack();
-    uint32_t c_stack_top = (uint32_t)c_stack_base + USER_STACK_SIZE;
-
-    for (uint32_t va = c_stack_base; va < c_stack_top; va += PAGE_SIZE) {
-        uint32_t dst_phys = (uint32_t)alloc_frame();
-        unmap_page(pcb->address_space, va, 0);
-        map_page(pcb->address_space, va, dst_phys, USER_PAGE_FLAGS, 0);
-        void *dst = kmap(dst_phys);
-        memset(dst, 0, PAGE_SIZE);
-        kunmap();
-    }
-
-    for (uint32_t offset = 0; offset < USER_STACK_SIZE; offset += PAGE_SIZE) {
-        uint32_t p_va = p_stack_base + offset;
-        uint32_t c_va = c_stack_base + offset;
-
-        uint32_t p_phys = get_mapping(parent->address_space, p_va);
-        if (!p_phys) continue;
-
-        uint32_t c_phys = get_mapping(pcb->address_space, c_va);
-        if (!c_phys) kernel_panic("task_fork: child stack page not mapped");
-
-        void *src = kmap(p_phys);
-        memcpy(buf, src, PAGE_SIZE);
-        kunmap();
-
-        void *dst = kmap(c_phys);
-        memcpy(dst, buf, PAGE_SIZE);
-        kunmap();
-    }
-
-    uint32_t c_esp = (uint32_t)parent->processor_context->esp_at_trap;
-    uint32_t c_ebp = (uint32_t)parent->processor_context->ebp;
-
-    pcb->esp = (uint32_t*)c_stack_top;
-    pcb->esp_max = (void*)c_stack_base;
-    pcb->processor_context->esp_at_trap = c_esp;
-    pcb->processor_context->ebp = c_ebp;
-    pcb->brk_start = USER_HEAP_START;
-    pcb->brk_end = USER_HEAP_START;
+    pcb->brk_start = parent->brk_start;
+    pcb->brk_end = parent->brk_end;
     pcb->next = NULL;
 
     pcb->signal_bitmask = 0;
@@ -698,6 +657,8 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
     uint32_t child_kstack_top = (uint32_t)child_kstack + KERNEL_STACK_SIZE;
     memset(child_kstack, 0, KERNEL_STACK_SIZE);
     pcb->esp0 = (void*)child_kstack_top;
+
+    kernel_free(buf);
 
     printfs(PRINT_STATUS_DEBUG,"Forking task '%s', esp=%p, esp0=%p\n", pcb->name, pcb->esp,pcb->esp0);
 

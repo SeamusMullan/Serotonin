@@ -3,18 +3,18 @@
     VESA BIOS Extensions (VBE) Graphics Driver for Serotonin.
 */
 
-#include "vbe.h"
-#include "../../kernel.h"
-#include "../../stdlib/stdlib.h"
-#include "../../schedule/schedule.h"
+#include <kernel/video/vbe/vbe.h>
+#include <kernel/kernel.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/schedule/schedule.h>
 #include <stdint.h>
 #include <stddef.h>
-#include "../../syscall/sys/lib5ht.h"
-#include "../../multiboot.h"
-#include "../../vmm/paging_init.h"
-#include "../font.h"
-#include "../../pty/pty.h"
-#include "../../io/io.h"
+#include <kernel/syscall/sys/lib5ht.h>
+#include <kernel/multiboot.h>
+#include <kernel/vmm/paging_init.h>
+#include <kernel/video/font.h>
+#include <kernel/pty/pty.h>
+#include <kernel/io/io.h>
 
 #include <xmmintrin.h>
 #include <emmintrin.h>

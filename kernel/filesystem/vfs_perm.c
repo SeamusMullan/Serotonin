@@ -1,5 +1,5 @@
-#include "vfs_perm.h"
-#include "../syscall/sys/file.h"
+#include <kernel/filesystem/vfs_perm.h>
+#include <kernel/syscall/sys/file.h>
 
 int proc_in_group(process_control_block_t *proc, uint16_t gid) {
     if (proc->egid == gid) return 1;

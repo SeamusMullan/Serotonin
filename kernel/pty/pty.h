@@ -2,9 +2,9 @@
 #define _KERNEL_PTY_H
 
 #include <stdint.h>
-#include "../schedule/schedule.h"
-#include "../filesystem/vfs.h"
-#include "../filesystem/user_fs/user_fs.h"
+#include <kernel/schedule/schedule.h>
+#include <kernel/filesystem/vfs.h>
+#include <kernel/filesystem/user_fs/user_fs.h>
 
 #define PTY_RING_SIZE    4096
 #define PTY_LINE_SIZE    4096

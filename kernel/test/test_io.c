@@ -1,7 +1,7 @@
 // kernel/test/test_io.c
-#include "ktest.h"
-#include "../io/io.h"
-#include "../stdio/stdio.h"
+#include <kernel/test/ktest.h>
+#include <kernel/io/io.h>
+#include <kernel/stdio/stdio.h>
 
 // 32-bit port I/O functions
 static inline uint32_t inl(uint16_t port) {

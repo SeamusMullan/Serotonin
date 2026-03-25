@@ -2,8 +2,8 @@
 #define _KERNEL_SYSCALl
 
 #include <stdint.h>
-#include "../io/io.h"
-#include "../schedule/schedule.h"
+#include <kernel/io/io.h>
+#include <kernel/schedule/schedule.h>
 
 #define STDIN_BUFFER_SIZE 4096
 #define FIRST_FD 3

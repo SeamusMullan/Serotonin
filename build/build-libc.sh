@@ -1,19 +1,26 @@
-if [ ! -d "$newlib"]; then
-    mkdir newlib
+#!/bin/bash
+# Rebuild newlib for i686-serotonin.
+# Only needed if you want to rebuild newlib independently of the full toolchain.
+# For a full build, use build-tools/build-toolchain.sh instead.
+
+set -e
+
+if [ ! -d "$newlib" ]; then
+    mkdir -p newlib
 fi
 cd newlib
 
 export DIR=$(pwd)
-export PREFIX="$DIR/../../build-tools/bin"
-export SYSROOT="$DIR/../../sysroot"
-export TARGET=i686-elf
+export PREFIX="$DIR/../../build-tools/cross"
+export SYSROOT="$PREFIX/i686-serotonin/sys-root"
+export TARGET=i686-serotonin
 export PATH="$PREFIX/bin:$PATH"
 
-ln -sf $PREFIX/bin/i686-elf-gcc $PREFIX/bin/i686-elf-cc
+ln -sf $PREFIX/bin/i686-serotonin-gcc $PREFIX/bin/i686-serotonin-cc
 
 export CFLAGS_FOR_TARGET="-O2 -msse -msse2 -g"
 ../../newlib/configure \
-    --target=i686-elf \
+    --target=i686-serotonin \
     --prefix="$PREFIX" \
     --disable-newlib-supplied-syscalls \
     --disable-libgloss \
@@ -22,7 +29,7 @@ export CFLAGS_FOR_TARGET="-O2 -msse -msse2 -g"
 make -j$(nproc)
 make install
 
-# Also install into sysroot if it exists
+# Also install into sysroot
 if [ -d "$SYSROOT" ]; then
     echo "Installing newlib into sysroot..."
     mkdir -p "$SYSROOT/usr/include" "$SYSROOT/usr/lib"

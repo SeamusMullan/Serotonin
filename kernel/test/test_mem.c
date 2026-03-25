@@ -1,8 +1,8 @@
 // kernel/test/test_mem.c
-#include "ktest.h"
-#include "../kernel.h"
-#include "../stdlib/stdlib.h"
-#include "../stdio/stdio.h"
+#include <kernel/test/ktest.h>
+#include <kernel/kernel.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/stdio/stdio.h>
 
 extern void* kernel_malloc(uint32_t size);
 extern void kernel_free(void* ptr);

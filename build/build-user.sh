@@ -1,26 +1,33 @@
+SKIP_TOOLCHAIN=0
+for arg in "$@"; do
+    case "$arg" in
+        --skip-toolchain) SKIP_TOOLCHAIN=1 ;;
+    esac
+done
+
 export DIR=$(pwd)
-export PREFIX="$DIR/../build-tools/bin"
-export TARGET=i686-elf
+export PREFIX="$DIR/../build-tools/cross"
+export TARGET=i686-serotonin
 export PATH="$PREFIX/bin:$PATH"
 OS_TYPE="$(uname)"
 
-# sysroot
-SYSROOT="$DIR/../sysroot"
+CC="$PREFIX/bin/$TARGET-gcc"
+CXX="$PREFIX/bin/$TARGET-g++"
+AS="$PREFIX/bin/$TARGET-as"
+AR="$PREFIX/bin/$TARGET-ar"
+RANLIB="$PREFIX/bin/$TARGET-ranlib"
+STRIP="$PREFIX/bin/$TARGET-strip"
 
-if [ ! -d "$SYSROOT/usr/lib" ]; then
-    echo "Error: sysroot not found at $SYSROOT"
-    echo "Run build-sysroot.sh first."
-    exit 1
-fi
+SYSROOT="$PREFIX/$TARGET/sys-root"
 
-# compiler flags
-CFLAGS="-m32 -std=gnu99 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse --sysroot=$SYSROOT"
-CXXFLAGS="-m32 -std=c++11 -ffreestanding -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse -fno-exceptions -fno-rtti -fno-threadsafe-statics --sysroot=$SYSROOT"
+# compiler flags — the toolchain handles sysroot, CRT, and linking automatically.
+CFLAGS="-std=gnu99 -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse"
 
-# linker flags: use sysroot CRT and libraries
-CRT0="$SYSROOT/usr/lib/crt0.o"
-LDFLAGS="-T $SYSROOT/usr/lib/user.ld -nostdlib -L$SYSROOT/usr/lib"
-LDLIBS="-Wl,--start-group -lsyscall -lcxxrt -lc -lm -Wl,--end-group"
+# C++ flags: no exceptions, no RTTI (not supported by Serotonin).
+# Supported C++ features: classes, templates, operator overloading,
+# new/delete (via libcxxrt), global constructors/destructors (via crt0),
+# static destructors (__cxa_atexit), STL containers (via STLport).
+CXXFLAGS="-std=c++11 -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse -fno-exceptions -fno-rtti -fno-threadsafe-statics"
 
 # STLport configuration
 STLPORT_DIR="$DIR/../user/cxx/STLport-5.2.1/stlport"
@@ -28,82 +35,80 @@ STLPORT_FLAGS="-I$STLPORT_DIR -D__SEROTONIN__"
 
 cd ../user
 
-# --- C programs ---
+# --- C programs (compile + link in one step — toolchain links automatically) ---
 
-i686-elf-gcc -c init/init.c -o init/init.o $CFLAGS
-i686-elf-gcc -c login/login.c -o login/login.o $CFLAGS
-i686-elf-gcc -c test.c -o test.o $CFLAGS
-i686-elf-gcc -c shell.c -o shell.o $CFLAGS
-i686-elf-gcc -c ls.c -o ls.o $CFLAGS
-i686-elf-gcc -c cat.c -o cat.o $CFLAGS
-i686-elf-gcc -c pipe_test.c -o pipe_test.o $CFLAGS
-i686-elf-gcc -c fb_layer_test.c -o fb_layer_test.o $CFLAGS
-i686-elf-gcc -c receiver.c -o receiver.o $CFLAGS
-i686-elf-gcc -c sender.c -o sender.o $CFLAGS
-i686-elf-gcc -c fs_syscall_test.c -o fs_syscall_test.o $CFLAGS
-i686-elf-gcc -c devfs_example.c -o devfs_example.o $CFLAGS
-i686-elf-gcc -c mouse_test.c -o mouse_test.o $CFLAGS
-i686-elf-gcc -c kb_test.c -o kb_test.o $CFLAGS
-i686-elf-gcc -c mouse_cursor.c -o mouse_cursor.o $CFLAGS
-i686-elf-gcc -c listproc/listproc.c -o listproc/listproc.o $CFLAGS
-i686-elf-gcc -c games/sponk/sponk.c -o games/sponk/sponk.o $CFLAGS
-i686-elf-gcc -c opl2_editor/opl2_editor.c -o opl2_editor/opl2_editor.o $CFLAGS
-i686-elf-gcc -c getty/getty.c -o getty/getty.o $CFLAGS
-i686-elf-gcc -c fetch.c -o fetch.o $CFLAGS
-i686-elf-gcc -c nettest.c -o nettest.o $CFLAGS
-i686-elf-gcc -c socket_test.c -o socket_test.o $CFLAGS
-i686-elf-gcc -c ifconfig.c -o ifconfig.o $CFLAGS -Ilwip/serotonin
-i686-elf-gcc -c ping.c -o ping.o $CFLAGS -Ilwip/serotonin
-i686-elf-gcc -c httpd.c -o httpd.o $CFLAGS -Ilwip/serotonin
-i686-elf-gcc -c seriald.c -o seriald.o $CFLAGS
-i686-elf-gcc -c initctl.c -o initctl.o $CFLAGS
-i686-elf-gcc -c wavplay.c -o wavplay.o $CFLAGS -Iinit
+$CC init/init.c -o init.elf $CFLAGS
+$CC login/login.c -o login.elf $CFLAGS
+$CC test.c -o test.elf $CFLAGS
+$CC shell.c -o sh.elf $CFLAGS
+$CC ls.c -o ls.elf $CFLAGS
+$CC cat.c -o cat.elf $CFLAGS
+
+# --- Coreutils ---
+$CC echo.c -o echo.elf $CFLAGS
+$CC pwd.c -o pwd.elf $CFLAGS
+$CC mkdir_cmd.c -o mkdir.elf $CFLAGS
+$CC rm.c -o rm.elf $CFLAGS
+$CC cp.c -o cp.elf $CFLAGS
+$CC mv.c -o mv.elf $CFLAGS
+$CC head.c -o head.elf $CFLAGS
+$CC tail.c -o tail.elf $CFLAGS
+$CC touch.c -o touch.elf $CFLAGS
+$CC wc.c -o wc.elf $CFLAGS
+$CC grep.c -o grep.elf $CFLAGS
+$CC sort.c -o sort.elf $CFLAGS
+$CC uniq.c -o uniq.elf $CFLAGS
+$CC tr.c -o tr.elf $CFLAGS
+$CC tee.c -o tee.elf $CFLAGS
+$CC chmod_cmd.c -o chmod.elf $CFLAGS
+$CC chown_cmd.c -o chown.elf $CFLAGS
+$CC stat_cmd.c -o stat.elf $CFLAGS
+$CC uname_cmd.c -o uname.elf $CFLAGS
+$CC date.c -o date.elf $CFLAGS
+$CC sleep_cmd.c -o sleep.elf $CFLAGS
+$CC kill_cmd.c -o kill.elf $CFLAGS
+$CC whoami.c -o whoami.elf $CFLAGS
+$CC id.c -o id.elf $CFLAGS
+$CC env.c -o env.elf $CFLAGS
+$CC true.c -o true.elf $CFLAGS
+$CC false.c -o false.elf $CFLAGS
+$CC yes.c -o yes.elf $CFLAGS
+$CC basename_cmd.c -o basename.elf $CFLAGS
+$CC dirname_cmd.c -o dirname.elf $CFLAGS
+$CC rmdir_cmd.c -o rmdir.elf $CFLAGS
+$CC pipe_test.c -o pipe_test.elf $CFLAGS
+$CC fb_layer_test.c -o fb_layer_test.elf $CFLAGS
+$CC receiver.c -o receiver.elf $CFLAGS
+$CC sender.c -o sender.elf $CFLAGS
+$CC fs_syscall_test.c -o fs_syscall_test.elf $CFLAGS
+$CC devfs_example.c -o devfs_example.elf $CFLAGS
+$CC mouse_test.c -o ps2tst.elf $CFLAGS
+$CC kb_test.c -o kbtest.elf $CFLAGS
+$CC mouse_cursor.c -o mouse.elf $CFLAGS
+$CC listproc/listproc.c -o listproc.elf $CFLAGS
+$CC games/sponk/sponk.c -o sponk.elf $CFLAGS
+$CC opl2_editor/opl2_editor.c -o opl2edit.elf $CFLAGS
+$CC getty/getty.c -o getty.elf $CFLAGS
+$CC fetch.c -o fetch.elf $CFLAGS
+$CC nettest.c -o nettest.elf $CFLAGS
+$CC socket_test.c -o socktest.elf $CFLAGS
+$CC seriald.c -o seriald.elf $CFLAGS
+$CC initctl.c -o initctl.elf $CFLAGS
+$CC wavplay.c -o wavplay.elf $CFLAGS -Iinit
 
 # --- Window Manager ---
 echo "Building window manager..."
-i686-elf-gcc -c wm/wm.c -o wm/wm.o $CFLAGS
-i686-elf-gcc -c wm/wm_terminal.c -o wm/wm_terminal.o $CFLAGS
-i686-elf-gcc -c wm/wm_draw.c -o wm/wm_draw.o $CFLAGS
-i686-elf-gcc -c wm/wm_layout.c -o wm/wm_layout.o $CFLAGS
-i686-elf-gcc -c wm/wm_input.c -o wm/wm_input.o $CFLAGS
-
-# --- Link C programs ---
-
-i686-elf-gcc $LDFLAGS $CRT0 init/init.o $LDLIBS -o init.elf
-i686-elf-gcc $LDFLAGS $CRT0 login/login.o $LDLIBS -o login.elf
-i686-elf-gcc $LDFLAGS $CRT0 test.o $LDLIBS -o test.elf
-i686-elf-gcc $LDFLAGS $CRT0 listproc/listproc.o $LDLIBS -o listproc.elf
-i686-elf-gcc $LDFLAGS $CRT0 shell.o $LDLIBS -o sh.elf
-i686-elf-gcc $LDFLAGS $CRT0 ls.o $LDLIBS -o ls.elf
-i686-elf-gcc $LDFLAGS $CRT0 cat.o $LDLIBS -o cat.elf
-i686-elf-gcc $LDFLAGS $CRT0 pipe_test.o $LDLIBS -o pipe_test.elf
-i686-elf-gcc $LDFLAGS $CRT0 fb_layer_test.o $LDLIBS -o fb_layer_test.elf
-i686-elf-gcc $LDFLAGS $CRT0 fs_syscall_test.o $LDLIBS -o fs_syscall_test.elf
-i686-elf-gcc $LDFLAGS $CRT0 games/sponk/sponk.o $LDLIBS -o sponk.elf
-i686-elf-gcc $LDFLAGS $CRT0 receiver.o $LDLIBS -o receiver.elf
-i686-elf-gcc $LDFLAGS $CRT0 sender.o $LDLIBS -o sender.elf
-i686-elf-gcc $LDFLAGS $CRT0 devfs_example.o $LDLIBS -o devfs_example.elf
-i686-elf-gcc $LDFLAGS $CRT0 mouse_test.o $LDLIBS -o ps2tst.elf
-i686-elf-gcc $LDFLAGS $CRT0 mouse_cursor.o $LDLIBS -o mouse.elf
-i686-elf-gcc $LDFLAGS $CRT0 kb_test.o $LDLIBS -o kbtest.elf
-i686-elf-gcc $LDFLAGS $CRT0 opl2_editor/opl2_editor.o $LDLIBS -o opl2edit.elf
-i686-elf-gcc $LDFLAGS $CRT0 getty/getty.o $LDLIBS -o getty.elf
-i686-elf-gcc $LDFLAGS $CRT0 fetch.o $LDLIBS -o fetch.elf
-i686-elf-gcc $LDFLAGS $CRT0 nettest.o $LDLIBS -o nettest.elf
-i686-elf-gcc $LDFLAGS $CRT0 socket_test.o $LDLIBS -o socktest.elf
-i686-elf-gcc $LDFLAGS $CRT0 seriald.o $LDLIBS -o seriald.elf
-i686-elf-gcc $LDFLAGS $CRT0 initctl.o $LDLIBS -o initctl.elf
-i686-elf-gcc $LDFLAGS $CRT0 wavplay.o $LDLIBS -o wavplay.elf
-
-# Window Manager
-i686-elf-gcc $LDFLAGS $CRT0 wm/wm.o wm/wm_terminal.o wm/wm_draw.o wm/wm_layout.o wm/wm_input.o $LDLIBS -o wm.elf
+$CC wm/wm.c wm/wm_terminal.c wm/wm_draw.c wm/wm_layout.c wm/wm_input.c \
+    -o wm.elf $CFLAGS
 echo "Window manager build complete: wm.elf"
 
-# ifconfig (uses lwip client library)
-i686-elf-gcc -c lwip/serotonin/lwip_client.c -o lwip/serotonin/lwip_client.o $CFLAGS
-i686-elf-gcc $LDFLAGS $CRT0 ifconfig.o lwip/serotonin/lwip_client.o $LDLIBS -o ifconfig.elf
-i686-elf-gcc $LDFLAGS $CRT0 ping.o lwip/serotonin/lwip_client.o $LDLIBS -o ping.elf
-i686-elf-gcc $LDFLAGS $CRT0 httpd.o lwip/serotonin/lwip_client.o $LDLIBS -o httpd.elf
+# lwip client library (compiled separately, used by network tools)
+$CC -c lwip/serotonin/lwip_client.c -o lwip/serotonin/lwip_client.o $CFLAGS
+
+# ifconfig, ping, httpd (need lwip client + lwip headers)
+$CC ifconfig.c lwip/serotonin/lwip_client.o -o ifconfig.elf $CFLAGS -Ilwip/serotonin
+$CC ping.c lwip/serotonin/lwip_client.o -o ping.elf $CFLAGS -Ilwip/serotonin
+$CC httpd.c lwip/serotonin/lwip_client.o -o httpd.elf $CFLAGS -Ilwip/serotonin
 
 # --- lwIP network daemon ---
 
@@ -157,44 +162,39 @@ LWIP_PORT_SRCS="
 LWIP_OBJS=""
 for src in $LWIP_SRCS $LWIP_PORT_SRCS; do
     obj="${src%.c}.o"
-    i686-elf-gcc -c "$src" -o "$obj" $CFLAGS $LWIP_INCLUDES -Wno-address
+    $CC -c "$src" -o "$obj" $CFLAGS $LWIP_INCLUDES -Wno-address
     LWIP_OBJS="$LWIP_OBJS $obj"
 done
 
 # Link lwIP daemon
-i686-elf-gcc $LDFLAGS $CRT0 $LWIP_OBJS $LDLIBS -o lwipd.elf
+$CC $LWIP_OBJS -o lwipd.elf $CFLAGS
 
 echo "lwIP daemon build complete: lwipd.elf"
 
 # --- C++ programs ---
 
-i686-elf-g++ -c cxx_test.cpp -o cxx_test.o $CXXFLAGS
-i686-elf-g++ $LDFLAGS $CRT0 cxx_test.o $LDLIBS -o cxxtest.elf
+$CXX cxx_test.cpp -o cxxtest.elf $CXXFLAGS
 
 # Build STLport stubs (provides range error functions for bare-metal)
 echo "Building STLport stubs..."
-i686-elf-g++ -c cxx/stlport_stubs.cpp -o cxx/stlport_stubs.o $CXXFLAGS $STLPORT_FLAGS
+$CXX -c cxx/stlport_stubs.cpp -o cxx/stlport_stubs.o $CXXFLAGS $STLPORT_FLAGS
 
 # STLport library location
 STLPORT_LIB="$DIR/../user/cxx/STLport-5.2.1/build-output"
 
 # Build STL test program (uses STLport containers)
 echo "Building STL test..."
-i686-elf-g++ -c stl_test.cpp -o stl_test.o $CXXFLAGS $STLPORT_FLAGS
-i686-elf-g++ $LDFLAGS $CRT0 cxx/stlport_stubs.o stl_test.o $LDLIBS -o stltest.elf
+$CXX stl_test.cpp cxx/stlport_stubs.o -o stltest.elf $CXXFLAGS $STLPORT_FLAGS
 echo "STL test build complete: stltest.elf"
 
 # Build iostream test program (uses STLport with full iostream)
-# Note: don't link stlport_stubs.o when using libstlport.a (it provides those functions)
 echo "Building iostream test..."
-i686-elf-g++ -c iostream_test.cpp -o iostream_test.o $CXXFLAGS $STLPORT_FLAGS
-i686-elf-g++ $LDFLAGS $CRT0 iostream_test.o -L$STLPORT_LIB -lstlport $LDLIBS -o iostr.elf
-echo "iostream test build complete: iostreamtest.elf"
+$CXX iostream_test.cpp -L$STLPORT_LIB -lstlport -o iostr.elf $CXXFLAGS $STLPORT_FLAGS
+echo "iostream test build complete: iostr.elf"
 
 # Build enhanced C++ shell (shell+)
 echo "Building shell+..."
-i686-elf-g++ -c shell_plus.cpp -o shell_plus.o $CXXFLAGS $STLPORT_FLAGS
-i686-elf-g++ $LDFLAGS $CRT0 shell_plus.o -L$STLPORT_LIB -lstlport $LDLIBS -o shplus.elf
+$CXX shell_plus.cpp -L$STLPORT_LIB -lstlport -o shplus.elf $CXXFLAGS $STLPORT_FLAGS
 echo "shell+ build complete: shplus.elf"
 
 # Build Lua
@@ -202,123 +202,119 @@ echo "Building Lua..."
 cd lua/lua-5.4.8/src
 
 # Clean previous build artifacts
-make clean
+make clean || true
 
 # Build Lua library (object files only) with 32-bit integers
-make CC="i686-elf-gcc" \
-     AR="i686-elf-ar rcu" \
-     RANLIB="i686-elf-ranlib" \
+make CC="$CC" \
+     AR="$AR rcu" \
+     RANLIB="$RANLIB" \
      MYCFLAGS="$CFLAGS" \
      a \
      -j $(nproc)
 
 # Build Lua interpreter object file
-i686-elf-gcc -m32 -ffreestanding -O2 -Wall -Wextra --sysroot=$SYSROOT -c lua.c -o lua.o
+$CC -O2 -Wall -Wextra -c lua.c -o lua.o
 
-# Link Lua interpreter as ELF binary for Serotonin OS
+# Link Lua interpreter as ELF binary for Serotonin
 cd ../../..
 
-i686-elf-gcc -c lua_stubs.c -o lua_stubs.o $CFLAGS
-i686-elf-gcc -c libgcc_stubs.c -o libgcc_stubs.o $CFLAGS
-i686-elf-gcc -c binutils/posix_stubs.c -o binutils/posix_stubs.o $CFLAGS
-i686-elf-gcc -I"$DIR/../build-tools/src/binutils-gdb/include" -c binutils/sframe_stubs.c -o binutils/sframe_stubs.o $CFLAGS
+$CC -c lua_stubs.c -o lua_stubs.o $CFLAGS
+$CC -c libgcc_stubs.c -o libgcc_stubs.o $CFLAGS
+$CC -c binutils/posix_stubs.c -o binutils/posix_stubs.o $CFLAGS
+$CC -I"$DIR/../build-tools/src/binutils-gdb/include" -c binutils/sframe_stubs.c -o binutils/sframe_stubs.o $CFLAGS
 
-# Link without -lgcc
-i686-elf-gcc $LDFLAGS $CRT0 lua/lua-5.4.8/src/lua.o lua/lua-5.4.8/src/liblua.a lua_stubs.o libgcc_stubs.o $LDLIBS -o lua.elf
+$CC lua/lua-5.4.8/src/lua.o lua/lua-5.4.8/src/liblua.a lua_stubs.o libgcc_stubs.o \
+    -o lua.elf $CFLAGS
 
 echo "Lua build complete: lua.elf"
 
-# Build binutils for userland
-echo "Building binutils..."
+if [ "$SKIP_TOOLCHAIN" = "1" ]; then
+    echo "Skipping binutils and GCC (--skip-toolchain)"
+    echo "=== Build complete ==="
+    exit 0
+fi
+
+# ═══════════════════════════════════════════════════════════════
+# Build binutils for userland (Canadian cross: runs on Serotonin)
+# ═══════════════════════════════════════════════════════════════
+echo "Building binutils for userland..."
 BINUTILS_SRC="$DIR/../build-tools/src/binutils-gdb"
 BINUTILS_BUILD="$DIR/binutils-user-build"
 BINUTILS_STAGE="$DIR/binutils-user-stage"
 BINUTILS_CFLAGS="$CFLAGS -Wno-error=incompatible-pointer-types -Wno-incompatible-pointer-types -mno-tls-direct-seg-refs -DBFD_NO_THREADS"
-BINUTILS_CC_WRAPPER="$BINUTILS_BUILD/cc-wrapper.sh"
 
-mkdir -p "$BINUTILS_BUILD" "$BINUTILS_STAGE"
-cd "$BINUTILS_BUILD"
+# CC wrapper: autotools configure for --host=i686-serotonin will try to
+# compile-and-link test programs. The toolchain handles linking automatically,
+# but some configure-generated programs need the posix/sframe stubs to link.
+# The wrapper injects them when producing executables.
+mkdir -p "$BINUTILS_BUILD"
+STUBS_DIR="$DIR/../user"
+CC_WRAPPER="$BINUTILS_BUILD/cc-wrapper.sh"
 
-cat > "$BINUTILS_CC_WRAPPER" <<EOF
-#!/usr/bin/env sh
-set -e
+# Pre-compile stubs once (only posix_stubs needed — libgcc and libsframe are auto-linked)
+$CC -c "$STUBS_DIR/binutils/posix_stubs.c" -o "$BINUTILS_BUILD/posix_stubs.o" $BINUTILS_CFLAGS
 
-user_objs="$SYSROOT/usr/lib/crt0.o"
-user_ldflags="-nostartfiles -T $SYSROOT/usr/lib/user.ld --sysroot=$SYSROOT -L$SYSROOT/usr/lib"
-user_libs="-Wl,--start-group -lsyscall -lcxxrt -lc -lm -Wl,--end-group"
-
+cat > "$CC_WRAPPER" <<WEOF
+#!/bin/sh
+# Wrapper: for compile-only (-c), pass through.
+# For linking (producing executables), append stub objects.
 for arg in "\$@"; do
-    if [ "\$arg" = "-c" ]; then
-        exec i686-elf-gcc "\$@"
+    if [ "\$arg" = "-c" ] || [ "\$arg" = "-E" ] || [ "\$arg" = "-S" ]; then
+        exec $CC "\$@"
     fi
 done
 
-out=""
+# Check if output is a library/object (not an executable)
 prev=""
 for arg in "\$@"; do
     if [ "\$prev" = "-o" ]; then
-        out="\$arg"
+        case "\$arg" in
+            *.a|*.la|*.so|*.o) exec $CC "\$@" ;;
+        esac
         break
     fi
     prev="\$arg"
 done
 
-case "\$out" in
-    *.a|*.la|*.so|*.o)
-        exec i686-elf-gcc "\$@"
-        ;;
-esac
+# Linking an executable — prepend stubs so they override libiberty.a symbols
+exec $CC $BINUTILS_BUILD/posix_stubs.o "\$@"
+WEOF
+chmod +x "$CC_WRAPPER"
 
-exec i686-elf-gcc "\$@" \$user_ldflags \$user_objs \$user_libs
-EOF
-chmod +x "$BINUTILS_CC_WRAPPER"
+mkdir -p "$BINUTILS_STAGE"
+cd "$BINUTILS_BUILD"
 
 if [ ! -f "config.status" ]; then
-    echo "Configuring binutils..."
-    CC="$BINUTILS_CC_WRAPPER"     AR="i686-elf-ar"     RANLIB="i686-elf-ranlib"     CFLAGS="$BINUTILS_CFLAGS"     "$BINUTILS_SRC/configure"         --host="$TARGET"         --target="$TARGET"         --prefix=/usr         --program-prefix=         --disable-nls         --disable-werror         --disable-gdb         --disable-gdbserver         --disable-gprofng         --disable-gold         --disable-libsframe         --disable-libbacktrace         --disable-libctf         --disable-readline         --disable-gprof         --disable-sim
+    echo "Configuring binutils for userland..."
+    CC="$CC_WRAPPER" \
+    AR="$AR" \
+    RANLIB="$RANLIB" \
+    CFLAGS="$BINUTILS_CFLAGS" \
+    "$BINUTILS_SRC/configure" \
+        --host="$TARGET" \
+        --target="$TARGET" \
+        --prefix=/usr \
+        --program-prefix= \
+        --disable-nls \
+        --disable-werror \
+        --disable-gdb \
+        --disable-gdbserver \
+        --disable-gprofng \
+        --disable-gold \
+        --disable-libbacktrace \
+        --disable-libctf \
+        --disable-readline \
+        --disable-gprof \
+        --disable-sim
 fi
-
-if [ ! -d "opcodes" ]; then
-    echo "Configuring opcodes..."
-    mkdir -p opcodes
-    (cd opcodes && \
-        CC="$BINUTILS_CC_WRAPPER" \
-        AR="i686-elf-ar" \
-        RANLIB="i686-elf-ranlib" \
-        CFLAGS="$BINUTILS_CFLAGS" \
-        "$BINUTILS_SRC/opcodes/configure" \
-            --host="$TARGET" \
-            --target="$TARGET" \
-            --prefix=/usr \
-            --disable-nls \
-            --disable-werror \
-    )
-fi
-
 
 echo "Building binutils utilities..."
 make -j$(nproc)
 
-echo "Building libiberty..."
-make -C "$BINUTILS_BUILD/libiberty" all
-make -C "$BINUTILS_BUILD/libiberty" libiberty.a || true
-if [ -f "$BINUTILS_BUILD/libiberty/required-list" ]; then
-    (cd "$BINUTILS_BUILD/libiberty" && \
-        i686-elf-ar cru libiberty.a $(cat required-list) && \
-        i686-elf-ranlib libiberty.a)
-fi
-if [ ! -f "$BINUTILS_BUILD/libiberty/libiberty.a" ] && [ -f "$BINUTILS_BUILD/libiberty/.libs/libiberty.a" ]; then
-    cp "$BINUTILS_BUILD/libiberty/.libs/libiberty.a" "$BINUTILS_BUILD/libiberty/libiberty.a"
-fi
-if [ ! -f "$BINUTILS_BUILD/libiberty/libiberty.a" ]; then
-    echo "libiberty.a missing after build"
-    exit 1
-fi
-
-echo "Installing binutils utilities to staging..."
+echo "Installing binutils to staging..."
 make DESTDIR="$BINUTILS_STAGE" install
 
-echo "Copying binutils utilities to userland..."
+echo "Copying binutils to userland..."
 BINUTILS_STAGE_BIN="$BINUTILS_STAGE/usr/bin"
 for bin in "$BINUTILS_STAGE_BIN"/*; do
     if [ -f "$bin" ]; then
@@ -327,8 +323,182 @@ for bin in "$BINUTILS_STAGE_BIN"/*; do
     fi
 done
 
+# ═══════════════════════════════════════════════════════════════
+# Build GCC for userland (Canadian cross: runs on Serotonin)
+# ═══════════════════════════════════════════════════════════════
+echo ""
+echo "Building GCC for userland..."
+GCC_SRC="$DIR/../build-tools/src/gcc"
+
+for f in $(find "$GCC_SRC" -name 'config.sub' -o -name 'configfsf.sub' 2>/dev/null); do
+    [ -f "$f" ] && grep -q 'serotonin' "$f" && continue
+    if grep -q '| fiwix\* )' "$f"; then
+        sed -i 's/| fiwix\* )/| serotonin* | fiwix* )/' "$f"
+    elif grep -q '| fiwix\*' "$f"; then
+        sed -i '/| fiwix\*/i\\t| serotonin* \\' "$f"
+    elif grep -q '| skyos\*' "$f"; then
+        sed -i 's/| skyos\*/| serotonin* | skyos*/' "$f"
+    elif grep -q '| emx\*)' "$f"; then
+        sed -i 's/| emx\*)/| emx* | serotonin*)/' "$f"
+    fi
+done
+GCC_BUILD="$DIR/gcc-user-build"
+GCC_STAGE="$DIR/gcc-user-stage"
+GCC_CFLAGS="$CFLAGS -Wno-error=incompatible-pointer-types -Wno-incompatible-pointer-types -mno-tls-direct-seg-refs"
+GCC_CXXFLAGS="-O2 -Wall -msse -msse2 -mfpmath=sse -Wno-error=incompatible-pointer-types -Wno-incompatible-pointer-types -mno-tls-direct-seg-refs"
+
+mkdir -p "$GCC_BUILD"
+GCC_CC_WRAPPER="$GCC_BUILD/cc-wrapper.sh"
+GCC_CXX_WRAPPER="$GCC_BUILD/cxx-wrapper.sh"
+
+cat > "$GCC_CC_WRAPPER" <<WEOF
+#!/bin/sh
+for arg in "\$@"; do
+    if [ "\$arg" = "-c" ] || [ "\$arg" = "-E" ] || [ "\$arg" = "-S" ]; then
+        exec $CC "\$@"
+    fi
+done
+prev=""
+for arg in "\$@"; do
+    if [ "\$prev" = "-o" ]; then
+        case "\$arg" in
+            *.a|*.la|*.so|*.o) exec $CC "\$@" ;;
+        esac
+        break
+    fi
+    prev="\$arg"
+done
+exec $CC $BINUTILS_BUILD/posix_stubs.o "\$@"
+WEOF
+chmod +x "$GCC_CC_WRAPPER"
+
+cat > "$GCC_CXX_WRAPPER" <<WEOF
+#!/bin/sh
+for arg in "\$@"; do
+    if [ "\$arg" = "-c" ] || [ "\$arg" = "-E" ] || [ "\$arg" = "-S" ]; then
+        exec $CXX "\$@"
+    fi
+done
+prev=""
+for arg in "\$@"; do
+    if [ "\$prev" = "-o" ]; then
+        case "\$arg" in
+            *.a|*.la|*.so|*.o) exec $CXX "\$@" ;;
+        esac
+        break
+    fi
+    prev="\$arg"
+done
+exec $CXX $BINUTILS_BUILD/posix_stubs.o "\$@" -lstdc++
+WEOF
+chmod +x "$GCC_CXX_WRAPPER"
+
+mkdir -p "$GCC_STAGE"
+cd "$GCC_BUILD"
+
+if [ ! -f "config.status" ]; then
+    echo "Configuring GCC for userland..."
+
+    # Download prerequisites if needed
+    (cd "$GCC_SRC" && { [ -d "gmp" ] || ./contrib/download_prerequisites; })
+
+    CC_FOR_BUILD="gcc" \
+    CXX_FOR_BUILD="g++" \
+    CC="$GCC_CC_WRAPPER" \
+    CXX="$GCC_CXX_WRAPPER" \
+    AR="$AR" \
+    RANLIB="$RANLIB" \
+    CFLAGS="$GCC_CFLAGS" \
+    CXXFLAGS="$GCC_CXXFLAGS" \
+    "$GCC_SRC/configure" \
+        --host="$TARGET" \
+        --target="$TARGET" \
+        --build="$(gcc -dumpmachine)" \
+        --prefix=/usr \
+        --with-sysroot=/usr/sysroot \
+        --with-newlib \
+        --enable-languages=c,c++ \
+        --disable-nls \
+        --disable-shared \
+        --disable-threads \
+        --disable-libssp \
+        --disable-libquadmath \
+        --disable-libgomp \
+        --disable-libatomic \
+        --disable-hosted-libstdcxx \
+        --disable-bootstrap \
+        --disable-multilib \
+        --disable-libstdcxx \
+        --disable-gcov \
+        --disable-plugin \
+        --disable-decimal-float \
+        --disable-libffi \
+        --disable-libitm \
+        --disable-libsanitizer \
+        --disable-libvtv
+fi
+
+echo "Building GCC compiler..."
+sed -i 's/^maybe-configure-gettext: configure-gettext$/maybe-configure-gettext:/' Makefile
+sed -i 's/^maybe-all-gettext: all-gettext$/maybe-all-gettext:/' Makefile
+
+make configure-isl -j$(nproc)
+sed -i '/isl_test_cpp\$(EXEEXT)/d' isl/Makefile
+sed -i '/isl_test_cpp\$(EXEEXT)/d' isl/Makefile.in
+
+make configure-gcc -j$(nproc)
+sed -i 's/^#define HAVE_DECL_\(.*\) 0$/#define HAVE_DECL_\1 1/' gcc/auto-host.h
+
+make all-libiberty -j$(nproc)
+
+mkdir -p gcc
+touch gcc/s-selftest-c gcc/s-selftest-c++
+
+"$PREFIX/bin/$TARGET-gcc" -dumpspecs > gcc/specs
+sed -i 's|^\$(SPECS): xgcc\$(exeext)|$(SPECS):|' gcc/Makefile
+
+export MAKEFLAGS="-j$(nproc)"
+make all-gcc
+
+echo "Installing GCC to staging..."
+make DESTDIR="$GCC_STAGE" install-gcc
+
+GCC_SPECS_DIR="$GCC_STAGE/usr/lib/gcc/$TARGET"
+cat > "$GCC_SPECS_DIR/specs" <<'SPECS'
+*cc1:
+%(cc1_cpu) -isystem /usr/sysroot/usr/include
+
+*lib:
+%{!nostdlib:--start-group -lsyscall -lcxxrt -lc -lm -lgcc --end-group}
+
+SPECS
+
+# install-gcc doesn't install runtime libraries; copy libgcc.a from the cross toolchain
+GCC_VER_DIR="$GCC_STAGE/usr/lib/gcc/$TARGET/$(cat gcc/BASE-VER)"
+cp "$PREFIX/lib/gcc/$TARGET/$(cat gcc/BASE-VER)/libgcc.a" "$GCC_VER_DIR/libgcc.a"
+"$STRIP" --strip-debug "$GCC_VER_DIR/libgcc.a"
+
+echo "Copying GCC to userland..."
+GCC_STAGE_BIN="$GCC_STAGE/usr/bin"
+mkdir -p "$DIR/../user/gcc"
+for bin in "$GCC_STAGE_BIN"/*; do
+    if [ -f "$bin" ]; then
+        bin_name="$(basename "$bin")"
+        cp "$bin" "$DIR/../user/gcc/${bin_name}.elf"
+    fi
+done
+
+# Also copy the GCC support files (specs, headers, etc.)
+GCC_STAGE_LIBEXEC="$GCC_STAGE/usr/libexec/gcc/$TARGET"
+if [ -d "$GCC_STAGE_LIBEXEC" ]; then
+    mkdir -p "$DIR/../user/gcc/libexec"
+    cp -r "$GCC_STAGE_LIBEXEC"/* "$DIR/../user/gcc/libexec/"
+fi
+
 cd "$DIR/../user"
 
 echo ""
 echo "=== Build complete ==="
+echo "Userland binutils: user/binutils/"
+echo "Userland GCC:      user/gcc/"
 echo "STLport containers are available (header-only mode)"

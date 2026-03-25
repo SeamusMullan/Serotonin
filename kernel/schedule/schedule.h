@@ -2,9 +2,9 @@
 #define _KERNEL_SCHEDULER
 
 #include <stdint.h>
-#include "../io/io.h"
-#include "../filesystem/user_fs/user_fs.h"
-#include "../vmm/vmm.h"
+#include <kernel/io/io.h>
+#include <kernel/filesystem/user_fs/user_fs.h>
+#include <kernel/vmm/vmm.h>
 
 #define USER_MODE_SEGMENT      0x23
 #define USER_MODE_CODE_SEGMENT 0x1B
@@ -275,8 +275,8 @@ void unlock_scheduler(void);
 void task_set_state(process_control_block_t *pcb, int state);
 void task_block(void);
 void task_unblock(process_control_block_t *pcb);
-void *alloc_user_stack(void);
 void *alloc_kernel_stack(void);
+void free_kernel_stack(void *base);
 void kernel_yield(void);
 void task_lock_init(lock_t *lock, uint8_t block_on_hold);
 int task_lock_acquire(lock_t *lock);

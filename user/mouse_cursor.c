@@ -4,7 +4,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include "syscall/lib5ht/lib5ht.h"
+#include <lib5ht.h>
 
 #define BYTES_PER_PIXEL 4
 

@@ -1,14 +1,14 @@
-#include "../stdio/stdio.h"
-#include "../stdlib/stdlib.h"
-#include "../video/vbe/vbe.h"
-#include "../syscall/syscall.h"
-#include "../syscall/sys/errno.h"
-#include "../schedule/schedule.h"
-#include "../vmm/vmm.h"
-#include "../device/keyboard/dev_keyboard.h"
-#include "../pty/pty.h"
-#include "io.h"
-#include "serial.h"
+#include <kernel/stdio/stdio.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/video/vbe/vbe.h>
+#include <kernel/syscall/syscall.h>
+#include <kernel/syscall/sys/errno.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/vmm/vmm.h>
+#include <kernel/device/keyboard/dev_keyboard.h>
+#include <kernel/pty/pty.h>
+#include <kernel/io/io.h>
+#include <kernel/io/serial.h>
 #include <stdint.h>
 
 static const char scancode_map[128] = {
@@ -107,12 +107,27 @@ void handle_scancode(uint8_t scancode) {
 
         // Route through PTY line discipline (unless WM has grabbed input)
         if (!keyboard_grab_active) {
-            char ldisc_c = c;
-            if (ctrl_pressed && ldisc_c >= 'a' && ldisc_c <= 'z') {
-                ldisc_c = (char)(ldisc_c - 'a' + 1);
-            }
-            if (ldisc_c) {
-                pty_ldisc_input(&pty_table[active_vty], ldisc_c);
+            // Arrow keys → ANSI escape sequences
+            if (scancode == 0x48 || scancode == 0x50 ||
+                scancode == 0x4B || scancode == 0x4D) {
+                char arrow_seq[3] = { 27, '[', 0 };
+                switch (scancode) {
+                    case 0x48: arrow_seq[2] = 'A'; break; // up
+                    case 0x50: arrow_seq[2] = 'B'; break; // down
+                    case 0x4B: arrow_seq[2] = 'D'; break; // left
+                    case 0x4D: arrow_seq[2] = 'C'; break; // right
+                }
+                pty_ldisc_input(&pty_table[active_vty], arrow_seq[0]);
+                pty_ldisc_input(&pty_table[active_vty], arrow_seq[1]);
+                pty_ldisc_input(&pty_table[active_vty], arrow_seq[2]);
+            } else {
+                char ldisc_c = c;
+                if (ctrl_pressed && ldisc_c >= 'a' && ldisc_c <= 'z') {
+                    ldisc_c = (char)(ldisc_c - 'a' + 1);
+                }
+                if (ldisc_c) {
+                    pty_ldisc_input(&pty_table[active_vty], ldisc_c);
+                }
             }
             // Alt+F1-F4: VTY switching
             if (alt_pressed && scancode >= 0x3B && scancode <= 0x3E) {

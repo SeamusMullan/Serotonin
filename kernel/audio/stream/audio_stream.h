@@ -3,8 +3,8 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "../device/audio_device.h"
-#include "../utils/audio_buffer.h"
+#include <kernel/audio/device/audio_device.h>
+#include <kernel/audio/utils/audio_buffer.h>
 
 // Audio stream state
 typedef enum {

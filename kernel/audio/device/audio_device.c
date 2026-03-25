@@ -1,4 +1,4 @@
-#include "audio_device.h"
+#include <kernel/audio/device/audio_device.h>
 #include <stddef.h>
 
 // Device registry (simple static array for now)

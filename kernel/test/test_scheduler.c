@@ -1,7 +1,7 @@
 // kernel/test/test_scheduler.c
-#include "ktest.h"
-#include "../schedule/schedule.h"
-#include "../stdio/stdio.h"
+#include <kernel/test/ktest.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/stdio/stdio.h>
 
 // External scheduler functions
 extern process_control_block_t *get_current_task(void);

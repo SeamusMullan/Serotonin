@@ -690,7 +690,7 @@ int wm_launch_window(wm_state_t *wm, const char *program) {
 
         sys_5ht_pty_setpgrp(0);
 
-        char *envp[] = { "TERM=xterm", "HOME=/root", NULL };
+        char *envp[] = { "TERM=xterm", "HOME=/root", "PATH=/bin:/usr/bin", NULL };
         if (program) {
             char path[64];
             snprintf(path, sizeof(path), "/bin/%s", program);

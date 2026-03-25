@@ -9,18 +9,18 @@
  * it becomes available.
  */
 
-#include "dev_mouse.h"
-#include "../../kernel.h"
-#include "../../filesystem/devfs/devfs.h"
-#include "../../filesystem/vfs.h"
-#include "../../io/io.h"
-#include "../../stdio/stdio.h"
-#include "../../stdlib/stdlib.h"
-#include "../../string.h"
-#include "../../syscall/sys/file.h"
-#include "../../syscall/sys/errno.h"
-#include "../../schedule/schedule.h"
-#include "../../vmm/vmm.h"
+#include <kernel/device/mouse/dev_mouse.h>
+#include <kernel/kernel.h>
+#include <kernel/filesystem/devfs/devfs.h>
+#include <kernel/filesystem/vfs.h>
+#include <kernel/io/io.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/string.h>
+#include <kernel/syscall/sys/file.h>
+#include <kernel/syscall/sys/errno.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/vmm/vmm.h>
 
 /** Ring buffer for mouse events */
 static mouse_event_t event_buffer[MOUSE_EVENT_BUFFER_SIZE];

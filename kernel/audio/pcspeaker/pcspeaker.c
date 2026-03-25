@@ -1,5 +1,5 @@
-#include "pcspeaker.h"
-#include "../../io/io.h"
+#include <kernel/audio/pcspeaker/pcspeaker.h>
+#include <kernel/io/io.h>
 #include <stdint.h>
 
 void play_pc_speaker_sound(uint32_t frequency) {

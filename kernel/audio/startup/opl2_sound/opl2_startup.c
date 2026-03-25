@@ -1,10 +1,10 @@
-#include "../../opl2/opl2.h"
-#include "../../../io/io.h"
-#include "../../../kernel.h"
+#include <kernel/audio/opl2/opl2.h>
+#include <kernel/io/io.h>
+#include <kernel/kernel.h>
 #include <stdint.h>
 #include <stddef.h>
-#include "../../../stdlib/stdlib.h"
-#include "opl2_startup.h"
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/audio/startup/opl2_sound/opl2_startup.h>
 
 /**
  * @brief Enhanced OPL2 audio with arpeggiator and dedicated note functions

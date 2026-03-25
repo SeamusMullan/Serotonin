@@ -1,11 +1,11 @@
-#include "rtl8139.h"
-#include "dev_rtl8139.h"
-#include "../../io/io.h"
-#include "../../io/pci/pci.h"
-#include "../../vmm/paging_init.h"
-#include "../../kernel.h"
-#include "../../stdio/stdio.h"
-#include "../../stdlib/stdlib.h"
+#include <kernel/device/rtl8139/rtl8139.h>
+#include <kernel/device/rtl8139/dev_rtl8139.h>
+#include <kernel/io/io.h>
+#include <kernel/io/pci/pci.h>
+#include <kernel/vmm/paging_init.h>
+#include <kernel/kernel.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/stdlib/stdlib.h>
 
 #define RTL_LOG(fmt, ...) printfs(PRINT_STATUS_INFO, "rtl8139: " fmt, ##__VA_ARGS__)
 

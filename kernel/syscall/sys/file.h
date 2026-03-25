@@ -1,8 +1,8 @@
 #ifndef _SYS_FILE
 #define _SYS_FILE
 
-#include "types.h"
-#include "timespec.h"
+#include <kernel/syscall/sys/types.h>
+#include <kernel/syscall/sys/timespec.h>
 
 #define	_FOPEN		(-1)	/* from sys/file.h, kernel use only */
 #define	_FREAD		0x0001	/* read enabled */

@@ -13,7 +13,7 @@
 #include <errno.h>
 #include <string.h>
 #include "syscall_table.h"
-#include "lib5ht/lib5ht.h"
+#include <lib5ht.h>
 #include "sys/socket.h"
 #include "sys/poll.h"
 
@@ -149,6 +149,11 @@ int fstat(int fd, struct stat *st) {
  * @return 0 on success, -1 on error (errno set)
  */
 int stat(const char *path, struct stat *st) {
+    return do_syscall(SYSTEM_CALL_STAT, (uintptr_t)path, (uintptr_t)st, 0);
+}
+
+int lstat(const char *path, struct stat *st) {
+    /* No symlinks on Serotonin — lstat == stat */
     return do_syscall(SYSTEM_CALL_STAT, (uintptr_t)path, (uintptr_t)st, 0);
 }
 

@@ -1,4 +1,4 @@
-#include "audio_stream.h"
+#include <kernel/audio/stream/audio_stream.h>
 #include <stddef.h>
 
 AudioStream *audio_stream_create(AudioDevice *device, size_t buffer_size) {

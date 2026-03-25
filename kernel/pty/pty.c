@@ -5,16 +5,16 @@
     Provides kernel VTYs (PTY 0-3) with screen buffers and VTY switching, plus dynamically allocated userspace PTYs (PTY 4+).
 */
 
-#include "pty.h"
-#include "../kernel.h"
-#include "../stdlib/stdlib.h"
-#include "../stdio/stdio.h"
-#include "../string.h"
-#include "../video/vbe/vbe.h"
-#include "../io/io.h"
-#include "../filesystem/devfs/devfs.h"
-#include "../syscall/sys/file.h"
-#include "../syscall/sys/errno.h"
+#include <kernel/pty/pty.h>
+#include <kernel/kernel.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/string.h>
+#include <kernel/video/vbe/vbe.h>
+#include <kernel/io/io.h>
+#include <kernel/filesystem/devfs/devfs.h>
+#include <kernel/syscall/sys/file.h>
+#include <kernel/syscall/sys/errno.h>
 
 extern uint32_t ansi_fg;
 extern uint32_t ansi_bg;

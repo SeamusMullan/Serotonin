@@ -8,7 +8,7 @@
  */
 
 #include <stdint.h>
-#include "syscall/lib5ht/lib5ht.h"
+#include <lib5ht.h>
 
 /** @brief Bytes per pixel (32-bit ARGB) */
 #define BYTES_PER_PIXEL 4

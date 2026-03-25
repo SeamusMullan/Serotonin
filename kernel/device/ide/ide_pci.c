@@ -1,15 +1,15 @@
-#include "ide_pci.h"
-#include "../../io/io.h"
-#include "../../io/pci/pci.h"
-#include "../../stdio/stdio.h"
-#include "../../kernel.h"
-#include "../../stdlib/stdlib.h"
-#include "../../schedule/schedule.h"
-#include "../../vmm/paging_init.h"
-#include "../../vmm/vmm.h"
-#include "../../filesystem/vfs.h"
-#include "../../syscall/sys/file.h"
-#include "../../syscall/sys/errno.h"
+#include <kernel/device/ide/ide_pci.h>
+#include <kernel/io/io.h>
+#include <kernel/io/pci/pci.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/kernel.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/vmm/paging_init.h>
+#include <kernel/vmm/vmm.h>
+#include <kernel/filesystem/vfs.h>
+#include <kernel/syscall/sys/file.h>
+#include <kernel/syscall/sys/errno.h>
 
 static ide_channel_t channels[2];
 static ide_drive_t drives[IDE_MAX_DRIVES];
@@ -70,48 +70,54 @@ static int ide_poll_bsy(ide_channel_t *ch) {
     return -1;
 }
 
-static int ide_pio_read_sector(ide_channel_t *ch, uint8_t drv, uint32_t lba, uint8_t *buf) {
+static int ide_pio_read_sectors(ide_channel_t *ch, uint8_t drv, uint32_t lba,
+                                uint8_t count, uint8_t *buf) {
     ide_select_drive(ch, drv, lba);
 
     outb(ch->io_base + ATA_REG_FEATURES, 0x00);
-    outb(ch->io_base + ATA_REG_SECCOUNT, 1);
+    outb(ch->io_base + ATA_REG_SECCOUNT, count);
     outb(ch->io_base + ATA_REG_LBA_LO,  (uint8_t)(lba & 0xFF));
     outb(ch->io_base + ATA_REG_LBA_MID, (uint8_t)((lba >> 8) & 0xFF));
     outb(ch->io_base + ATA_REG_LBA_HI,  (uint8_t)((lba >> 16) & 0xFF));
     outb(ch->io_base + ATA_REG_COMMAND,  ATA_CMD_READ_SECTORS);
 
-    if (ide_poll(ch) != 0) return -1;
-
-    for (int i = 0; i < 256; i++) {
-        uint16_t w = inw(ch->io_base + ATA_REG_DATA);
-        buf[i * 2 + 0] = w & 0xFF;
-        buf[i * 2 + 1] = (w >> 8) & 0xFF;
+    uint16_t port = ch->io_base + ATA_REG_DATA;
+    for (uint8_t s = 0; s < count; s++) {
+        if (ide_poll(ch) != 0) return -1;
+        uint32_t wcount = 256;
+        uint8_t *dest = buf + s * 512;
+        asm volatile("cld; rep insw"
+                     : "+D"(dest), "+c"(wcount)
+                     : "d"(port)
+                     : "memory");
     }
 
     return 0;
 }
 
-static int ide_pio_write_sector(ide_channel_t *ch, uint8_t drv, uint32_t lba, const uint8_t *buf) {
+static int ide_pio_write_sectors(ide_channel_t *ch, uint8_t drv, uint32_t lba,
+                                 uint8_t count, const uint8_t *buf) {
     ide_select_drive(ch, drv, lba);
 
     outb(ch->io_base + ATA_REG_FEATURES, 0x00);
-    outb(ch->io_base + ATA_REG_SECCOUNT, 1);
+    outb(ch->io_base + ATA_REG_SECCOUNT, count);
     outb(ch->io_base + ATA_REG_LBA_LO,  (uint8_t)(lba & 0xFF));
     outb(ch->io_base + ATA_REG_LBA_MID, (uint8_t)((lba >> 8) & 0xFF));
     outb(ch->io_base + ATA_REG_LBA_HI,  (uint8_t)((lba >> 16) & 0xFF));
     outb(ch->io_base + ATA_REG_COMMAND,  ATA_CMD_WRITE_SECTORS);
 
-    if (ide_poll(ch) != 0) return -1;
-
-    for (int i = 0; i < 256; i++) {
-        uint16_t w = buf[i * 2] | ((uint16_t)buf[i * 2 + 1] << 8);
-        outw(ch->io_base + ATA_REG_DATA, w);
+    uint16_t port = ch->io_base + ATA_REG_DATA;
+    for (uint8_t s = 0; s < count; s++) {
+        if (ide_poll(ch) != 0) return -1;
+        uint32_t wcount = 256;
+        const uint8_t *src = buf + s * 512;
+        asm volatile("cld; rep outsw"
+                     : "+S"(src), "+c"(wcount)
+                     : "d"(port)
+                     : "memory");
     }
 
     if (ide_poll_bsy(ch) != 0) return -1;
-
-    outb(ch->io_base + ATA_REG_COMMAND, ATA_CMD_CACHE_FLUSH);
-    ide_poll_bsy(ch);
 
     return 0;
 }
@@ -128,9 +134,11 @@ static inline void ide_unmask_irq(uint8_t irq) {
     outb(port, inb(port) & ~(1 << line));
 }
 
-static int ide_dma_read_sector(ide_channel_t *ch, uint8_t ch_idx, uint8_t drv, uint32_t lba, uint8_t *buf) {
+static int ide_dma_read_sectors(ide_channel_t *ch, uint8_t ch_idx, uint8_t drv,
+                                uint32_t lba, uint8_t count, uint8_t *buf) {
     uint16_t bmide = ch->bmide_base;
     int use_irq = multitasking_ready && current_task == ide_worker_pcb;
+    uint16_t byte_count = (uint16_t)count * 512;
 
     // stop dma
     outb(bmide + BMIDE_REG_CMD, 0);
@@ -139,37 +147,28 @@ static int ide_dma_read_sector(ide_channel_t *ch, uint8_t ch_idx, uint8_t drv, u
     dma_complete[ch_idx] = 0;
     dma_error[ch_idx] = 0;
 
-    // mask irq at PIC when polling so handler doesn't steal completion
     if (!use_irq)
         ide_mask_irq(ch->irq);
 
-    // build prdt
+    // build prdt - transfer count sectors at once
     prdt[ch_idx][0].phys_addr  = dma_buf_phys[ch_idx];
-    prdt[ch_idx][0].byte_count = 512;
+    prdt[ch_idx][0].byte_count = byte_count;
     prdt[ch_idx][0].flags      = 0x8000;
 
-    // load prdt
     outl(bmide + BMIDE_REG_PRDT, prdt_phys[ch_idx]);
-
-    // dir: read
     outb(bmide + BMIDE_REG_CMD, BMIDE_CMD_READ);
 
-    // sel drive and set up lba
     ide_select_drive(ch, drv, lba);
     outb(ch->io_base + ATA_REG_FEATURES, 0x00);
-    outb(ch->io_base + ATA_REG_SECCOUNT, 1);
+    outb(ch->io_base + ATA_REG_SECCOUNT, count);
     outb(ch->io_base + ATA_REG_LBA_LO,  (uint8_t)(lba & 0xFF));
     outb(ch->io_base + ATA_REG_LBA_MID, (uint8_t)((lba >> 8) & 0xFF));
     outb(ch->io_base + ATA_REG_LBA_HI,  (uint8_t)((lba >> 16) & 0xFF));
 
-    // read dma command
     outb(ch->io_base + ATA_REG_COMMAND, ATA_CMD_READ_DMA);
-
-    // start bus master
     outb(bmide + BMIDE_REG_CMD, BMIDE_CMD_START | BMIDE_CMD_READ);
 
     if (use_irq) {
-        // block until irq signals completion
         for (;;) {
             asm volatile("cli");
             if (dma_complete[ch_idx]) {
@@ -202,13 +201,15 @@ static int ide_dma_read_sector(ide_channel_t *ch, uint8_t ch_idx, uint8_t drv, u
         ide_unmask_irq(ch->irq);
     }
 
-    memcpy(buf, dma_buf[ch_idx], 512);
+    memcpy(buf, dma_buf[ch_idx], byte_count);
     return 0;
 }
 
-static int ide_dma_write_sector(ide_channel_t *ch, uint8_t ch_idx, uint8_t drv, uint32_t lba, const uint8_t *buf) {
+static int ide_dma_write_sectors(ide_channel_t *ch, uint8_t ch_idx, uint8_t drv,
+                                 uint32_t lba, uint8_t count, const uint8_t *buf) {
     uint16_t bmide = ch->bmide_base;
     int use_irq = multitasking_ready && current_task == ide_worker_pcb;
+    uint16_t byte_count = (uint16_t)count * 512;
 
     // stop dma
     outb(bmide + BMIDE_REG_CMD, 0);
@@ -217,39 +218,29 @@ static int ide_dma_write_sector(ide_channel_t *ch, uint8_t ch_idx, uint8_t drv, 
     dma_complete[ch_idx] = 0;
     dma_error[ch_idx] = 0;
 
-    // mask irq at PIC when polling so handler doesn't steal completion
     if (!use_irq)
         ide_mask_irq(ch->irq);
 
-    memcpy(dma_buf[ch_idx], buf, 512);
+    memcpy(dma_buf[ch_idx], buf, byte_count);
 
-    // build prdt
     prdt[ch_idx][0].phys_addr  = dma_buf_phys[ch_idx];
-    prdt[ch_idx][0].byte_count = 512;
+    prdt[ch_idx][0].byte_count = byte_count;
     prdt[ch_idx][0].flags      = 0x8000;
 
-    // load prdt
     outl(bmide + BMIDE_REG_PRDT, prdt_phys[ch_idx]);
-
-    // dir: write
     outb(bmide + BMIDE_REG_CMD, 0);
 
-    // sel drive and set up lba
     ide_select_drive(ch, drv, lba);
     outb(ch->io_base + ATA_REG_FEATURES, 0x00);
-    outb(ch->io_base + ATA_REG_SECCOUNT, 1);
+    outb(ch->io_base + ATA_REG_SECCOUNT, count);
     outb(ch->io_base + ATA_REG_LBA_LO,  (uint8_t)(lba & 0xFF));
     outb(ch->io_base + ATA_REG_LBA_MID, (uint8_t)((lba >> 8) & 0xFF));
     outb(ch->io_base + ATA_REG_LBA_HI,  (uint8_t)((lba >> 16) & 0xFF));
 
-    // write dma command
     outb(ch->io_base + ATA_REG_COMMAND, ATA_CMD_WRITE_DMA);
-
-    // start bus master
     outb(bmide + BMIDE_REG_CMD, BMIDE_CMD_START);
 
     if (use_irq) {
-        // block until irq signals completion
         for (;;) {
             asm volatile("cli");
             if (dma_complete[ch_idx]) {
@@ -282,55 +273,36 @@ static int ide_dma_write_sector(ide_channel_t *ch, uint8_t ch_idx, uint8_t drv, 
         ide_unmask_irq(ch->irq);
     }
 
-    // flush write cache
-    outb(ch->io_base + ATA_REG_COMMAND, ATA_CMD_CACHE_FLUSH);
-    ide_poll_bsy(ch);
     return 0;
 }
 
 int ide_read_sector(uint8_t drive, uint32_t lba, uint8_t *buffer) {
-    if (drive >= IDE_MAX_DRIVES || !drives[drive].present)
-        return -1;
-    ide_drive_t *drv = &drives[drive];
-    ide_channel_t *ch = &channels[drv->channel];
-    int r;
-
-    if (multitasking_ready)
-        task_semaphore_acquire(&channel_lock[drv->channel]);
-
-    if (dma_capable[drv->channel])
-        r = ide_dma_read_sector(ch, drv->channel, drv->drive, lba, buffer);
-    else
-        r = ide_pio_read_sector(ch, drv->drive, lba, buffer);
-
-    if (multitasking_ready)
-        task_semaphore_release(&channel_lock[drv->channel]);
-
-    return r;
+    return ide_read_sectors(drive, lba, 1, buffer);
 }
 
 int ide_read_sectors(uint8_t drive, uint32_t lba, uint8_t count, uint8_t *buffer) {
-    for (uint8_t i = 0; i < count; i++) {
-        int r = ide_read_sector(drive, lba + i, buffer + (i * 512));
-        if (r != 0) return r;
-    }
-    return 0;
-}
-
-int ide_write_sector(uint8_t drive, uint32_t lba, const uint8_t *buffer) {
-    if (drive >= IDE_MAX_DRIVES || !drives[drive].present)
+    if (drive >= IDE_MAX_DRIVES || !drives[drive].present || count == 0)
         return -1;
     ide_drive_t *drv = &drives[drive];
     ide_channel_t *ch = &channels[drv->channel];
-    int r;
+    int r = 0;
 
     if (multitasking_ready)
         task_semaphore_acquire(&channel_lock[drv->channel]);
 
-    if (dma_capable[drv->channel])
-        r = ide_dma_write_sector(ch, drv->channel, drv->drive, lba, buffer);
-    else
-        r = ide_pio_write_sector(ch, drv->drive, lba, buffer);
+    // DMA bounce buffer is PAGE_SIZE (4096) = 8 sectors max per transfer
+    if (dma_capable[drv->channel]) {
+        uint8_t done = 0;
+        while (done < count) {
+            uint8_t batch = (count - done > 8) ? 8 : (count - done);
+            r = ide_dma_read_sectors(ch, drv->channel, drv->drive,
+                                     lba + done, batch, buffer + done * 512);
+            if (r != 0) break;
+            done += batch;
+        }
+    } else {
+        r = ide_pio_read_sectors(ch, drv->drive, lba, count, buffer);
+    }
 
     if (multitasking_ready)
         task_semaphore_release(&channel_lock[drv->channel]);
@@ -338,12 +310,56 @@ int ide_write_sector(uint8_t drive, uint32_t lba, const uint8_t *buffer) {
     return r;
 }
 
+int ide_write_sector(uint8_t drive, uint32_t lba, const uint8_t *buffer) {
+    return ide_write_sectors(drive, lba, 1, buffer);
+}
+
 int ide_write_sectors(uint8_t drive, uint32_t lba, uint8_t count, const uint8_t *buffer) {
-    for (uint8_t i = 0; i < count; i++) {
-        int r = ide_write_sector(drive, lba + i, buffer + (i * 512));
-        if (r != 0) return r;
+    if (drive >= IDE_MAX_DRIVES || !drives[drive].present || count == 0)
+        return -1;
+    ide_drive_t *drv = &drives[drive];
+    ide_channel_t *ch = &channels[drv->channel];
+    int r = 0;
+
+    if (multitasking_ready)
+        task_semaphore_acquire(&channel_lock[drv->channel]);
+
+    if (dma_capable[drv->channel]) {
+        uint8_t done = 0;
+        while (done < count) {
+            uint8_t batch = (count - done > 8) ? 8 : (count - done);
+            r = ide_dma_write_sectors(ch, drv->channel, drv->drive,
+                                      lba + done, batch, buffer + done * 512);
+            if (r != 0) break;
+            done += batch;
+        }
+    } else {
+        r = ide_pio_write_sectors(ch, drv->drive, lba, count, buffer);
     }
-    return 0;
+
+    if (multitasking_ready)
+        task_semaphore_release(&channel_lock[drv->channel]);
+
+    return r;
+}
+
+int ide_cache_flush(uint8_t drive) {
+    if (drive >= IDE_MAX_DRIVES || !drives[drive].present)
+        return -1;
+    ide_drive_t *drv = &drives[drive];
+    ide_channel_t *ch = &channels[drv->channel];
+
+    if (multitasking_ready)
+        task_semaphore_acquire(&channel_lock[drv->channel]);
+
+    ide_select_drive(ch, drv->drive, 0);
+    outb(ch->io_base + ATA_REG_COMMAND, ATA_CMD_CACHE_FLUSH);
+    int r = ide_poll_bsy(ch);
+
+    if (multitasking_ready)
+        task_semaphore_release(&channel_lock[drv->channel]);
+
+    return r;
 }
 
 static void ide_identify_drive(uint8_t ch_idx, uint8_t drv_idx) {
@@ -665,7 +681,7 @@ void ide_submit_disk_write(process_control_block_t *task, file_handle_t *handle,
 }
 
 void ide_start_worker(void) {
-    ide_worker_pcb = task_create(ide_worker_thread, "kernel: ide worker", CPU_KERNEL_MODE, 254);
+    ide_worker_pcb = task_create(ide_worker_thread, "kernel: ide worker", CPU_KERNEL_MODE, 10);
 
     // drain any pending interrupts before unmasking
     for (int i = 0; i < 2; i++) {

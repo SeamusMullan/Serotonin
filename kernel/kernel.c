@@ -2,36 +2,36 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <cpuid.h>
-#include "kernel.h"
-#include "device/mouse/dev_mouse.h"
-#include "tty.h"
-#include "string.h"
-#include "stdio/stdio.h"
-#include "stdlib/stdlib.h"
-#include "multiboot.h"
-#include "idt.h"
-#include "io/io.h"
-#include "vmm/paging_init.h"
-#include "vmm/vmm.h"
-#include "video/vbe/vbe.h"
-#include "video/font.h"
-#include "filesystem/vfs.h"
-#include "filesystem/ide.h"
-#include "filesystem/tmpfs/tmpfs.h"
-#include "filesystem/devfs/devfs.h"
-#include "filesystem/fat32/fat32.h"
-#include "schedule/schedule.h"
-#include "audio/pcspeaker/pcspeaker.h"
-#include "gdt.h"
-#include "audio/startup/opl2_sound/opl2_startup.h"
-#include "io/serial.h"
-#include "device/devfs_example.h"
-#include "device/mouse/dev_mouse.h"
-#include "device/keyboard/dev_keyboard.h"
-#include "device/serial/dev_serial.h"
-#include "pty/pty.h"
-#include "io/pci/pci.h"
-#include "device/pci_drivers.h"
+#include <kernel/kernel.h>
+#include <kernel/device/mouse/dev_mouse.h>
+#include <kernel/tty.h>
+#include <kernel/string.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/multiboot.h>
+#include <kernel/idt.h>
+#include <kernel/io/io.h>
+#include <kernel/vmm/paging_init.h>
+#include <kernel/vmm/vmm.h>
+#include <kernel/video/vbe/vbe.h>
+#include <kernel/video/font.h>
+#include <kernel/filesystem/vfs.h>
+#include <kernel/filesystem/ide.h>
+#include <kernel/filesystem/tmpfs/tmpfs.h>
+#include <kernel/filesystem/devfs/devfs.h>
+#include <kernel/filesystem/fat32/fat32.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/audio/pcspeaker/pcspeaker.h>
+#include <kernel/gdt.h>
+#include <kernel/audio/startup/opl2_sound/opl2_startup.h>
+#include <kernel/io/serial.h>
+#include <kernel/device/devfs_example.h>
+#include <kernel/device/mouse/dev_mouse.h>
+#include <kernel/device/keyboard/dev_keyboard.h>
+#include <kernel/device/serial/dev_serial.h>
+#include <kernel/pty/pty.h>
+#include <kernel/io/pci/pci.h>
+#include <kernel/device/pci_drivers.h>
 
 
 #define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
@@ -1032,8 +1032,8 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     }
     pty_table[0].foreground_pid = (int)init->pid;
     const char *argv[1] = {"/bin/init"}; int argc = 1;
-    const char *envp[3] = {"PATH=/bin","TERM=xterm-256color","COLORTERM=truecolor"}; int envc = 3;
-    int init_status = kernel_load_elf(init, init_loc, init_loc, argv, argc, envp, envc);
+    const char *envp[3] = {"PATH=/bin:/usr/bin","TERM=xterm-256color","COLORTERM=truecolor"}; int envc = 3;
+    int init_status = kernel_load_elf(init, init_loc, "init", argv, argc, envp, envc);
     if (init_status) {
         kernel_panic("unable to load init process!");
     }

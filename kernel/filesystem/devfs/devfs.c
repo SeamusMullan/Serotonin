@@ -7,13 +7,13 @@
  * I/O through wait queues for devices like input devices.
  */
 
-#include "devfs.h"
-#include "../vfs.h"
-#include "../../kernel.h"
-#include "../../stdlib/stdlib.h"
-#include "../../string.h"
-#include "../../schedule/schedule.h"
-#include "../../syscall/sys/file.h"
+#include <kernel/filesystem/devfs/devfs.h>
+#include <kernel/filesystem/vfs.h>
+#include <kernel/kernel.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/string.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/syscall/sys/file.h>
 
 /** Root node of the mounted devfs */
 static vfs_node_t *devfs_root = NULL;

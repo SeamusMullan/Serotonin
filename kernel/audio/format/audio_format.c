@@ -1,4 +1,4 @@
-#include "audio_format.h"
+#include <kernel/audio/format/audio_format.h>
 
 size_t audio_format_frame_size(const AudioFormat *fmt) {
     if (!fmt) return 0;

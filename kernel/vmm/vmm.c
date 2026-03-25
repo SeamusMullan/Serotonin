@@ -15,14 +15,14 @@
         0xF0000000 – 0xF03FFFFF - Kernel stack
 */
 
-#include "vmm.h"
-#include "paging_init.h"
-#include "../stdio/stdio.h"
-#include "../stdlib/stdlib.h"
-#include "../multiboot.h"
-#include "../kernel.h"
-#include "../string.h"
-#include "../io/io.h"
+#include <kernel/vmm/vmm.h>
+#include <kernel/vmm/paging_init.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/multiboot.h>
+#include <kernel/kernel.h>
+#include <kernel/string.h>
+#include <kernel/io/io.h>
 
 
 /**

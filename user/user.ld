@@ -32,4 +32,16 @@ SECTIONS
     KEEP(*(.fini_array*))
     __fini_array_end = .;
   }
+
+  .ctors : {
+    __CTOR_LIST__ = .;
+    KEEP(*(.ctors))
+    __CTOR_END__ = .;
+  }
+
+  .dtors : {
+    __DTOR_LIST__ = .;
+    KEEP(*(.dtors))
+    __DTOR_END__ = .;
+  }
 }

@@ -10,7 +10,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include "syscall/lib5ht/lib5ht.h"
+#include <lib5ht.h>
 
 int uname(void *buf);
 int gethostname(char *name, size_t len);
