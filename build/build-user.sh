@@ -461,6 +461,7 @@ export MAKEFLAGS="-j$(nproc)"
 make all-gcc
 
 echo "Installing GCC to staging..."
+unset MAKEFLAGS
 make DESTDIR="$GCC_STAGE" install-gcc
 
 GCC_SPECS_DIR="$GCC_STAGE/usr/lib/gcc/$TARGET"
@@ -474,8 +475,8 @@ cat > "$GCC_SPECS_DIR/specs" <<'SPECS'
 SPECS
 
 # install-gcc doesn't install runtime libraries; copy libgcc.a from the cross toolchain
-GCC_VER_DIR="$GCC_STAGE/usr/lib/gcc/$TARGET/$(cat gcc/BASE-VER)"
-cp "$PREFIX/lib/gcc/$TARGET/$(cat gcc/BASE-VER)/libgcc.a" "$GCC_VER_DIR/libgcc.a"
+GCC_VER_DIR="$GCC_STAGE/usr/lib/gcc/$TARGET/$(cat "$GCC_SRC/gcc/BASE-VER")"
+cp "$PREFIX/lib/gcc/$TARGET/$(cat "$GCC_SRC/gcc/BASE-VER")/libgcc.a" "$GCC_VER_DIR/libgcc.a"
 "$STRIP" --strip-debug "$GCC_VER_DIR/libgcc.a"
 
 echo "Copying GCC to userland..."
