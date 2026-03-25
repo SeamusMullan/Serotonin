@@ -462,9 +462,42 @@ make all-gcc
 
 echo "Installing GCC to staging..."
 unset MAKEFLAGS
-make DESTDIR="$GCC_STAGE" install-gcc
+
+GCC_VER=$(cat "$GCC_SRC/gcc/BASE-VER")
+
+if ! make DESTDIR="$GCC_STAGE" install-gcc 2>/dev/null; then
+    echo "make install-gcc failed, performing manual install..."
+
+    mkdir -p "$GCC_STAGE/usr/bin"
+    cp gcc/xgcc "$GCC_STAGE/usr/bin/gcc"
+    ln -sf gcc "$GCC_STAGE/usr/bin/$TARGET-gcc"
+    ln -sf gcc "$GCC_STAGE/usr/bin/$TARGET-gcc-$GCC_VER"
+    if [ -f gcc/xg++ ]; then
+        cp gcc/xg++ "$GCC_STAGE/usr/bin/g++"
+        ln -sf g++ "$GCC_STAGE/usr/bin/$TARGET-g++"
+        ln -sf g++ "$GCC_STAGE/usr/bin/c++"
+    fi
+    cp gcc/cpp "$GCC_STAGE/usr/bin/cpp" 2>/dev/null || true
+    cp gcc/gcov "$GCC_STAGE/usr/bin/gcov" 2>/dev/null || true
+
+    LEXDIR="$GCC_STAGE/usr/libexec/gcc/$TARGET/$GCC_VER"
+    mkdir -p "$LEXDIR"
+    for prog in cc1 cc1plus collect2 lto-wrapper lto1; do
+        [ -f "gcc/$prog" ] && cp "gcc/$prog" "$LEXDIR/"
+    done
+
+    LIBDIR="$GCC_STAGE/usr/lib/gcc/$TARGET/$GCC_VER"
+    mkdir -p "$LIBDIR/include" "$LIBDIR/include-fixed"
+    if [ -d "gcc/include" ]; then
+        cp -r gcc/include/* "$LIBDIR/include/" 2>/dev/null || true
+    fi
+    for hdr in "$GCC_SRC/gcc/config/i386/"*.h; do
+        [ -f "$hdr" ] && cp "$hdr" "$LIBDIR/include/" 2>/dev/null || true
+    done
+fi
 
 GCC_SPECS_DIR="$GCC_STAGE/usr/lib/gcc/$TARGET"
+mkdir -p "$GCC_SPECS_DIR"
 cat > "$GCC_SPECS_DIR/specs" <<'SPECS'
 *cc1:
 %(cc1_cpu) -isystem /usr/sysroot/usr/include
@@ -475,8 +508,9 @@ cat > "$GCC_SPECS_DIR/specs" <<'SPECS'
 SPECS
 
 # install-gcc doesn't install runtime libraries; copy libgcc.a from the cross toolchain
-GCC_VER_DIR="$GCC_STAGE/usr/lib/gcc/$TARGET/$(cat "$GCC_SRC/gcc/BASE-VER")"
-cp "$PREFIX/lib/gcc/$TARGET/$(cat "$GCC_SRC/gcc/BASE-VER")/libgcc.a" "$GCC_VER_DIR/libgcc.a"
+GCC_VER_DIR="$GCC_STAGE/usr/lib/gcc/$TARGET/$GCC_VER"
+mkdir -p "$GCC_VER_DIR"
+cp "$PREFIX/lib/gcc/$TARGET/$GCC_VER/libgcc.a" "$GCC_VER_DIR/libgcc.a"
 "$STRIP" --strip-debug "$GCC_VER_DIR/libgcc.a"
 
 echo "Copying GCC to userland..."
