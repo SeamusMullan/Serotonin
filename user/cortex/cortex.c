@@ -136,6 +136,10 @@ static void disable_raw_mode(void);
 static void editor_refresh_screen(void);
 static int get_window_size(int *rows, int *cols);
 static void editor_set_status_message(const char *fmt, ...);
+static void editor_insert_char(int c);
+static void editor_insert_newline(void);
+static void editor_delete_selection(void);
+static void editor_paste(void);
 
 static int g_last_key_flags = 0;
 static int g_shift_held = 0;
@@ -310,6 +314,78 @@ static void editor_copy_selection(void) {
 	editor_set_copybuf(buf, total);
 	free(buf);
 	editor_set_status_message("Copied %d bytes", E.copybuf_len);
+}
+
+static void editor_delete_selection(void) {
+	if (!editor_selection_is_nonempty()) return;
+
+	int sx, sy, ex, ey;
+	editor_selection_bounds(&sx, &sy, &ex, &ey);
+
+	if (sy == ey) {
+		/* single-line deletion */
+		markup_row_t *row = &E.rows[sy];
+		int tail = row->size - ex;
+		if (tail > 0) {
+			memmove(&row->chars[sx], &row->chars[ex], (size_t)tail + 1);
+		} else {
+			row->chars[sx] = '\0';
+		}
+		row->size -= (ex - sx);
+		E.cx = sx;
+		E.cy = sy;
+	} else {
+		/* multi-line deletion: merge head of first and tail of last */
+		markup_row_t *first = &E.rows[sy];
+		markup_row_t *last = &E.rows[ey];
+
+		int new_first_size = sx + (last->size - ex);
+		char *new_chars = malloc((size_t)new_first_size + 1);
+		if (!new_chars) return;
+
+		if (sx > 0) memcpy(new_chars, first->chars, (size_t)sx);
+		if (last->size > ex) memcpy(new_chars + sx, last->chars + ex, (size_t)(last->size - ex));
+		new_chars[new_first_size] = '\0';
+
+		free(first->chars);
+		first->chars = new_chars;
+		first->size = new_first_size;
+
+		/* remove rows sy+1 .. ey inclusive */
+		int remove_count = ey - sy;
+		for (int i = sy + 1; i + remove_count < E.numrows; i++) {
+			E.rows[i] = E.rows[i + remove_count];
+		}
+		E.numrows -= remove_count;
+
+		E.cx = sx;
+		E.cy = sy;
+	}
+
+	E.dirty = 1;
+	editor_clear_selection();
+}
+
+static void editor_paste(void) {
+	if (!E.copybuf || E.copybuf_len <= 0) {
+		editor_set_status_message("Paste: clipboard empty");
+		return;
+	}
+
+	if (editor_selection_is_nonempty()) {
+		editor_delete_selection();
+	}
+
+	for (int i = 0; i < E.copybuf_len; i++) {
+		unsigned char ch = (unsigned char)E.copybuf[i];
+		if (ch == '\n') {
+			editor_insert_newline();
+		} else {
+			editor_insert_char((int)ch);
+		}
+	}
+
+	editor_set_status_message("Pasted %d bytes", E.copybuf_len);
 }
 
 static void editor_update_window_size(void) {
@@ -1258,6 +1334,9 @@ static void editor_process_keypress(void) {
 			break;
 		case CTRL_KEY('c'):
 			editor_copy_selection();
+			break;
+		case CTRL_KEY('v'):
+			editor_paste();
 			break;
 		case '\r':
 			editor_clear_selection();
