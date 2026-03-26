@@ -11,10 +11,15 @@
 
 #include "../syscall/lib5ht/lib5ht.h"
 
-#define CORTEX_EDITOR_VERSION "0.1.0-scaffold"
+#define CORTEX_EDITOR_VERSION "0.1.0"
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define GUTTER_WIDTH 6
-#define DEFAULT_HINT_MSG "CTRL+Q quit | CTRL+S save | CTRL+F find | CTRL+G goto | CTRL+C copy-line | CTRL+V paste"
+#define DEFAULT_HINT_MSG "CTRL+Q quit | CTRL+S save | CTRL+F find | CTRL+G GoTo"
+#define SELECT_STYLE_ON "\x1b[30;47m"
+#define SELECT_STYLE_OFF "\x1b[0m"
+/* Cursor style when moving with arrow keys: bright white foreground. */
+#define CURSOR_STYLE_ON "\x1b[97m"
+#define CURSOR_STYLE_OFF "\x1b[0m"
 
 enum editor_key {
 	KEY_NULL = 0,
@@ -54,9 +59,16 @@ typedef struct editor_config {
 	int raw_enabled;
 	pty_attr_t orig_termios;
 	int kbfd;
-	/* simple clipboard */
-	char *clipboard;
-	int clipboard_len;
+
+	int sel_active;
+	int sel_anchor_cx;
+	int sel_anchor_cy;
+
+	/* When set, the character under the cursor is rendered in white. */
+	int cursor_white;
+
+	char *copybuf;
+	int copybuf_len;
 } editor_config_t;
 
 static editor_config_t E;
@@ -123,6 +135,182 @@ static void editor_free_rows(void);
 static void disable_raw_mode(void);
 static void editor_refresh_screen(void);
 static int get_window_size(int *rows, int *cols);
+static void editor_set_status_message(const char *fmt, ...);
+
+static int g_last_key_flags = 0;
+static int g_shift_held = 0;
+
+static void editor_apply_csi_modifier_flags(int mod) {
+	g_last_key_flags = 0;
+	/* xterm-style modifier parameter: 2=Shift, 5=Ctrl, 6=Shift+Ctrl */
+	if (mod == 2 || mod == 4 || mod == 6 || mod == 8) {
+		g_last_key_flags |= KEY_FLAG_SHIFT;
+	}
+	if (mod == 5 || mod == 6 || mod == 7 || mod == 8) {
+		g_last_key_flags |= KEY_FLAG_CTRL;
+	}
+}
+
+static void editor_clear_selection(void) {
+	E.sel_active = 0;
+}
+
+static int editor_selection_is_nonempty(void) {
+	return E.sel_active && (E.sel_anchor_cx != E.cx || E.sel_anchor_cy != E.cy);
+}
+
+static void editor_selection_bounds(int *sx, int *sy, int *ex, int *ey) {
+	if (!editor_selection_is_nonempty()) {
+		*sx = *sy = *ex = *ey = 0;
+		return;
+	}
+
+	int ax = E.sel_anchor_cx;
+	int ay = E.sel_anchor_cy;
+	int bx = E.cx;
+	int by = E.cy;
+
+	if (ay < 0) ay = 0;
+	if (ay > E.numrows) ay = E.numrows;
+	if (by < 0) by = 0;
+	if (by > E.numrows) by = E.numrows;
+
+	int amax = (ay < E.numrows) ? E.rows[ay].size : 0;
+	int bmax = (by < E.numrows) ? E.rows[by].size : 0;
+	if (ax < 0) ax = 0;
+	if (ax > amax) ax = amax;
+	if (bx < 0) bx = 0;
+	if (bx > bmax) bx = bmax;
+
+	if (ay < by || (ay == by && ax <= bx)) {
+		*sx = ax; *sy = ay;
+		*ex = bx; *ey = by;
+	} else {
+		*sx = bx; *sy = by;
+		*ex = ax; *ey = ay;
+	}
+}
+
+static int editor_is_selected_pos(int row, int col) {
+	if (!editor_selection_is_nonempty()) {
+		return 0;
+	}
+
+	int sx, sy, ex, ey;
+	editor_selection_bounds(&sx, &sy, &ex, &ey);
+
+	if (row < sy || row > ey) {
+		return 0;
+	}
+
+	if (sy == ey) {
+		return (row == sy && col >= sx && col < ex);
+	}
+
+	if (row == sy) {
+		return col >= sx;
+	}
+	if (row == ey) {
+		return col < ex;
+	}
+
+	return 1;
+}
+
+static void editor_set_copybuf(const char *data, int len) {
+	free(E.copybuf);
+	E.copybuf = NULL;
+	E.copybuf_len = 0;
+
+	if (!data || len <= 0) {
+		return;
+	}
+
+	E.copybuf = malloc((size_t)len + 1);
+	if (!E.copybuf) {
+		return;
+	}
+
+	memcpy(E.copybuf, data, (size_t)len);
+	E.copybuf[len] = '\0';
+	E.copybuf_len = len;
+}
+
+static void editor_copy_selection(void) {
+	if (!editor_selection_is_nonempty()) {
+		editor_set_status_message("Copy: no selection");
+		return;
+	}
+
+	int sx, sy, ex, ey;
+	editor_selection_bounds(&sx, &sy, &ex, &ey);
+
+	int first_row = sy;
+	int last_row = ey;
+	if (E.numrows <= 0) {
+		editor_set_status_message("Copy: empty buffer");
+		return;
+	}
+	if (first_row >= E.numrows) {
+		first_row = E.numrows - 1;
+		sx = E.rows[first_row].size;
+	}
+	if (last_row >= E.numrows) {
+		last_row = E.numrows - 1;
+		ex = E.rows[last_row].size;
+	}
+
+	int total = 0;
+	for (int row = first_row; row <= last_row; row++) {
+		if (row < 0 || row >= E.numrows) {
+			continue;
+		}
+		int start = (row == sy) ? sx : 0;
+		int end = (row == last_row) ? ex : E.rows[row].size;
+		if (start < 0) start = 0;
+		if (start > E.rows[row].size) start = E.rows[row].size;
+		if (end < start) end = start;
+		if (end > E.rows[row].size) end = E.rows[row].size;
+		if (end > start) {
+			total += end - start;
+		}
+		if (row != last_row) {
+			total++;
+		}
+	}
+
+	if (total <= 0) {
+		editor_set_status_message("Copy: empty selection");
+		return;
+	}
+
+	char *buf = malloc((size_t)total);
+	if (!buf) {
+		editor_set_status_message("Copy failed: out of memory");
+		return;
+	}
+
+	char *p = buf;
+	for (int row = first_row; row <= last_row; row++) {
+		int start = (row == first_row) ? sx : 0;
+		int end = (row == last_row) ? ex : E.rows[row].size;
+		if (start < 0) start = 0;
+		if (start > E.rows[row].size) start = E.rows[row].size;
+		if (end < start) end = start;
+		if (end > E.rows[row].size) end = E.rows[row].size;
+		if (end > start) {
+			memcpy(p, &E.rows[row].chars[start], (size_t)(end - start));
+			p += end - start;
+		}
+		if (row != last_row) {
+			*p++ = '\n';
+		}
+	}
+
+	editor_set_copybuf(buf, total);
+	free(buf);
+	editor_set_status_message("Copied %d bytes", E.copybuf_len);
+}
 
 static void editor_update_window_size(void) {
 	int rows = 0;
@@ -190,6 +378,9 @@ static void editor_shutdown(int clear_screen) {
 	}
 	free(E.filename);
 	E.filename = NULL;
+	free(E.copybuf);
+	E.copybuf = NULL;
+	E.copybuf_len = 0;
 }
 
 static void die(const char *s) {
@@ -265,8 +456,23 @@ static int editor_read_key_from_event(void) {
 			return KEY_NULL;
 		}
 
+		/* Track physical Shift state, even if KEY_FLAG_SHIFT is not populated. */
+		if (ev.scancode == 0x2a || ev.scancode == 0x36) {
+			if (ev.flags & KEY_FLAG_RELEASED) {
+				g_shift_held = 0;
+			} else {
+				g_shift_held = 1;
+			}
+			continue;
+		}
+
 		if (ev.flags & KEY_FLAG_RELEASED) {
 			continue;
+		}
+
+		g_last_key_flags = ev.flags;
+		if (g_shift_held) {
+			g_last_key_flags |= KEY_FLAG_SHIFT;
 		}
 
 		if (ev.flags & KEY_FLAG_CTRL) {
@@ -325,6 +531,8 @@ static int editor_read_key(void) {
 		}
 	}
 
+	g_last_key_flags = 0;
+
 	char c;
 	ssize_t nread;
 
@@ -335,33 +543,75 @@ static int editor_read_key(void) {
 	}
 
 	if (c == '\x1b') {
-		char seq[3];
-
-		if (read(STDIN_FILENO, &seq[0], 1) != 1) {
-			return '\x1b';
-		}
-		if (read(STDIN_FILENO, &seq[1], 1) != 1) {
+		char seq0;
+		if (read(STDIN_FILENO, &seq0, 1) != 1) {
 			return '\x1b';
 		}
 
-		if (seq[0] == '[') {
-			if (seq[1] >= '0' && seq[1] <= '9') {
-				if (read(STDIN_FILENO, &seq[2], 1) != 1) {
-					return '\x1b';
-				}
-				if (seq[2] == '~') {
-					switch (seq[1]) {
-						case '1': return KEY_HOME;
-						case '3': return KEY_DELETE;
-						case '4': return KEY_END;
-						case '5': return KEY_PAGE_UP;
-						case '6': return KEY_PAGE_DOWN;
-						case '7': return KEY_HOME;
-						case '8': return KEY_END;
-					}
-				}
-			} else {
-				switch (seq[1]) {
+		if (seq0 != '[') {
+			return '\x1b';
+		}
+
+		char csi[16];
+		int n = 0;
+		for (;;) {
+			char ch;
+			if (read(STDIN_FILENO, &ch, 1) != 1) {
+				return '\x1b';
+			}
+			if (n < (int)sizeof(csi) - 1) {
+				csi[n++] = ch;
+			}
+			if ((ch >= 'A' && ch <= 'Z') || ch == '~') {
+				break;
+			}
+		}
+		csi[n] = '\0';
+
+		g_last_key_flags = 0;
+
+		/* Plain arrows/home/end */
+		if (n == 1) {
+			switch (csi[0]) {
+				case 'A': return KEY_ARROW_UP;
+				case 'B': return KEY_ARROW_DOWN;
+				case 'C': return KEY_ARROW_RIGHT;
+				case 'D': return KEY_ARROW_LEFT;
+				case 'H': return KEY_HOME;
+				case 'F': return KEY_END;
+			}
+		}
+
+		/* Tilde keys: 1~,3~,4~,5~,6~,7~,8~ */
+		if (csi[n - 1] == '~') {
+			int p1 = 0;
+			int p2 = 0;
+			(void)sscanf(csi, "%d;%d~", &p1, &p2);
+			if (p1 == 0) {
+				(void)sscanf(csi, "%d~", &p1);
+			}
+			if (p2 > 0) {
+				editor_apply_csi_modifier_flags(p2);
+			}
+			switch (p1) {
+				case 1: return KEY_HOME;
+				case 3: return KEY_DELETE;
+				case 4: return KEY_END;
+				case 5: return KEY_PAGE_UP;
+				case 6: return KEY_PAGE_DOWN;
+				case 7: return KEY_HOME;
+				case 8: return KEY_END;
+			}
+		}
+
+		/* Modified arrows/home/end, e.g. 1;2A or 1;5C */
+		{
+			int p1 = 0;
+			int p2 = 0;
+			char final = 0;
+			if (sscanf(csi, "%d;%d%c", &p1, &p2, &final) == 3) {
+				editor_apply_csi_modifier_flags(p2);
+				switch (final) {
 					case 'A': return KEY_ARROW_UP;
 					case 'B': return KEY_ARROW_DOWN;
 					case 'C': return KEY_ARROW_RIGHT;
@@ -396,55 +646,6 @@ static int editor_text_cols(void) {
 		cols = 1;
 	}
 	return cols;
-}
-
-static void editor_clipboard_set(const char *buf, int len) {
-	if (E.clipboard) free(E.clipboard);
-	if (!buf || len <= 0) {
-		E.clipboard = NULL;
-		E.clipboard_len = 0;
-		return;
-	}
-	E.clipboard = malloc((size_t)len);
-	if (!E.clipboard) {
-		E.clipboard_len = 0;
-		return;
-	}
-	memcpy(E.clipboard, buf, (size_t)len);
-	E.clipboard_len = len;
-}
-
-static void editor_copy_line(void) {
-	if (E.cy >= E.numrows) return;
-	markup_row_t *row = &E.rows[E.cy];
-	if (row->size <= 0) {
-		editor_clipboard_set(NULL, 0);
-		editor_set_status_message("Copied: <empty>");
-		return;
-	}
-	editor_clipboard_set(row->chars, row->size);
-	editor_set_status_message("Copied line %d", E.cy + 1);
-}
-
-static void editor_paste_clipboard(void) {
-	if (!E.clipboard || E.clipboard_len <= 0) return;
-	/* simple paste: insert bytes, treat \n as newlines */
-	int i = 0;
-	int start = 0;
-	while (i <= E.clipboard_len) {
-		if (i == E.clipboard_len || E.clipboard[i] == '\n') {
-			int seglen = i - start;
-			for (int j = 0; j < seglen; j++) {
-				editor_insert_char((int)E.clipboard[start + j]);
-			}
-			if (i != E.clipboard_len) {
-				editor_insert_newline();
-			}
-			start = i + 1;
-		}
-		i++;
-	}
-	editor_set_status_message("Pasted");
 }
 
 static void editor_insert_row(int at, const char *s, size_t len) {
@@ -840,7 +1041,8 @@ static void editor_draw_rows(struct abuf *ab) {
 		if (filerow < E.numrows) {
 			snprintf(gutter, sizeof(gutter), "%4d| ", filerow + 1);
 		} else {
-			memcpy(gutter, "    ~| ", GUTTER_WIDTH);
+			/* Empty line gutter: no tilde, leave gutter blank with separator. */
+			memcpy(gutter, "     |", GUTTER_WIDTH);
 			gutter[GUTTER_WIDTH] = '\0';
 		}
 		ab_append(ab, gutter, GUTTER_WIDTH);
@@ -868,10 +1070,45 @@ static void editor_draw_rows(struct abuf *ab) {
 			if (len > text_cols) {
 				len = text_cols;
 			}
+			int in_selected = 0;
+			int in_cursor = 0;
 			for (int i = 0; i < len; i++) {
-				unsigned char ch = (unsigned char)E.rows[filerow].chars[E.coloff + i];
+				int col = E.coloff + i;
+				int selected = editor_is_selected_pos(filerow, col);
+				int cursor_here = (E.cursor_white && filerow == E.cy && col == E.cx);
+
+				if (cursor_here) {
+					if (in_selected) {
+						ab_append(ab, SELECT_STYLE_OFF, (int)strlen(SELECT_STYLE_OFF));
+						in_selected = 0;
+					}
+					if (!in_cursor) {
+						ab_append(ab, CURSOR_STYLE_ON, (int)strlen(CURSOR_STYLE_ON));
+						in_cursor = 1;
+					}
+				} else {
+					if (in_cursor) {
+						ab_append(ab, CURSOR_STYLE_OFF, (int)strlen(CURSOR_STYLE_OFF));
+						in_cursor = 0;
+					}
+					if (selected && !in_selected) {
+						ab_append(ab, SELECT_STYLE_ON, (int)strlen(SELECT_STYLE_ON));
+						in_selected = 1;
+					} else if (!selected && in_selected) {
+						ab_append(ab, SELECT_STYLE_OFF, (int)strlen(SELECT_STYLE_OFF));
+						in_selected = 0;
+					}
+				}
+
+				unsigned char ch = (unsigned char)E.rows[filerow].chars[col];
 				char out = (ch >= 0x20 && ch != 0x7f) ? (char)ch : '?';
 				ab_append(ab, &out, 1);
+			}
+			if (in_cursor) {
+				ab_append(ab, CURSOR_STYLE_OFF, (int)strlen(CURSOR_STYLE_OFF));
+			}
+			if (in_selected) {
+				ab_append(ab, SELECT_STYLE_OFF, (int)strlen(SELECT_STYLE_OFF));
 			}
 		}
 
@@ -995,6 +1232,7 @@ static void editor_move_cursor(int key) {
 static void editor_process_keypress(void) {
 	static int quit_times = 1;
 	int c = editor_read_key();
+	int shift_down = (g_last_key_flags & KEY_FLAG_SHIFT) != 0;
 
 	switch (c) {
 		case CTRL_KEY('q'):
@@ -1006,38 +1244,49 @@ static void editor_process_keypress(void) {
 			editor_shutdown(1);
 			exit(0);
 			break;
-		case CTRL_KEY('c'):
-			/* copy current line */
-			editor_copy_line();
-			break;
-		case CTRL_KEY('v'):
-			/* paste clipboard */
-			editor_paste_clipboard();
-			break;
 		case CTRL_KEY('s'):
+			editor_clear_selection();
 			editor_save_with_prompt();
 			break;
 		case CTRL_KEY('f'):
+			editor_clear_selection();
 			editor_find();
 			break;
 		case CTRL_KEY('g'):
+			editor_clear_selection();
 			editor_goto_line();
 			break;
+		case CTRL_KEY('c'):
+			editor_copy_selection();
+			break;
 		case '\r':
+			editor_clear_selection();
 			editor_insert_newline();
 			break;
 		case KEY_DELETE:
+			editor_clear_selection();
 			editor_move_cursor(KEY_ARROW_RIGHT);
 			editor_del_char();
 			break;
 		case 127:
 		case CTRL_KEY('h'):
+			editor_clear_selection();
 			editor_del_char();
 			break;
 		case KEY_HOME:
+			/* Home is not an arrow-key move: clear cursor-white state. */
+			E.cursor_white = 0;
+			if (!shift_down) {
+				editor_clear_selection();
+			}
 			E.cx = 0;
 			break;
 		case KEY_END:
+			/* End is not an arrow-key move: clear cursor-white state. */
+			E.cursor_white = 0;
+			if (!shift_down) {
+				editor_clear_selection();
+			}
 			if (E.cy < E.numrows) {
 				E.cx = E.rows[E.cy].size;
 			}
@@ -1054,6 +1303,12 @@ static void editor_process_keypress(void) {
 				}
 			}
 
+			if (!shift_down) {
+				editor_clear_selection();
+				/* Page moves are not treated as arrow-key moves for white cursor */
+				E.cursor_white = 0;
+			}
+
 			int times = E.screenrows;
 			while (times--) {
 				editor_move_cursor(c == KEY_PAGE_UP ? KEY_ARROW_UP : KEY_ARROW_DOWN);
@@ -1064,10 +1319,22 @@ static void editor_process_keypress(void) {
 		case KEY_ARROW_DOWN:
 		case KEY_ARROW_LEFT:
 		case KEY_ARROW_RIGHT:
+			/* Mark that this movement came from arrow keys so cursor is white. */
+			E.cursor_white = 1;
+			if (shift_down) {
+				if (!E.sel_active) {
+					E.sel_active = 1;
+					E.sel_anchor_cx = E.cx;
+					E.sel_anchor_cy = E.cy;
+				}
+			} else {
+				editor_clear_selection();
+			}
 			editor_move_cursor(c);
 			break;
 		default:
 			if (c >= 0x20 && c <= 0x7e) {
+				editor_clear_selection();
 				editor_insert_char(c);
 			}
 			break;
@@ -1088,6 +1355,12 @@ static void init_editor(void) {
 	E.statusmsg[0] = '\0';
 	E.statusmsg_time = 0;
 	E.raw_enabled = 0;
+	E.sel_active = 0;
+	E.sel_anchor_cx = 0;
+	E.sel_anchor_cy = 0;
+	E.cursor_white = 0;
+	E.copybuf = NULL;
+	E.copybuf_len = 0;
 	E.kbfd = open("/dev/keyboard/event", O_RDONLY | O_NONBLOCK);
 	if (E.kbfd >= 0) {
 		keyboard_event_t ev;
