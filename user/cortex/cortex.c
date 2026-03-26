@@ -11,10 +11,10 @@
 
 #include "../syscall/lib5ht/lib5ht.h"
 
-#define CORTEX_EDITOR_VERSION "0.1.0"
+#define CORTEX_EDITOR_VERSION "0.2.0"
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define GUTTER_WIDTH 6
-#define DEFAULT_HINT_MSG "CTRL+Q quit | CTRL+S save | CTRL+F find | CTRL+G GoTo"
+#define DEFAULT_HINT_MSG "CTRL+Q quit | CTRL+S save | CTRL+F find | CTRL+G goto"
 #define SELECT_STYLE_ON "\x1b[30;47m"
 #define SELECT_STYLE_OFF "\x1b[0m"
 /* Cursor style when moving with arrow keys: bright white foreground. */
@@ -1305,6 +1305,70 @@ static void editor_move_cursor(int key) {
 	}
 }
 
+static int char_category(unsigned char ch) {
+	if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') return 0; /* space */
+	if (isalnum(ch) || ch == '_') return 1; /* word */
+	return 2; /* other/punctuation */
+}
+
+static void editor_move_word_left(void) {
+	if (E.cy >= E.numrows) return;
+	markup_row_t *row = &E.rows[E.cy];
+
+	if (E.cx == 0) {
+		if (E.cy > 0) {
+			E.cy--;
+			E.cx = E.rows[E.cy].size;
+		}
+		return;
+	}
+
+	int i = E.cx;
+	/* Look at the char just to the left */
+	unsigned char prev = (unsigned char)row->chars[i - 1];
+	int cat = char_category(prev);
+
+	if (cat == 0) {
+		/* skip spaces left */
+		while (i > 0 && char_category((unsigned char)row->chars[i - 1]) == 0) i--;
+		/* then skip the previous token */
+		if (i > 0) {
+			int subcat = char_category((unsigned char)row->chars[i - 1]);
+			while (i > 0 && char_category((unsigned char)row->chars[i - 1]) == subcat) i--;
+		}
+	} else {
+		/* skip left while same category */
+		while (i > 0 && char_category((unsigned char)row->chars[i - 1]) == cat) i--;
+	}
+
+	E.cx = i;
+}
+
+static void editor_move_word_right(void) {
+	if (E.cy >= E.numrows) return;
+	markup_row_t *row = &E.rows[E.cy];
+	int rowlen = row->size;
+
+	if (E.cx >= rowlen) {
+		if (E.cy + 1 < E.numrows) {
+			E.cy++;
+			E.cx = 0;
+		}
+		return;
+	}
+
+	int i = E.cx;
+	unsigned char cur = (unsigned char)row->chars[i];
+	int cat = char_category(cur);
+
+	/* advance while same category */
+	while (i < rowlen && char_category((unsigned char)row->chars[i]) == cat) i++;
+	/* if we landed on spaces, skip them to reach next token start */
+	while (i < rowlen && char_category((unsigned char)row->chars[i]) == 0) i++;
+
+	E.cx = i;
+}
+
 static void editor_process_keypress(void) {
 	static int quit_times = 1;
 	int c = editor_read_key();
@@ -1400,6 +1464,7 @@ static void editor_process_keypress(void) {
 		case KEY_ARROW_RIGHT:
 			/* Mark that this movement came from arrow keys so cursor is white. */
 			E.cursor_white = 1;
+			int ctrl_down = (g_last_key_flags & KEY_FLAG_CTRL) != 0;
 			if (shift_down) {
 				if (!E.sel_active) {
 					E.sel_active = 1;
@@ -1409,7 +1474,13 @@ static void editor_process_keypress(void) {
 			} else {
 				editor_clear_selection();
 			}
-			editor_move_cursor(c);
+			if (ctrl_down) {
+				if (c == KEY_ARROW_LEFT) editor_move_word_left();
+				else if (c == KEY_ARROW_RIGHT) editor_move_word_right();
+				else editor_move_cursor(c);
+			} else {
+				editor_move_cursor(c);
+			}
 			break;
 		default:
 			if (c >= 0x20 && c <= 0x7e) {
