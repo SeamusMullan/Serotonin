@@ -21,6 +21,14 @@
 #define CURSOR_STYLE_ON "\x1b[97m"
 #define CURSOR_STYLE_OFF "\x1b[0m"
 
+/* Simple syntax highlight styles */
+#define HL_KEYWORD_ON "\x1b[36m"
+#define HL_STRING_ON "\x1b[32m"
+#define HL_COMMENT_ON "\x1b[90m"
+#define HL_NUMBER_ON "\x1b[35m"
+#define HL_PPRE_ON "\x1b[95m"
+#define HL_OFF "\x1b[0m"
+
 enum editor_key {
 	KEY_NULL = 0,
 	KEY_ARROW_LEFT = 1000,
@@ -140,9 +148,86 @@ static void editor_insert_char(int c);
 static void editor_insert_newline(void);
 static void editor_delete_selection(void);
 static void editor_paste(void);
+static int is_cpp_keyword(const char *s, int len);
 
 static int g_last_key_flags = 0;
-static int g_shift_held = 0;
+/* Simple runtime keymap: parsed from environment variable CORTEX_KEYMAP.
+ * Format: entry;entry;...
+ * entry := <dec bytes separated by ,>:ACTION
+ * ACTION := CTRL | SHIFT | CTRL+SHIFT | MAP:<dec>
+ * Example: "127:CTRL;27,91,65:MAP:1000" maps 0x7f to set CTRL flag,
+ * and ESC [ A (27,91,65) to map to code 1000 (e.g. KEY_ARROW_UP).
+ */
+typedef struct {
+	unsigned char seq[8];
+	int len;
+	int add_flags;
+	int mapped_char; /* 0 = none */
+} keymap_entry_t;
+
+static keymap_entry_t g_keymap[16];
+static int g_keymap_count = 0;
+
+static void editor_load_keymap(void) {
+	const char *env = getenv("CORTEX_KEYMAP");
+	if (!env) return;
+
+	char *copy = strdup(env);
+	if (!copy) return;
+
+	char *saveptr = NULL;
+	char *tok = strtok_r(copy, ";", &saveptr);
+	while (tok && g_keymap_count < (int)(sizeof(g_keymap)/sizeof(g_keymap[0]))) {
+		char *sep = strchr(tok, ':');
+		if (!sep) { tok = strtok_r(NULL, ";", &saveptr); continue; }
+		*sep = '\0';
+		char *left = tok;
+		char *right = sep + 1;
+
+		keymap_entry_t ent;
+		memset(&ent, 0, sizeof(ent));
+
+		/* parse left as comma-separated decimals */
+		int idx = 0;
+		char *p = strtok(left, ",");
+		while (p && idx < (int)sizeof(ent.seq)) {
+			int v = atoi(p);
+			ent.seq[idx++] = (unsigned char)v;
+			p = strtok(NULL, ",");
+		}
+		ent.len = idx;
+
+		if (strcmp(right, "CTRL") == 0) {
+			ent.add_flags = KEY_FLAG_CTRL;
+		} else if (strcmp(right, "SHIFT") == 0) {
+			ent.add_flags = KEY_FLAG_SHIFT;
+		} else if (strcmp(right, "CTRL+SHIFT") == 0 || strcmp(right, "SHIFT+CTRL") == 0) {
+			ent.add_flags = KEY_FLAG_CTRL | KEY_FLAG_SHIFT;
+		} else if (strncmp(right, "MAP:", 4) == 0) {
+			ent.mapped_char = atoi(right + 4);
+		} else if (strncmp(right, "FLAGS:", 6) == 0) {
+			/* numeric flags */
+			ent.add_flags = atoi(right + 6);
+		}
+
+		if (ent.len > 0 && (ent.add_flags || ent.mapped_char)) {
+			g_keymap[g_keymap_count++] = ent;
+		}
+
+		tok = strtok_r(NULL, ";", &saveptr);
+	}
+
+	free(copy);
+}
+
+static keymap_entry_t *editor_keymap_match(const unsigned char *buf, int len) {
+	for (int i = 0; i < g_keymap_count; i++) {
+		if (g_keymap[i].len == len && len <= (int)sizeof(g_keymap[i].seq) && len > 0) {
+			if (memcmp(g_keymap[i].seq, buf, (size_t)len) == 0) return &g_keymap[i];
+		}
+	}
+	return NULL;
+}
 
 static void editor_apply_csi_modifier_flags(int mod) {
 	g_last_key_flags = 0;
@@ -496,82 +581,7 @@ static void disable_raw_mode(void) {
 	E.raw_enabled = 0;
 }
 
-static int editor_map_scancode(uint8_t scancode) {
-	switch (scancode) {
-		case 0x48: return KEY_ARROW_UP;
-		case 0x50: return KEY_ARROW_DOWN;
-		case 0x4b: return KEY_ARROW_LEFT;
-		case 0x4d: return KEY_ARROW_RIGHT;
-		case 0x47: return KEY_HOME;
-		case 0x4f: return KEY_END;
-		case 0x49: return KEY_PAGE_UP;
-		case 0x51: return KEY_PAGE_DOWN;
-		case 0x53: return KEY_DELETE;
-		case 0x1c: return '\r';
-		case 0x0e: return 127;
-		case 0x01: return '\x1b';
-		default: return KEY_NULL;
-	}
-}
-
-static int editor_read_key_from_event(void) {
-	if (E.kbfd < 0) {
-		return KEY_NULL;
-	}
-
-	keyboard_event_t ev;
-	for (;;) {
-		ssize_t nread = read(E.kbfd, &ev, sizeof(ev));
-		if (nread != (ssize_t)sizeof(ev)) {
-			if (nread < 0 && errno == EINTR) {
-				continue;
-			}
-			if (nread < 0 && errno == EAGAIN) {
-				return KEY_NULL;
-			}
-			return KEY_NULL;
-		}
-
-		/* Track physical Shift state, even if KEY_FLAG_SHIFT is not populated. */
-		if (ev.scancode == 0x2a || ev.scancode == 0x36) {
-			if (ev.flags & KEY_FLAG_RELEASED) {
-				g_shift_held = 0;
-			} else {
-				g_shift_held = 1;
-			}
-			continue;
-		}
-
-		if (ev.flags & KEY_FLAG_RELEASED) {
-			continue;
-		}
-
-		g_last_key_flags = ev.flags;
-		if (g_shift_held) {
-			g_last_key_flags |= KEY_FLAG_SHIFT;
-		}
-
-		if (ev.flags & KEY_FLAG_CTRL) {
-			char c = (char)ev.ascii;
-			if (c >= 'A' && c <= 'Z') {
-				c = (char)(c - 'A' + 'a');
-			}
-			if (c >= 'a' && c <= 'z') {
-				return CTRL_KEY(c);
-			}
-		}
-
-		if (ev.ascii != 0) {
-			if (ev.ascii == '\n') return '\r';
-			return ev.ascii;
-		}
-
-		int key = editor_map_scancode(ev.scancode);
-		if (key != KEY_NULL) {
-			return key;
-		}
-	}
-}
+/* Kernel event input removed: editor uses raw stdin only. */
 
 static void enable_raw_mode(void) {
 	pty_attr_t raw;
@@ -600,13 +610,7 @@ static void enable_raw_mode(void) {
 }
 
 static int editor_read_key(void) {
-	if (E.kbfd >= 0) {
-		int evk = editor_read_key_from_event();
-		if (evk != KEY_NULL) {
-			return evk;
-		}
-	}
-
+	/* Use raw stdin only; do not poll kernel keyboard events. */
 	g_last_key_flags = 0;
 
 	char c;
@@ -621,6 +625,21 @@ static int editor_read_key(void) {
 	if (c == '\x1b') {
 		char seq0;
 		if (read(STDIN_FILENO, &seq0, 1) != 1) {
+			return '\x1b';
+		}
+
+		/* Support both CSI '[' and SS3 'O' sequences. */
+		if (seq0 == 'O') {
+			char final;
+			if (read(STDIN_FILENO, &final, 1) != 1) return '\x1b';
+			switch (final) {
+				case 'A': return KEY_ARROW_UP;
+				case 'B': return KEY_ARROW_DOWN;
+				case 'C': return KEY_ARROW_RIGHT;
+				case 'D': return KEY_ARROW_LEFT;
+				case 'H': return KEY_HOME;
+				case 'F': return KEY_END;
+			}
 			return '\x1b';
 		}
 
@@ -699,6 +718,22 @@ static int editor_read_key(void) {
 		}
 
 		return '\x1b';
+	}
+
+	/* Convert LF to CR so editor recognizes Enter. */
+	if (c == '\n') return '\r';
+
+	/* If mapping exists for the single byte, apply it. */
+	unsigned char ub = (unsigned char)c;
+	keymap_entry_t *me = editor_keymap_match(&ub, 1);
+	if (me) {
+		if (me->add_flags) g_last_key_flags |= me->add_flags;
+		if (me->mapped_char) return me->mapped_char;
+	}
+
+	/* If this is a single-byte control character (Ctrl+letter), mark CTRL. */
+	if (ub <= 0x1f) {
+		g_last_key_flags |= KEY_FLAG_CTRL;
 	}
 
 	return (unsigned char)c;
@@ -873,6 +908,35 @@ static void editor_del_char(void) {
 		editor_del_row(E.cy);
 		E.cy--;
 	}
+}
+
+static void editor_del_forward(void) {
+	if (E.cy == E.numrows) return;
+	markup_row_t *row = &E.rows[E.cy];
+	if (E.cx < row->size) {
+		/* delete character at cursor */
+		editor_row_del_char(row, E.cx);
+	} else {
+		/* at end of line: merge next line into this one if present */
+		if (E.cy + 1 >= E.numrows) return;
+		markup_row_t *next = &E.rows[E.cy + 1];
+		int new_size = row->size + next->size;
+		char *new_chars = malloc((size_t)new_size + 1);
+		if (!new_chars) return;
+		if (row->size > 0) memcpy(new_chars, row->chars, (size_t)row->size);
+		if (next->size > 0) memcpy(new_chars + row->size, next->chars, (size_t)next->size);
+		new_chars[new_size] = '\0';
+		free(row->chars);
+		row->chars = new_chars;
+		row->size = new_size;
+
+		/* remove next row */
+		for (int i = E.cy + 1; i + 1 < E.numrows; i++) {
+			E.rows[i] = E.rows[i + 1];
+		}
+		E.numrows--;
+	}
+	E.dirty = 1;
 }
 
 static char *editor_rows_to_string(int *buflen) {
@@ -1148,44 +1212,85 @@ static void editor_draw_rows(struct abuf *ab) {
 			}
 			int in_selected = 0;
 			int in_cursor = 0;
+			/* token map for visible columns (0=normal,1=keyword,2=string,3=comment,4=number,5=preproc) */
+			int *tok = malloc(sizeof(int) * (size_t)len);
+			if (tok) memset(tok, 0, sizeof(int) * (size_t)len);
+			if (tok) {
+				char *rowchars = E.rows[filerow].chars;
+				int rowlen = E.rows[filerow].size;
+				/* preprocessor lines */
+				int sc = 0; while (sc < rowlen && (rowchars[sc] == ' ' || rowchars[sc] == '\t')) sc++;
+				if (sc < rowlen && rowchars[sc] == '#') {
+					for (int j = 0; j < len; j++) tok[j] = 5;
+				} else {
+					int i = 0;
+					while (i < rowlen) {
+						/* line comment */
+						if (i + 1 < rowlen && rowchars[i] == '/' && rowchars[i+1] == '/') {
+							int vs = i - E.coloff; for (int j = vs; j < len; j++) if (j >= 0) tok[j] = 3;
+							break;
+						}
+						/* string literal */
+						if (rowchars[i] == '"') {
+							int j = i+1; while (j < rowlen) { if (rowchars[j] == '\\') { j += 2; continue;} if (rowchars[j] == '"') { j++; break; } j++; }
+							for (int k = i; k < j; k++) { int vi = k - E.coloff; if (vi >= 0 && vi < len) tok[vi] = 2; }
+							i = j; continue;
+						}
+						/* numbers */
+						if (isdigit((unsigned char)rowchars[i])) {
+							int j = i; while (j < rowlen && (isdigit((unsigned char)rowchars[j]) || rowchars[j] == '.')) j++;
+							for (int k = i; k < j; k++) { int vi = k - E.coloff; if (vi >= 0 && vi < len) tok[vi] = 4; }
+							i = j; continue;
+						}
+						/* identifiers -> keywords */
+						if (isalnum((unsigned char)rowchars[i]) || rowchars[i] == '_') {
+							int j = i; while (j < rowlen && (isalnum((unsigned char)rowchars[j]) || rowchars[j] == '_')) j++;
+							if (is_cpp_keyword(&rowchars[i], j - i)) {
+								for (int k = i; k < j; k++) { int vi = k - E.coloff; if (vi >= 0 && vi < len) tok[vi] = 1; }
+							}
+							i = j; continue;
+						}
+						i++;
+					}
+				}
+			}
+
 			for (int i = 0; i < len; i++) {
 				int col = E.coloff + i;
 				int selected = editor_is_selected_pos(filerow, col);
 				int cursor_here = (E.cursor_white && filerow == E.cy && col == E.cx);
 
 				if (cursor_here) {
-					if (in_selected) {
-						ab_append(ab, SELECT_STYLE_OFF, (int)strlen(SELECT_STYLE_OFF));
-						in_selected = 0;
-					}
-					if (!in_cursor) {
-						ab_append(ab, CURSOR_STYLE_ON, (int)strlen(CURSOR_STYLE_ON));
-						in_cursor = 1;
-					}
+					if (in_selected) { ab_append(ab, SELECT_STYLE_OFF, (int)strlen(SELECT_STYLE_OFF)); in_selected = 0; }
+					if (!in_cursor) { ab_append(ab, CURSOR_STYLE_ON, (int)strlen(CURSOR_STYLE_ON)); in_cursor = 1; }
 				} else {
-					if (in_cursor) {
-						ab_append(ab, CURSOR_STYLE_OFF, (int)strlen(CURSOR_STYLE_OFF));
-						in_cursor = 0;
-					}
-					if (selected && !in_selected) {
-						ab_append(ab, SELECT_STYLE_ON, (int)strlen(SELECT_STYLE_ON));
-						in_selected = 1;
-					} else if (!selected && in_selected) {
-						ab_append(ab, SELECT_STYLE_OFF, (int)strlen(SELECT_STYLE_OFF));
-						in_selected = 0;
-					}
+					if (in_cursor) { ab_append(ab, CURSOR_STYLE_OFF, (int)strlen(CURSOR_STYLE_OFF)); in_cursor = 0; }
+					if (selected && !in_selected) { ab_append(ab, SELECT_STYLE_ON, (int)strlen(SELECT_STYLE_ON)); in_selected = 1; }
+					else if (!selected && in_selected) { ab_append(ab, SELECT_STYLE_OFF, (int)strlen(SELECT_STYLE_OFF)); in_selected = 0; }
 				}
 
 				unsigned char ch = (unsigned char)E.rows[filerow].chars[col];
 				char out = (ch >= 0x20 && ch != 0x7f) ? (char)ch : '?';
-				ab_append(ab, &out, 1);
+				int tt = tok ? tok[i] : 0;
+				/* If selected or cursor, skip highlight and just print (selection/cursor overrides) */
+				if (!selected && !cursor_here) {
+					switch (tt) {
+						case 1: ab_append(ab, HL_KEYWORD_ON, (int)strlen(HL_KEYWORD_ON)); break;
+						case 2: ab_append(ab, HL_STRING_ON, (int)strlen(HL_STRING_ON)); break;
+						case 3: ab_append(ab, HL_COMMENT_ON, (int)strlen(HL_COMMENT_ON)); break;
+						case 4: ab_append(ab, HL_NUMBER_ON, (int)strlen(HL_NUMBER_ON)); break;
+						case 5: ab_append(ab, HL_PPRE_ON, (int)strlen(HL_PPRE_ON)); break;
+						default: break;
+					}
+					ab_append(ab, &out, 1);
+					ab_append(ab, HL_OFF, (int)strlen(HL_OFF));
+				} else {
+					ab_append(ab, &out, 1);
+				}
 			}
-			if (in_cursor) {
-				ab_append(ab, CURSOR_STYLE_OFF, (int)strlen(CURSOR_STYLE_OFF));
-			}
-			if (in_selected) {
-				ab_append(ab, SELECT_STYLE_OFF, (int)strlen(SELECT_STYLE_OFF));
-			}
+			if (in_cursor) ab_append(ab, CURSOR_STYLE_OFF, (int)strlen(CURSOR_STYLE_OFF));
+			if (in_selected) ab_append(ab, SELECT_STYLE_OFF, (int)strlen(SELECT_STYLE_OFF));
+			if (tok) free(tok);
 		}
 
 		ab_append(ab, "\x1b[K", 3);
@@ -1369,6 +1474,25 @@ static void editor_move_word_right(void) {
 	E.cx = i;
 }
 
+/* Minimal C/C++ keyword list used for simple highlighting. */
+static const char *cpp_keywords[] = {
+	"if","else","for","while","do","switch","case","break","continue",
+	"return","struct","class","public","private","protected","virtual",
+	"template","typename","using","namespace","auto","static","const",
+	"constexpr","inline","enum","union","sizeof","new","delete","this",
+	"try","catch","throw","operator","bool","int","long","short","char",
+	"float","double","void","signed","unsigned","volatile","mutable",
+	NULL
+};
+
+static int is_cpp_keyword(const char *s, int len) {
+	if (len <= 0) return 0;
+	for (const char **p = cpp_keywords; *p; p++) {
+		if ((int)strlen(*p) == len && strncmp(*p, s, (size_t)len) == 0) return 1;
+	}
+	return 0;
+}
+
 static void editor_process_keypress(void) {
 	static int quit_times = 1;
 	int c = editor_read_key();
@@ -1407,14 +1531,42 @@ static void editor_process_keypress(void) {
 			editor_insert_newline();
 			break;
 		case KEY_DELETE:
-			editor_clear_selection();
-			editor_move_cursor(KEY_ARROW_RIGHT);
-			editor_del_char();
+			if (editor_selection_is_nonempty()) {
+				editor_delete_selection();
+			} else {
+				int ctrl_down_inner = (g_last_key_flags & KEY_FLAG_CTRL) != 0;
+				if (ctrl_down_inner) {
+					/* delete to end of next word */
+					int ax = E.cx, ay = E.cy;
+					/* mark anchor at cursor, move to word end, then delete region */
+					E.sel_active = 1;
+					E.sel_anchor_cx = ax;
+					E.sel_anchor_cy = ay;
+					editor_move_word_right();
+					editor_delete_selection();
+				} else {
+					editor_del_forward();
+				}
+			}
 			break;
 		case 127:
 		case CTRL_KEY('h'):
-			editor_clear_selection();
-			editor_del_char();
+			if (editor_selection_is_nonempty()) {
+				editor_delete_selection();
+			} else {
+				int ctrl_down_inner = (g_last_key_flags & KEY_FLAG_CTRL) != 0;
+				if (ctrl_down_inner) {
+					/* delete previous word */
+					int ax = E.cx, ay = E.cy;
+					E.sel_active = 1;
+					E.sel_anchor_cx = ax;
+					E.sel_anchor_cy = ay;
+					editor_move_word_left();
+					editor_delete_selection();
+				} else {
+					editor_del_char();
+				}
+			}
 			break;
 		case KEY_HOME:
 			/* Home is not an arrow-key move: clear cursor-white state. */
@@ -1511,15 +1663,11 @@ static void init_editor(void) {
 	E.cursor_white = 0;
 	E.copybuf = NULL;
 	E.copybuf_len = 0;
-	E.kbfd = open("/dev/keyboard/event", O_RDONLY | O_NONBLOCK);
-	if (E.kbfd >= 0) {
-		keyboard_event_t ev;
-		while (read(E.kbfd, &ev, sizeof(ev)) == (ssize_t)sizeof(ev)) {
-			/* drain stale events from shell command entry */
-		}
-		close(E.kbfd);
-		E.kbfd = open("/dev/keyboard/event", O_RDONLY);
-	}
+	/* Prefer raw stdin input; do not use kernel keyboard events. */
+	E.kbfd = -1;
+
+	/* Load optional keymap from environment. */
+	editor_load_keymap();
 
 	editor_update_window_size();
 }
