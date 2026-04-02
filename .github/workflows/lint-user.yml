@@ -1,0 +1,32 @@
+name: Lint User
+
+on:
+  push:
+    paths:
+      - 'user/**'
+  pull_request:
+    paths:
+      - 'user/**'
+
+jobs:
+  cppcheck:
+    name: cppcheck (user)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cppcheck
+        run: sudo apt-get update && sudo apt-get install -y cppcheck
+
+      - name: Run cppcheck on user/
+        run: |
+          cppcheck \
+            --enable=warning,style,performance,portability \
+            --error-exitcode=1 \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
+            --inline-suppr \
+            -I user/ \
+            -I user/syscall/ \
+            --suppress='*:user/lua/*' \
+            user/
