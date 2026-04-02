@@ -2,6 +2,7 @@
 #define _KERNEL_LIB5HT
 
 #include <stdint.h>
+#include <stddef.h>
 
 typedef struct proc_5ht {
     int pid;
@@ -9,6 +10,13 @@ typedef struct proc_5ht {
     int priority;
     int priv;
 } proc_5ht_t;
+
+typedef struct sysinfo_5ht {
+    uint32_t mem_free;
+    uint32_t mem_total;
+    uint32_t cpu_used;
+    uint32_t cpu_free;
+} sysinfo_5ht_t;
 
 typedef struct fb_info {
     uint32_t size;
