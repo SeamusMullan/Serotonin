@@ -899,7 +899,7 @@ int main(void) {
 
             int win_idx = pfd_map[p];
             wm_window_t *win = &wm.windows[win_idx];
-            char buf[4096];
+            char buf[65536];
             int n = read(win->pty_master_fd, buf, sizeof(buf));
             if (n > 0) {
                 term_process(&win->term, buf, n);

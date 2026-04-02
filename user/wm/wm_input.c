@@ -118,6 +118,29 @@ void wm_handle_keyboard(wm_state_t *wm, keyboard_event_t *ev) {
     /* Forward to focused window's PTY */
     if (wm->focused_idx >= 0 && wm->windows[wm->focused_idx].active) {
         wm_window_t *win = &wm->windows[wm->focused_idx];
+
+        /* Cursor / navigation keys → ANSI escape sequences */
+        {
+            const char *seq = 0;
+            switch (ev->scancode) {
+            case 0x48: seq = "\033[A"; break; /* Up    */
+            case 0x50: seq = "\033[B"; break; /* Down  */
+            case 0x4D: seq = "\033[C"; break; /* Right */
+            case 0x4B: seq = "\033[D"; break; /* Left  */
+            case 0x47: seq = "\033[H"; break; /* Home  */
+            case 0x4F: seq = "\033[F"; break; /* End   */
+            case 0x49: seq = "\033[5~"; break; /* PgUp  */
+            case 0x51: seq = "\033[6~"; break; /* PgDn  */
+            case 0x52: seq = "\033[2~"; break; /* Ins   */
+            case 0x53: seq = "\033[3~"; break; /* Del   */
+            }
+            if (seq) {
+                while (*seq)
+                    write(win->pty_master_fd, seq++, 1);
+                return;
+            }
+        }
+
         char ch = 0;
 
         if (ev->flags & KEY_FLAG_CTRL) {

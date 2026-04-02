@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "../syscall/lib5ht/lib5ht.h"
+#include <lib5ht.h>
 
 /* Screen and font dimensions */
 #define SCREEN_W     1920
@@ -54,7 +54,7 @@
 #define THEME_BORDER_ACTIVE 0xFF7A98FF
 #define THEME_BORDER_INACTIVE 0xFF303040
 #define THEME_TERM_FG       0xFFE0E0E0
-#define THEME_TERM_BG       0xFF1A1A2E
+#define THEME_TERM_BG       0xDD1A1A2E
 
 /* ANSI 16-color table (no alpha, added at render time) */
 static const uint32_t ansi_color_table[16] = {

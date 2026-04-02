@@ -246,6 +246,9 @@ static void handle_csi(term_state_t *ts) {
                     ts->alt_cells = tmp;
                     ts->cursor_col = ts->alt_col;
                     ts->cursor_row = ts->alt_row;
+                    /* reset scroll margins — editors may have left them restricted */
+                    ts->scroll_top = 0;
+                    ts->scroll_bot = 0;
                     term_mark_all_dirty(ts);
                 }
             }
@@ -657,7 +660,15 @@ static void fb_apply_scroll(wm_window_t *win) {
     if (delta > 0) {
         /* Scrolled up by delta lines */
         uint32_t n = (uint32_t)delta;
-        if (n >= region_rows) return;
+        if (n >= region_rows) {
+            /* Scrolled past the whole region — pixel optimisation can't help,
+               dirty every cell so term_render redraws from the cell data. */
+            for (uint32_t r = top; r <= bot; r++)
+                for (uint32_t c = 0; c < ts->cols; c++)
+                    ts->cells[r * ts->cols + c].dirty = 1;
+            wm_dirty_expand(win, 0, oy + top * FONT_H, win->w, region_rows * FONT_H);
+            return;
+        }
 
         /* Copy full-stride rows (includes borders — they're identical on
            every row so copying them is harmless and lets us do one big
@@ -675,7 +686,13 @@ static void fb_apply_scroll(wm_window_t *win) {
                         win->w, region_rows * FONT_H);
     } else {
         uint32_t n = (uint32_t)(-delta);
-        if (n >= region_rows) return;
+        if (n >= region_rows) {
+            for (uint32_t r = top; r <= bot; r++)
+                for (uint32_t c = 0; c < ts->cols; c++)
+                    ts->cells[r * ts->cols + c].dirty = 1;
+            wm_dirty_expand(win, 0, oy + top * FONT_H, win->w, region_rows * FONT_H);
+            return;
+        }
 
         uint32_t src_py = oy + top * FONT_H;
         uint32_t dst_py = oy + (top + n) * FONT_H;
