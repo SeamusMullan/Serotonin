@@ -1,3 +1,5 @@
+#include "syscall.h"
+#include "sys/lib5ht.h"
 #include <kernel/syscall/syscall.h>
 #include <kernel/stdio/stdio.h>
 #include <kernel/schedule/schedule.h>
@@ -1514,8 +1516,9 @@ static void sys_isatty(uint32_t arg2) {
 
 static void sys_gettimeofday(uint32_t arg2) {
     struct timeval *timestr = (struct timeval*)arg2;
-    timestr->tv_sec = unix_timestamp;
-    timestr->tv_usec = 0;
+    uint64_t ms = timer_ticks; /* 1000 Hz PIT — 1 tick = 1 ms */
+    timestr->tv_sec  = (long)(unix_timestamp + ms / 1000);
+    timestr->tv_usec = (long)((ms % 1000) * 1000);
     errno = 0;
 }
 
@@ -2713,6 +2716,32 @@ static int poll_waiter_try_poll(poll_waiter_t *w) {
     return -1;
 }
 
+static void sys_usleep(uint32_t us) {
+    if (us == 0) {
+        errno = 0;
+        return;
+    }
+
+    uint64_t timeout_ms = ((uint64_t)us + 999) / 1000;
+    uint64_t deadline   = timer_ticks + timeout_ms;
+
+    poll_waiter_t *w = kernel_malloc(sizeof(poll_waiter_t));
+    if (!w) { errno = -ENOMEM; return; }
+
+    memset(w, 0, sizeof(*w));
+    w->task        = current_task;
+    w->type        = POLL_WAITER_SELECT;
+    w->has_timeout = 1;
+    w->deadline    = deadline;
+
+    lock_scheduler();
+    poll_waiter_add(w);
+    current_task->state = PROCESS_STATE_BLOCKED;
+    unlock_scheduler();
+    task_yield(1);
+    __builtin_unreachable();
+}
+
 void poll_waiter_tick(void) {
     poll_waiter_t *w = poll_waiters_head;
     while (w) {
@@ -2930,6 +2959,19 @@ static void sys_poll(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
     unlock_scheduler();
     task_yield(1);
     __builtin_unreachable();
+}
+
+static void sys_5ht_sysinfo(uint32_t arg2) {
+    sysinfo_5ht_t sysinfo = {0};
+    sysinfo.mem_free = (buddy_free_pages() *4000)/1000000;
+    sysinfo.mem_total = (buddy_total_pages() *4000)/1000000;
+    sysinfo.cpu_free = 0;
+    sysinfo.cpu_used = 0;
+
+    if (copy_to_user(current_task->address_space, (uint32_t)arg2, &sysinfo, sizeof(sysinfo)) != 0) {
+        errno = -EFAULT;
+        return;
+    }
 }
 
 /**
@@ -3166,6 +3208,12 @@ void system_call(processor_context_t *ctx) {
         case SYSTEM_CALL_5HT_GRAB_INPUT:
             keyboard_grab_active = arg2 ? 1 : 0;
             ctx->eax = 0;
+            break;
+        case SYSTEM_CALL_5HT_SYSINFO:
+            sys_5ht_sysinfo(arg2);
+            break;
+        case SYSTEM_CALL_USLEEP:
+            sys_usleep(arg2);
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);

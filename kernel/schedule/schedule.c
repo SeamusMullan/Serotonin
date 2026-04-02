@@ -702,12 +702,14 @@ static process_control_block_t *dequeue_waiter_semaphore(lock_semaphore_t *semap
 void task_semaphore_acquire(lock_semaphore_t *semaphore) {
     lock_scheduler();
 
-    while (semaphore->current_count == 0) {
+    if (semaphore->current_count == 0) {
         enqueue_waiter_semaphore(semaphore, current_task);
-        current_task->state = PROCESS_STATE_BLOCKED;
-        unlock_scheduler();
-        kernel_yield();
-        lock_scheduler();
+        do {
+            current_task->state = PROCESS_STATE_BLOCKED;
+            unlock_scheduler();
+            kernel_yield();
+            lock_scheduler();
+        } while (semaphore->current_count == 0);
     }
     semaphore->current_count--;
 

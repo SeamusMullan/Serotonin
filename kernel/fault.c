@@ -407,7 +407,7 @@ void page_fault_handler(uint32_t *stack) {
         return;
     }
 
-    handle_kernel_exception("kernel mode exception - page fault (#PF)", &frame);
+    handle_kernel_exception("page fault (#PF)", &frame);
 }
 
 /**

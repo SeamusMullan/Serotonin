@@ -472,56 +472,47 @@ void pty_ldisc_input(pty_t *pty, char c) {
     }
 }
 
-void pty_ldisc_output(pty_t *pty, const char *buf, uint32_t len) {
-    if (!pty->attr.onlcr) {
-        if (pty->flags & PTY_FLAG_KERNEL_VTY) {
+uint32_t pty_ldisc_output(pty_t *pty, const char *buf, uint32_t len) {
+    if (pty->flags & PTY_FLAG_KERNEL_VTY) {
+        if (!pty->attr.onlcr) {
             pty_render_to_vty(pty, buf, len);
-        } else {
-            lock_scheduler();
-            pty_ring_write(&pty->output_ring, buf, len);
-            pty_output_wake_one(&pty->output_waiters_head, &pty->output_waiters_tail);
-            unlock_scheduler();
+            return len;
         }
-        return;
-    }
-
-    uint32_t start = 0;
-    for (uint32_t i = 0; i < len; i++) {
-        if (buf[i] == '\n') {
-            if (i > start) {
-                if (pty->flags & PTY_FLAG_KERNEL_VTY) {
-                    pty_render_to_vty(pty, buf + start, i - start);
-                } else {
-                    lock_scheduler();
-                    pty_ring_write(&pty->output_ring, buf + start, i - start);
-                    unlock_scheduler();
-                }
-            }
-            if (pty->flags & PTY_FLAG_KERNEL_VTY) {
+        uint32_t start = 0;
+        for (uint32_t i = 0; i < len; i++) {
+            if (buf[i] == '\n') {
+                if (i > start) pty_render_to_vty(pty, buf + start, i - start);
                 pty_render_to_vty(pty, "\r\n", 2);
-            } else {
-                lock_scheduler();
-                pty_ring_write(&pty->output_ring, "\r\n", 2);
-                unlock_scheduler();
+                start = i + 1;
             }
-            start = i + 1;
         }
+        if (start < len) pty_render_to_vty(pty, buf + start, len - start);
+        return len;
     }
-    if (start < len) {
-        if (pty->flags & PTY_FLAG_KERNEL_VTY) {
-            pty_render_to_vty(pty, buf + start, len - start);
-        } else {
-            lock_scheduler();
-            pty_ring_write(&pty->output_ring, buf + start, len - start);
-            unlock_scheduler();
+    uint32_t consumed = 0;
+    lock_scheduler();
+
+    if (!pty->attr.onlcr) {
+        consumed = pty_ring_write(&pty->output_ring, buf, len);
+    } else {
+        for (uint32_t i = 0; i < len; i++) {
+            uint32_t space = PTY_RING_SIZE - pty->output_ring.data_len;
+            if (buf[i] == '\n') {
+                if (space < 2) break;
+                pty_ring_write(&pty->output_ring, "\r\n", 2);
+            } else {
+                if (space < 1) break;
+                pty_ring_write(&pty->output_ring, &buf[i], 1);
+            }
+            consumed++;
         }
     }
 
-    if (!(pty->flags & PTY_FLAG_KERNEL_VTY)) {
-        lock_scheduler();
+    if (consumed > 0)
         pty_output_wake_one(&pty->output_waiters_head, &pty->output_waiters_tail);
-        unlock_scheduler();
-    }
+
+    unlock_scheduler();
+    return consumed;
 }
 
 void pty_render_to_vty(pty_t *pty, const char *buf, uint32_t len) {
@@ -598,8 +589,7 @@ int pty_slave_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char
     if (!pty)
         return -EBADF;
 
-    pty_ldisc_output(pty, buffer, size);
-    return (int)size;
+    return (int)pty_ldisc_output(pty, buffer, size);
 }
 
 int pty_slave_close(vfs_node_t *node) {

@@ -6,6 +6,7 @@
  * alongside an ASCII art logo, similar to neofetch/fastfetch.
  */
 
+#include "syscall/lib5ht/lib5ht.h"
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -86,12 +87,16 @@ static void get_username(uid_t uid, char *out, size_t outsize) {
 #define C_RESET  "\033[0m"
 
 #define LOGO_WIDTH 22
-#define INFO_LINES 8
+#define INFO_LINES 9
 
 int main(void) {
     struct utsname uts;
     memset(&uts, 0, sizeof(uts));
     uname(&uts);
+
+    sysinfo_5ht_t sysinfo = {0};
+    memset(&sysinfo, 0, sizeof(sysinfo));
+    sys_5ht_sysinfo(&sysinfo);
 
     char hostname[65];
     if (gethostname(hostname, sizeof(hostname)) < 0)
@@ -134,8 +139,11 @@ int main(void) {
     snprintf(info[6], sizeof(info[6]),
         C_CYAN C_BOLD "Procs" C_RESET C_WHITE ":     %d" C_RESET, nprocs);
 
+    snprintf(info[7], sizeof(info[6]),
+        C_CYAN C_BOLD "Memory" C_RESET C_WHITE ":    %d MB / %d MB" C_RESET, sysinfo.mem_total-sysinfo.mem_free, sysinfo.mem_total);
+
     /* Color palette */
-    snprintf(info[7], sizeof(info[7]),
+    snprintf(info[8], sizeof(info[7]),
         "\033[40m  \033[41m  \033[42m  \033[43m  \033[44m  \033[45m  \033[46m  \033[47m  " C_RESET);
 
     printf("\n");

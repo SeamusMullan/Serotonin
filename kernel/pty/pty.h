@@ -6,7 +6,7 @@
 #include <kernel/filesystem/vfs.h>
 #include <kernel/filesystem/user_fs/user_fs.h>
 
-#define PTY_RING_SIZE    4096
+#define PTY_RING_SIZE    65536
 #define PTY_LINE_SIZE    4096
 #define PTY_MAX          16
 #define NUM_KERNEL_VTYS  4
@@ -14,7 +14,6 @@
 #define PTY_FLAG_KERNEL_VTY  (1 << 0)
 #define PTY_FLAG_ALLOCATED   (1 << 1)
 
-/* Terminal emulation state - mirrors vbe.c globals */
 typedef struct term_state {
     uint32_t cursor_col;
     uint32_t cursor_row;
@@ -35,10 +34,10 @@ typedef struct term_state {
 
 /* Line discipline attributes */
 typedef struct pty_attr {
-    uint8_t echo;       /* ECHO */
-    uint8_t icanon;     /* canonical mode (line buffered) */
-    uint8_t isig;       /* signal generation (Ctrl+C etc) */
-    uint8_t onlcr;      /* NL -> CR NL on output */
+    uint8_t echo;        /* ECHO */
+    uint8_t icanon;      /* canonical mode (line buffered) */
+    uint8_t isig;        /* signal generation (Ctrl+C etc) */
+    uint8_t onlcr;       /* NL -> CR NL on output */
     char cc_vintr;       /* interrupt char (default Ctrl+C = 3) */
     char cc_veof;        /* EOF char (default Ctrl+D = 4) */
     char cc_verase;      /* erase char (default backspace = 8) */
@@ -61,9 +60,6 @@ typedef struct pty_winsize {
     uint16_t ws_ypixel;
 } pty_winsize_t;
 
-/* PTY input waiter - carries user buffer info for direct delivery.
-   task_yield does not return, so when a blocked reader is woken,
-   data must be copied directly to user-space and eax set. */
 typedef struct pty_input_waiter {
     process_control_block_t *task;
     struct pty_input_waiter *next;
@@ -97,7 +93,6 @@ typedef struct pty {
     /* output waiter queue (master readers for userspace PTYs) */
     pipe_waiter_t *output_waiters_head;
     pipe_waiter_t *output_waiters_tail;
-
     uint32_t master_refcount;
     uint32_t slave_refcount;
 
@@ -132,7 +127,7 @@ int pty_master_close(vfs_node_t *node);
 
 /* Line discipline */
 void pty_ldisc_input(pty_t *pty, char c);
-void pty_ldisc_output(pty_t *pty, const char *buf, uint32_t len);
+uint32_t pty_ldisc_output(pty_t *pty, const char *buf, uint32_t len);
 
 /* VTY management */
 void pty_render_to_vty(pty_t *pty, const char *buf, uint32_t len);
