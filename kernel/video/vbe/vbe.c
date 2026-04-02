@@ -678,7 +678,24 @@ void vbe_flip(void)
         memcpy(bb_row, buf0_row, dirty_row_bytes);
     }
 
-    /* Step 2: Blend layers 1..init_z within dirty rect */
+    /* Step 2: Kernel text cursor (if visible and within dirty rect) */
+    if (cursor_visible && cursor_blink_on) {
+        uint32_t cx = term_cursor_col * VBE_FONT_WIDTH;
+        uint32_t cy = term_cursor_row * VBE_FONT_HEIGHT;
+        if (cx + VBE_FONT_WIDTH <= vbe_info.width && cy + VBE_FONT_HEIGHT <= vbe_info.height) {
+            uint32_t stride_px = pitch / bpp;
+            uint32_t *bb = vbe_info.backbuffer;
+            for (uint32_t row = 0; row < VBE_FONT_HEIGHT; row++) {
+                if (cy + row >= y0 && cy + row < y1) {
+                    uint32_t *px = bb + (cy + row) * stride_px + cx;
+                    for (uint32_t col = 0; col < VBE_FONT_WIDTH; col++)
+                        px[col] ^= 0x00FFFFFF;
+                }
+            }
+        }
+    }
+
+    /* Step 3: Blend layers 1..init_z within dirty rect */
     for (uint8_t z = 1; z < init_z; z++) {
         vbe_z_layer_t *layer = (vbe_z_layer_t*)vbe_z_layers[z];
         if (!layer->active)
@@ -703,23 +720,6 @@ void vbe_flip(void)
         uint32_t src_y = iy0 - layer_y0;
 
         vbe_blend_area_stride(vbe_info.backbuffer, pitch, layer->bufptr, layer->pitch, ix0, iy0, src_x, src_y, w, h);
-    }
-
-    /* Step 3: Kernel text cursor (if visible and within dirty rect) */
-    if (cursor_visible && cursor_blink_on) {
-        uint32_t cx = term_cursor_col * VBE_FONT_WIDTH;
-        uint32_t cy = term_cursor_row * VBE_FONT_HEIGHT;
-        if (cx + VBE_FONT_WIDTH <= vbe_info.width && cy + VBE_FONT_HEIGHT <= vbe_info.height) {
-            uint32_t stride_px = pitch / bpp;
-            uint32_t *bb = vbe_info.backbuffer;
-            for (uint32_t row = 0; row < VBE_FONT_HEIGHT; row++) {
-                if (cy + row >= y0 && cy + row < y1) {
-                    uint32_t *px = bb + (cy + row) * stride_px + cx;
-                    for (uint32_t col = 0; col < VBE_FONT_WIDTH; col++)
-                        px[col] ^= 0x00FFFFFF;
-                }
-            }
-        }
     }
 
     /* Step 4: Copy only the dirty columns from backbuffer to VRAM */
