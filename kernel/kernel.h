@@ -12,6 +12,8 @@
 
 #define BIT(n) (1u << (n))
 
+#define ELF_CHUNK_SIZE (512u * 1024u)
+
 /* ELF identification indexes */
 #define EI_MAG0       0 // Magic number
 #define EI_MAG1       1 // Magic number

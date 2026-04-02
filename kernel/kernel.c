@@ -67,6 +67,7 @@ static uint32_t heap_start = (uint32_t)HEAP_START;
 static uint32_t heap_end = (uint32_t)(KERNEL_HEAP_VMA + KERNEL_HEAP_SIZE);
 static uint32_t current_heap = (uint32_t)KERNEL_HEAP_VMA;
 static block_header_t *heap_list = NULL;
+static block_header_t *rover = NULL;
 static uint8_t debug_mode = 0;
 static uint8_t quiet_mode = 0;
 extern uint8_t signal_trampoline[];
@@ -612,7 +613,6 @@ void *kernel_malloc(uint32_t size) {
     size = align(size);
     uint32_t guard_size = kernel_heap_guard_size();
     uint32_t alloc_size = size + guard_size;
-    block_header_t *curr = heap_list;
 
     // First allocation
     if (!heap_list) {
@@ -627,13 +627,62 @@ void *kernel_malloc(uint32_t size) {
             return NULL;
         }
         kernel_heap_init_guard(heap_list);
+        rover = heap_list;
         return (void *)(heap_list + 1);
     }
 
-    // Look for a free block
+    if (!rover) rover = heap_list;
+
+    /* next-fit algorithm: phase 1 scans rover to tail, phase 2 wraps head to rover.
+     * tail is captured in phase 1 for use by the append path */
+
+    block_header_t *tail = NULL;
+    uint32_t leftover, min_split;
+
+    // phase 1: rover to end of list
+    block_header_t *curr = rover;
     while (curr) {
         kernel_heap_check_block(curr, "kernel_malloc");
         if (curr->free && curr->size >= size) {
+            leftover  = curr->size - size;
+            min_split = sizeof(block_header_t) + guard_size + BLOCK_ALIGN;
+            if (leftover >= min_split) {
+                block_header_t *split = (block_header_t *)((uint8_t *)(curr + 1) + size + guard_size);
+                split->magic = HEAP_MAGIC;
+                split->size  = leftover - sizeof(block_header_t) - guard_size;
+                split->free  = 1;
+                split->next  = curr->next;
+                kernel_heap_init_guard(split);
+                curr->size = size;
+                curr->next = split;
+            }
+            rover = curr->next ? curr->next : heap_list;
+            curr->free = 0;
+            kernel_heap_set_guard(curr);
+            return (void *)(curr + 1);
+        }
+        if (!curr->next) { tail = curr; break; }
+        curr = curr->next;
+    }
+
+    // phase 2: head to rover (wrap-around)
+    curr = heap_list;
+    while (curr != rover) {
+        kernel_heap_check_block(curr, "kernel_malloc");
+        if (curr->free && curr->size >= size) {
+            leftover  = curr->size - size;
+            min_split = sizeof(block_header_t) + guard_size + BLOCK_ALIGN;
+            if (leftover >= min_split) {
+                block_header_t *split = (block_header_t *)((uint8_t *)(curr + 1) + size + guard_size);
+                split->magic = HEAP_MAGIC;
+                split->size  = leftover - sizeof(block_header_t) - guard_size;
+                split->free  = 1;
+                split->next  = curr->next;
+                kernel_heap_init_guard(split);
+                curr->size = size;
+                curr->next = split;
+            }
+            rover = curr->next ? curr->next : heap_list;
             curr->free = 0;
             kernel_heap_set_guard(curr);
             return (void *)(curr + 1);
@@ -642,14 +691,22 @@ void *kernel_malloc(uint32_t size) {
         curr = curr->next;
     }
 
+    // no free block found. append a new block at the end of the list.
+
+    // tail was set in phase 1, use it to avoid a second full traversal.
+    if (!tail) {
+        tail = heap_list;
+        while (tail->next) tail = tail->next;
+    }
+
     if (size >= PAGE_SIZE) {
         current_heap = PAGE_ALIGN(current_heap);
     }
 
-    // Allocate new block
     block_header_t *new_block = (block_header_t *)current_heap;
     current_heap += sizeof(block_header_t) + alloc_size;
     if (current_heap > heap_end) {
+        dump_heap_oom(size);
         kernel_panic("out of kernel heap memory");
         return NULL;
     }
@@ -658,7 +715,7 @@ void *kernel_malloc(uint32_t size) {
     new_block->size = size;
     new_block->free = 0;
     new_block->next = NULL;
-    curr->next = new_block;
+    tail->next = new_block;
     kernel_heap_init_guard(new_block);
 
     return (void *)(new_block + 1);
@@ -685,6 +742,18 @@ void kernel_free(void *ptr) {
         kernel_panic("kernel_free: double free");
     }
     block->free = 1;
+
+    /* forward coalescing: the list is in address order (splits and appends both preserve this).
+     * block->next is always the physically next block.
+     * merge all consecutive adjacent free blocks into one. */
+    while (block->next && block->next->free) {
+        block_header_t *next = block->next;
+        uint8_t *expected = (uint8_t *)(block + 1) + block->size + (block->guard ? HEAP_GUARD_SIZE : 0);
+        if ((uint8_t *)next != expected) break;
+        block->size += sizeof(block_header_t) + next->size + (next->guard ? HEAP_GUARD_SIZE : 0);
+        block->next = next->next;
+        if (rover == next) rover = block;
+    }
 }
 
 void *kernel_malloc_align(uint32_t align, uint32_t size) {
@@ -730,62 +799,93 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
     }
 
     uint32_t file_size = node->size;
-    uint8_t *elf_data = kernel_malloc(file_size);
-    if (!elf_data) {
-        vfs_close(node);
-        return 1;
-    }
-    if (vfs_read(node, 0, file_size, (char *)elf_data) < 0) {
-        kernel_free(elf_data);
-        vfs_close(node);
-        return 1;
-    }
-    vfs_close(node);
 
-    Elf32_Ehdr *ehdr = (Elf32_Ehdr *)elf_data;
-    if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0 ||
-        ehdr->e_ident[EI_CLASS] != ELFCLASS32 ||
-        ehdr->e_ident[EI_DATA]  != ELFDATA2LSB ||
-        ehdr->e_type             != ET_EXEC ||
-        ehdr->e_machine          != EM_386) {
-        kernel_free(elf_data);
+    Elf32_Ehdr ehdr;
+    if (file_size < sizeof(ehdr) || vfs_read(node, 0, sizeof(ehdr), (char *)&ehdr) < 0) {
+        vfs_close(node);
+        return 1;
+    }
+
+    if (memcmp(ehdr.e_ident, ELFMAG, SELFMAG) != 0 ||
+        ehdr.e_ident[EI_CLASS] != ELFCLASS32 ||
+        ehdr.e_ident[EI_DATA]  != ELFDATA2LSB ||
+        ehdr.e_type             != ET_EXEC ||
+        ehdr.e_machine          != EM_386) {
+        vfs_close(node);
+        return 1;
+    }
+
+    // read program headers
+    uint32_t phdr_size = ehdr.e_phnum * sizeof(Elf32_Phdr);
+    Elf32_Phdr *phdr = (Elf32_Phdr *)kernel_malloc(phdr_size);
+    if (!phdr) {
+        vfs_close(node);
+        return 1;
+    }
+    if (vfs_read(node, ehdr.e_phoff, phdr_size, (char *)phdr) < 0) {
+        kernel_free(phdr);
+        vfs_close(node);
         return 1;
     }
 
     address_space_t *as = create_address_space();
-
-    uint32_t old_cr3 = read_cr3();
     uint32_t new_cr3 = as->phys_pdir;
-    write_cr3(as->phys_pdir);
-    lock_scheduler();
+    uint32_t chunk_buf_size = ELF_CHUNK_SIZE;
+    uint8_t *chunk_buf = (uint8_t *)kernel_malloc(chunk_buf_size);
+    if (!chunk_buf) {
+        chunk_buf_size = PAGE_SIZE;
+        chunk_buf = (uint8_t *)kernel_malloc(chunk_buf_size);
+        if (!chunk_buf) {
+            destroy_address_space(as);
+            kernel_free(phdr);
+            vfs_close(node);
+            return 1;
+        }
+    }
 
-    Elf32_Phdr *phdr = (Elf32_Phdr *)(elf_data + ehdr->e_phoff);
-    for (int i = 0; i < ehdr->e_phnum; ++i) {
+    // switch as
+    lock_scheduler();
+    pcb->address_space = as;
+    pcb->cr3           = (void *)new_cr3;
+    write_cr3(new_cr3);
+    unlock_scheduler();
+
+    // load PT_LOAD segments
+    for (int i = 0; i < ehdr.e_phnum; ++i) {
         if (phdr[i].p_type != PT_LOAD) continue;
 
-        uint32_t vaddr   = phdr[i].p_vaddr;
-        uint32_t memsz   = phdr[i].p_memsz;
-        uint32_t filesz  = phdr[i].p_filesz;
-        uint32_t offset  = phdr[i].p_offset;
-        uint32_t flags   = phdr[i].p_flags;
+        uint32_t vaddr  = phdr[i].p_vaddr;
+        uint32_t memsz  = phdr[i].p_memsz;
+        uint32_t filesz = phdr[i].p_filesz;
+        uint32_t foff   = phdr[i].p_offset;
 
         uint32_t seg_base = vaddr & PAGE_MASK;
-        uint32_t seg_end  = (vaddr + memsz + PAGE_SIZE-1) & PAGE_MASK;
+        uint32_t seg_end  = (vaddr + memsz + PAGE_SIZE - 1) & PAGE_MASK;
 
         for (uint32_t va = seg_base; va < seg_end; va += PAGE_SIZE) {
             uint32_t frame = (uint32_t)alloc_frame();
             map_page(as, va, frame, USER_PAGE_FLAGS, 0);
         }
+        memset((void *)seg_base, 0, seg_end - seg_base);
 
-        // Copy data and zero BSS
-        memcpy((void *)vaddr, elf_data + offset, filesz);
-        if (memsz > filesz) {
-            memset((void *)(vaddr + filesz), 0, memsz - filesz);
+        // copy file content in chunks
+        uint32_t done = 0;
+        while (done < filesz) {
+            uint32_t rlen = filesz - done;
+            if (rlen > chunk_buf_size) rlen = chunk_buf_size;
+            vfs_read(node, foff + done, rlen, (char *)chunk_buf);
+            memcpy((void *)(vaddr + done), chunk_buf, rlen);
+            done += rlen;
         }
     }
 
-    uint32_t entry_point = ehdr->e_entry;
-    kernel_free(elf_data);
+    kernel_free(chunk_buf);
+    vfs_close(node);
+    kernel_free(phdr);
+
+    uint32_t entry_point = ehdr.e_entry;
+
+    lock_scheduler();
 
     void *stack_base = (void*)USER_STACK_TOP;
     uint32_t stack_top = (uint32_t)stack_base + USER_STACK_SIZE - 4; // GHETTO SOLUTION. DO NOT QUESTION IT. DO NOT ASK WHY ITS 4.
@@ -828,7 +928,6 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
     }
     envp_user_array[envc] = 0;
 
-    write_cr3(old_cr3);
     unlock_scheduler();
 
     strncpy(pcb->name, pname, sizeof(pcb->name));
@@ -935,7 +1034,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     cpu_features_t processor_features = {0};
     kernel_get_cpu_features(&processor_features);
 
-	printfs(PRINT_STATUS_INFO,"Serotonin Kernel %d.%d.%d | Compile Time: %s %s | %d physical pages free (%d MB) | Hypervisor:%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__,buddy_free_pages(), (buddy_total_pages()*4000)/1000000, kernel_hypervisor_present());
+	printfs(PRINT_STATUS_INFO,"Serotonin Kernel %d.%d.%d | Compile Time: %s %s | %d physical pages available (%d MB) | Hypervisor:%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__,buddy_total_pages(), (buddy_total_pages()*4000)/1000000, kernel_hypervisor_present());
     kernel_print_cpu_features(&processor_features);
     printfs(PRINT_STATUS_INFO,"Booted with arguments: %s\n",cmdline);
     printfs(PRINT_STATUS_INFO,"VBE graphics mode framebuffer, resolution %dx%dx%d\n",vbe_info.width,vbe_info.height,vbe_info.bpp);
