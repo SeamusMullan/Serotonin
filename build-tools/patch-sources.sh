@@ -60,6 +60,8 @@ for f in $(find "$GCC_SRC" -name 'config.sub' -o -name 'configfsf.sub' 2>/dev/nu
         sed -i 's/| fiwix\* )/| serotonin* | fiwix* )/' "$f"
     elif grep -q '| fiwix\*' "$f"; then
         sed -i '/| fiwix\*/i\\t| serotonin* \\' "$f"
+    elif grep -q '| -skyos\*' "$f"; then
+        sed -i 's/| -skyos\*/| -serotonin* | -skyos*/' "$f"
     elif grep -q '| skyos\*' "$f"; then
         sed -i 's/| skyos\*/| serotonin* | skyos*/' "$f"
     elif grep -q '| emx\*)' "$f"; then
@@ -135,6 +137,8 @@ echo "=== Patching newlib ==="
 
 # newlib doesn't need a special configure.host entry for serotonin:
 # with --disable-newlib-supplied-syscalls, the default (no sys_dir) is correct.
+# signal/raise conflicts are resolved by stripping libc_a-signal.o from libc.a
+# after install (see build/build-libc.sh).
 echo "  [skip] newlib/configure.host (default config is sufficient)"
 
 echo ""

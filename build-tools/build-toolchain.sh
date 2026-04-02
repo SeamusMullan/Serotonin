@@ -172,6 +172,9 @@ make install
 echo "Installing newlib into sysroot..."
 cp -r "$PREFIX/$TARGET/include/"* "$SYSROOT/usr/include/"
 cp "$PREFIX/$TARGET/lib/libc.a" "$SYSROOT/usr/lib/"
+# Remove newlib's signal/raise from libc.a — libsyscall provides them via
+# the kernel syscall interface and the linker would otherwise see duplicates.
+"$PREFIX/bin/$TARGET-ar" d "$SYSROOT/usr/lib/libc.a" libc_a-signal.o 2>/dev/null || true
 cp "$PREFIX/$TARGET/lib/libm.a" "$SYSROOT/usr/lib/"
 cp "$PREFIX/$TARGET/lib/libg.a" "$SYSROOT/usr/lib/" 2>/dev/null || true
 
@@ -180,6 +183,25 @@ unset CFLAGS_FOR_TARGET
 # Patch newlib headers to expose POSIX functions guarded behind other OS checks
 for hdr in "$SYSROOT/usr/include/sys/stat.h" "$PREFIX/$TARGET/include/sys/stat.h"; do
     [ -f "$hdr" ] && sed -i 's/#if defined (__SPU__) || defined(__rtems__) || defined(__CYGWIN__)/#if defined (__SPU__) || defined(__rtems__) || defined(__CYGWIN__) || defined(__serotonin__)/' "$hdr"
+done
+
+# Install minimal dlfcn.h stub (Serotonin has no dynamic loading;
+# binutils ld/plugin.c includes it and needs RTLD_NOW defined)
+for dest in "$SYSROOT/usr/include/dlfcn.h" "$PREFIX/$TARGET/include/dlfcn.h"; do
+    cat > "$dest" << 'DLFCN_EOF'
+/* dlfcn.h — minimal stub for Serotonin (no dynamic loading support) */
+#ifndef _DLFCN_H
+#define _DLFCN_H
+#define RTLD_NOW    0x2
+#define RTLD_LAZY   0x1
+#define RTLD_GLOBAL 0x100
+#define RTLD_LOCAL  0x000
+static inline void *dlopen(const char *f, int m)  { (void)f; (void)m; return 0; }
+static inline void *dlsym(void *h, const char *s) { (void)h; (void)s; return 0; }
+static inline int   dlclose(void *h)              { (void)h; return 0; }
+static inline char *dlerror(void)                 { return "dlopen not supported"; }
+#endif /* _DLFCN_H */
+DLFCN_EOF
 done
 
 # Install Serotonin sys/dirent.h (newlib's default is a #error stub)

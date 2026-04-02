@@ -241,7 +241,7 @@ echo "Building binutils for userland..."
 BINUTILS_SRC="$DIR/../build-tools/src/binutils-gdb"
 BINUTILS_BUILD="$DIR/binutils-user-build"
 BINUTILS_STAGE="$DIR/binutils-user-stage"
-BINUTILS_CFLAGS="$CFLAGS -Wno-error=incompatible-pointer-types -Wno-incompatible-pointer-types -mno-tls-direct-seg-refs -DBFD_NO_THREADS"
+BINUTILS_CFLAGS="$CFLAGS -Wno-error=incompatible-pointer-types -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -mno-tls-direct-seg-refs -DBFD_NO_THREADS"
 
 # CC wrapper: autotools configure for --host=i686-serotonin will try to
 # compile-and-link test programs. The toolchain handles linking automatically,
@@ -256,11 +256,12 @@ $CC -c "$STUBS_DIR/binutils/posix_stubs.c" -o "$BINUTILS_BUILD/posix_stubs.o" $B
 
 cat > "$CC_WRAPPER" <<WEOF
 #!/bin/sh
-# Wrapper: for compile-only (-c), pass through.
-# For linking (producing executables), append stub objects.
+# Wrapper: inject -Wno-implicit-function-declaration everywhere (GCC 16 made
+# implicit declarations errors in C99+; serotonin sysroot lacks some headers).
+# For linking executables, also prepend stub objects.
 for arg in "\$@"; do
     if [ "\$arg" = "-c" ] || [ "\$arg" = "-E" ] || [ "\$arg" = "-S" ]; then
-        exec $CC "\$@"
+        exec $CC -Wno-implicit-function-declaration "\$@"
     fi
 done
 
@@ -269,7 +270,7 @@ prev=""
 for arg in "\$@"; do
     if [ "\$prev" = "-o" ]; then
         case "\$arg" in
-            *.a|*.la|*.so|*.o) exec $CC "\$@" ;;
+            *.a|*.la|*.so|*.o) exec $CC -Wno-implicit-function-declaration "\$@" ;;
         esac
         break
     fi
@@ -277,7 +278,7 @@ for arg in "\$@"; do
 done
 
 # Linking an executable — prepend stubs so they override libiberty.a symbols
-exec $CC $BINUTILS_BUILD/posix_stubs.o "\$@"
+exec $CC -Wno-implicit-function-declaration $BINUTILS_BUILD/posix_stubs.o "\$@"
 WEOF
 chmod +x "$CC_WRAPPER"
 
@@ -305,7 +306,8 @@ if [ ! -f "config.status" ]; then
         --disable-libctf \
         --disable-readline \
         --disable-gprof \
-        --disable-sim
+        --disable-sim \
+        --disable-plugins
 fi
 
 echo "Building binutils utilities..."
@@ -336,6 +338,8 @@ for f in $(find "$GCC_SRC" -name 'config.sub' -o -name 'configfsf.sub' 2>/dev/nu
         sed -i 's/| fiwix\* )/| serotonin* | fiwix* )/' "$f"
     elif grep -q '| fiwix\*' "$f"; then
         sed -i '/| fiwix\*/i\\t| serotonin* \\' "$f"
+    elif grep -q '| -skyos\*' "$f"; then
+        sed -i 's/| -skyos\*/| -serotonin* | -skyos*/' "$f"
     elif grep -q '| skyos\*' "$f"; then
         sed -i 's/| skyos\*/| serotonin* | skyos*/' "$f"
     elif grep -q '| emx\*)' "$f"; then
@@ -344,31 +348,48 @@ for f in $(find "$GCC_SRC" -name 'config.sub' -o -name 'configfsf.sub' 2>/dev/nu
 done
 GCC_BUILD="$DIR/gcc-user-build"
 GCC_STAGE="$DIR/gcc-user-stage"
-GCC_CFLAGS="$CFLAGS -Wno-error=incompatible-pointer-types -Wno-incompatible-pointer-types -mno-tls-direct-seg-refs"
+GCC_CFLAGS="$CFLAGS -Wno-error=incompatible-pointer-types -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -mno-tls-direct-seg-refs"
 GCC_CXXFLAGS="-O2 -Wall -msse -msse2 -mfpmath=sse -Wno-error=incompatible-pointer-types -Wno-incompatible-pointer-types -mno-tls-direct-seg-refs"
 
 mkdir -p "$GCC_BUILD"
 GCC_CC_WRAPPER="$GCC_BUILD/cc-wrapper.sh"
 GCC_CXX_WRAPPER="$GCC_BUILD/cxx-wrapper.sh"
+GCC_CXX_FOR_BUILD_WRAPPER="$GCC_BUILD/cxx-for-build-wrapper.sh"
+
+# Wrapper for build-machine g++: strips i386-only flags that the GCC build
+# system leaks into AM_CXXFLAGS for build-host compilations (libcpp etc.).
+# Must use bash arrays to preserve arguments with spaces/quotes unchanged.
+cat > "$GCC_CXX_FOR_BUILD_WRAPPER" <<'WEOF'
+#!/bin/bash
+args=()
+for arg in "$@"; do
+    case "$arg" in
+        -msse|-msse2|-msse3|-mssse3|-msse4*|-mfpmath=sse|-mno-tls-direct-seg-refs|-mstackrealign) ;;
+        *) args+=("$arg") ;;
+    esac
+done
+exec g++ "${args[@]}"
+WEOF
+chmod +x "$GCC_CXX_FOR_BUILD_WRAPPER"
 
 cat > "$GCC_CC_WRAPPER" <<WEOF
 #!/bin/sh
 for arg in "\$@"; do
     if [ "\$arg" = "-c" ] || [ "\$arg" = "-E" ] || [ "\$arg" = "-S" ]; then
-        exec $CC "\$@"
+        exec $CC -Wno-implicit-function-declaration "\$@"
     fi
 done
 prev=""
 for arg in "\$@"; do
     if [ "\$prev" = "-o" ]; then
         case "\$arg" in
-            *.a|*.la|*.so|*.o) exec $CC "\$@" ;;
+            *.a|*.la|*.so|*.o) exec $CC -Wno-implicit-function-declaration "\$@" ;;
         esac
         break
     fi
     prev="\$arg"
 done
-exec $CC $BINUTILS_BUILD/posix_stubs.o "\$@"
+exec $CC -Wno-implicit-function-declaration $BINUTILS_BUILD/posix_stubs.o "\$@"
 WEOF
 chmod +x "$GCC_CC_WRAPPER"
 
@@ -403,13 +424,15 @@ if [ ! -f "config.status" ]; then
     (cd "$GCC_SRC" && { [ -d "gmp" ] || ./contrib/download_prerequisites; })
 
     CC_FOR_BUILD="gcc" \
-    CXX_FOR_BUILD="g++" \
+    CXX_FOR_BUILD="$GCC_CXX_FOR_BUILD_WRAPPER" \
     CC="$GCC_CC_WRAPPER" \
     CXX="$GCC_CXX_WRAPPER" \
     AR="$AR" \
     RANLIB="$RANLIB" \
     CFLAGS="$GCC_CFLAGS" \
     CXXFLAGS="$GCC_CXXFLAGS" \
+    CFLAGS_FOR_BUILD="-O2" \
+    CXXFLAGS_FOR_BUILD="-O2" \
     "$GCC_SRC/configure" \
         --host="$TARGET" \
         --target="$TARGET" \
@@ -443,8 +466,21 @@ sed -i 's/^maybe-configure-gettext: configure-gettext$/maybe-configure-gettext:/
 sed -i 's/^maybe-all-gettext: all-gettext$/maybe-all-gettext:/' Makefile
 
 make configure-isl -j$(nproc)
-sed -i '/isl_test_cpp\$(EXEEXT)/d' isl/Makefile
-sed -i '/isl_test_cpp\$(EXEEXT)/d' isl/Makefile.in
+# Disable isl test binaries — they can't link on Serotonin without a full libc.
+# Use awk to blank out the multi-line noinst_PROGRAMS and TESTS variables.
+_strip_isl_tests() {
+    local f="$1"
+    [ -f "$f" ] || return
+    awk '
+        /^noinst_PROGRAMS[[:space:]]*=/ { print "noinst_PROGRAMS ="; skip=1; next }
+        /^TESTS[[:space:]]*=/ { print "TESTS ="; skip=1; next }
+        skip && /\\$/ { next }
+        skip && !/\\$/ { skip=0; next }
+        { print }
+    ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+}
+_strip_isl_tests isl/Makefile
+_strip_isl_tests isl/Makefile.in
 
 make configure-gcc -j$(nproc)
 sed -i 's/^#define HAVE_DECL_\(.*\) 0$/#define HAVE_DECL_\1 1/' gcc/auto-host.h

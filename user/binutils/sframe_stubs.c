@@ -4,6 +4,7 @@
  */
 
 #include <stddef.h>
+#include <stdbool.h>
 #include "sframe-api.h"
 
 const char *sframe_errmsg(int error) {
@@ -37,37 +38,37 @@ void sframe_decoder_free(sframe_decoder_ctx **dctx) {
     }
 }
 
-unsigned int sframe_decoder_get_hdr_size(sframe_decoder_ctx *dctx) {
+unsigned int sframe_decoder_get_hdr_size(const sframe_decoder_ctx *dctx) {
     (void)dctx;
     return 0;
 }
 
-uint8_t sframe_decoder_get_abi_arch(sframe_decoder_ctx *dctx) {
+uint8_t sframe_decoder_get_abi_arch(const sframe_decoder_ctx *dctx) {
     (void)dctx;
     return 0;
 }
 
-uint8_t sframe_decoder_get_version(sframe_decoder_ctx *dctx) {
+uint8_t sframe_decoder_get_version(const sframe_decoder_ctx *dctx) {
     (void)dctx;
     return 0;
 }
 
-uint32_t sframe_decoder_get_num_fidx(sframe_decoder_ctx *dctx) {
+uint32_t sframe_decoder_get_num_fidx(const sframe_decoder_ctx *dctx) {
     (void)dctx;
     return 0;
 }
 
-int8_t sframe_decoder_get_fixed_fp_offset(sframe_decoder_ctx *dctx) {
+int8_t sframe_decoder_get_fixed_fp_offset(const sframe_decoder_ctx *dctx) {
     (void)dctx;
     return 0;
 }
 
-int8_t sframe_decoder_get_fixed_ra_offset(sframe_decoder_ctx *dctx) {
+int8_t sframe_decoder_get_fixed_ra_offset(const sframe_decoder_ctx *dctx) {
     (void)dctx;
     return 0;
 }
 
-int sframe_decoder_get_fre(sframe_decoder_ctx *ctx,
+int sframe_decoder_get_fre(const sframe_decoder_ctx *ctx,
                            unsigned int func_idx,
                            unsigned int fre_idx,
                            sframe_frame_row_entry *fre) {
@@ -78,7 +79,7 @@ int sframe_decoder_get_fre(sframe_decoder_ctx *ctx,
     return SFRAME_ERR;
 }
 
-int sframe_decoder_get_funcdesc_v2(sframe_decoder_ctx *ctx,
+int sframe_decoder_get_funcdesc_v2(const sframe_decoder_ctx *ctx,
                                   unsigned int i,
                                   uint32_t *num_fres,
                                   uint32_t *func_size,
@@ -144,16 +145,12 @@ int sframe_encoder_add_fre(sframe_encoder_ctx *encoder,
     return SFRAME_ERR;
 }
 
-int sframe_encoder_add_funcdesc(sframe_encoder_ctx *encoder,
-                                int32_t start_addr,
-                                uint32_t func_size,
-                                unsigned char func_info,
-                                uint32_t num_fres) {
-    (void)encoder;
+int sframe_encoder_add_funcdesc(sframe_encoder_ctx *ectx,
+                                int64_t start_addr,
+                                uint32_t func_size) {
+    (void)ectx;
     (void)start_addr;
     (void)func_size;
-    (void)func_info;
-    (void)num_fres;
     return SFRAME_ERR;
 }
 
@@ -174,8 +171,10 @@ int sframe_encoder_add_funcdesc_v2(sframe_encoder_ctx *encoder,
 
 char *sframe_encoder_write(sframe_encoder_ctx *encoder,
                            size_t *encoded_size,
+                           bool sort_fde_p,
                            int *errp) {
     (void)encoder;
+    (void)sort_fde_p;
     if (encoded_size) {
         *encoded_size = 0;
     }
@@ -185,7 +184,7 @@ char *sframe_encoder_write(sframe_encoder_ctx *encoder,
     return NULL;
 }
 
-void dump_sframe(sframe_decoder_ctx *decoder, uint64_t addr) {
+void dump_sframe(const sframe_decoder_ctx *decoder, uint64_t addr) {
     (void)decoder;
     (void)addr;
 }

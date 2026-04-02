@@ -5,7 +5,10 @@
 
 set -e
 
-if [ ! -d "$newlib" ]; then
+if [ -d "newlib" ]; then
+    # Clean stale configure cache — target alias may have changed
+    rm -f newlib/config.cache newlib/etc/config.cache
+else
     mkdir -p newlib
 fi
 cd newlib
@@ -35,6 +38,9 @@ if [ -d "$SYSROOT" ]; then
     mkdir -p "$SYSROOT/usr/include" "$SYSROOT/usr/lib"
     cp -r "$PREFIX/$TARGET/include/"* "$SYSROOT/usr/include/"
     cp "$PREFIX/$TARGET/lib/libc.a" "$SYSROOT/usr/lib/"
+    # Remove newlib's signal/raise from libc.a — libsyscall provides them via
+    # the kernel syscall interface and the linker would otherwise see duplicates.
+    "$PREFIX/bin/$TARGET-ar" d "$SYSROOT/usr/lib/libc.a" libc_a-signal.o 2>/dev/null || true
     cp "$PREFIX/$TARGET/lib/libm.a" "$SYSROOT/usr/lib/"
     cp "$PREFIX/$TARGET/lib/libg.a" "$SYSROOT/usr/lib/" 2>/dev/null || true
     if [ -d "$PREFIX/$TARGET/lib/ldscripts" ]; then

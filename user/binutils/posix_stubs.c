@@ -7,7 +7,8 @@
  */
 
 #include <errno.h>
-#include <dirent.h>
+typedef struct _dirdesc DIR;
+struct dirent { char d_name[256]; };  /* minimal — stubs never return a real entry */
 #include <netdb.h>
 #include <netinet/in.h>
 #include <stddef.h>
@@ -15,6 +16,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/unistd.h>
 #include <sys/wait.h>
@@ -226,6 +228,15 @@ uint32_t ntohl(uint32_t netlong) {
 }
 
 /* socket, bind, listen, accept, connect, shutdown are in libsyscall.a */
+
+int _gettimeofday(struct timeval *tv, void *tz) {
+    (void)tz;
+    if (tv) {
+        tv->tv_sec = 0;
+        tv->tv_usec = 0;
+    }
+    return 0;
+}
 
 int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen) {
     (void)sockfd;
