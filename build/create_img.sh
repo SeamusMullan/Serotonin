@@ -10,7 +10,7 @@ IMG_SIZE_MB=512
 MOUNT_POINT="/mnt/img"
 SRC_DIR="${SCRIPT_DIR}/../user"
 SYSROOT_DIR="${SCRIPT_DIR}/../build-tools/cross/i686-serotonin/sys-root"
-LOOPDEV="/dev/nbd0"
+LOOPDEV=""
 
 if [ "$LOOPDEV" == "" ]; then
 

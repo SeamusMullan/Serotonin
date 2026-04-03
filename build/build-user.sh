@@ -43,6 +43,8 @@ $CC test.c -o test.elf $CFLAGS
 $CC shell.c -o sh.elf $CFLAGS
 $CC ls.c -o ls.elf $CFLAGS
 $CC cat.c -o cat.elf $CFLAGS
+$CC sl/sl.c -o sl.elf $CFLAGS
+
 
 # --- Coreutils ---
 $CC echo.c -o echo.elf $CFLAGS

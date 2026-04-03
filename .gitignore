@@ -10,6 +10,8 @@ build/gcc-user-stage
 build-tools/cross/
 user/gcc/
 user/vim/
+user/bash-5.3/
+user/make-4.4/
 user/STLport-5.2.1/
 build-tools/bin
 build-tools/src
