@@ -1549,23 +1549,25 @@ static void editor_process_keypress(void) {
 				}
 			}
 			break;
+		case CTRL_KEY('w'):
+			if (editor_selection_is_nonempty()) {
+				editor_delete_selection();
+			} else {
+				/* delete previous word */
+				int ax = E.cx, ay = E.cy;
+				E.sel_active = 1;
+				E.sel_anchor_cx = ax;
+				E.sel_anchor_cy = ay;
+				editor_move_word_left();
+				editor_delete_selection();
+			}
+			break;
 		case 127:
 		case CTRL_KEY('h'):
 			if (editor_selection_is_nonempty()) {
 				editor_delete_selection();
 			} else {
-				int ctrl_down_inner = (g_last_key_flags & KEY_FLAG_CTRL) != 0;
-				if (ctrl_down_inner) {
-					/* delete previous word */
-					int ax = E.cx, ay = E.cy;
-					E.sel_active = 1;
-					E.sel_anchor_cx = ax;
-					E.sel_anchor_cy = ay;
-					editor_move_word_left();
-					editor_delete_selection();
-				} else {
-					editor_del_char();
-				}
+				editor_del_char();
 			}
 			break;
 		case KEY_HOME:
