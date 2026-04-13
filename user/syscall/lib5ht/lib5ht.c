@@ -40,6 +40,10 @@ int sys_5ht_query_layer(uint16_t id, fb_layer_info_t *out) {
     return do_syscall(SYSTEM_CALL_5HT_QUERY_LAYER, (uint32_t)id, (uint32_t)out, 0);
 }
 
+int sys_5ht_sysinfo(sysinfo_5ht_t *out) {
+    return do_syscall(SYSTEM_CALL_5HT_SYSINFO, (uint32_t)out, 0, 0);
+}
+
 int sys_5ht_set_fid(pid_t pid) {
     return do_syscall(SYSTEM_CALL_5HT_SET_FID, (uint32_t)pid, 0, 0);
 }

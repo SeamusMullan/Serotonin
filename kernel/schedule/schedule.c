@@ -240,8 +240,8 @@ void multitasking_init(void) {
     init_task->state   = PROCESS_STATE_BLOCKED;
     strncpy(init_task->name, "Serotonin Kernel", 32);
 
-    task_list             = init_task;
-    current_task          = init_task;
+    task_list          = init_task;
+    current_task       = init_task;
 
     fpu_get_init_state();
 

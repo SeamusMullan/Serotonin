@@ -179,6 +179,10 @@ static int layer_config_valid(const fb_layer_config_t *cfg) {
         return 0;
     if (cfg->stride < (uint32_t)(cfg->x1 - cfg->x0) * sizeof(uint32_t))
         return 0;
+    if (cfg->alpha > FB_LAYER_ALPHA_BLEND)
+        return 0;
+    if (cfg->hints & ~FB_LAYER_HINT_ALL_MASK)
+        return 0;
     return 1;
 }
 
@@ -1516,9 +1520,9 @@ static void sys_isatty(uint32_t arg2) {
 
 static void sys_gettimeofday(uint32_t arg2) {
     struct timeval *timestr = (struct timeval*)arg2;
-    uint64_t ms = timer_ticks; /* 1000 Hz PIT — 1 tick = 1 ms */
-    timestr->tv_sec  = (long)(unix_timestamp + ms / 1000);
-    timestr->tv_usec = (long)((ms % 1000) * 1000);
+    uint32_t ms = (uint32_t)timer_ticks; /* low 32 bits — wraps ~49 days, fine for diffs */
+    timestr->tv_sec  = (long)(ms / 1000u);
+    timestr->tv_usec = (long)((ms % 1000u) * 1000u);
     errno = 0;
 }
 

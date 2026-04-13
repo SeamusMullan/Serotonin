@@ -6,7 +6,9 @@
 #include <kernel/schedule/schedule.h>
 #include <kernel/video/font.h>
 
-#define VBE_TICKS_PER_FRAME 17
+/* Compositor wake cadence in PIT ticks.
+   With current scheduler behavior this yields roughly ~60fps at value 8. */
+#define VBE_TICKS_PER_FRAME 8
 #define VBE_CURSOR_BLINK_MS 500
 
 #define VBE_FONT_WIDTH  8
@@ -15,6 +17,11 @@
 
 #define SCREEN_WIDTH 1920
 #define SCREEN_HEIGHT 1080
+
+#define VBE_TILE_W 16
+#define VBE_TILE_H 16
+#define VBE_IRQ_CHUNK_SPANS 8
+#define VBE_NT_COPY_THRESHOLD 256
 
 extern uint32_t vbe_palette[256];
 
@@ -71,6 +78,7 @@ typedef struct {
     uint8_t z;
     uint8_t active;
     uint8_t alpha;
+    uint16_t hints;
     uint16_t width;
     uint16_t height;
     uint16_t x0;

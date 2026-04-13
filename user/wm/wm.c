@@ -35,9 +35,37 @@ static const uint8_t cursor_bitmap[16][16] = {
 #define CURSOR_H 16
 
 static wm_state_t wm;
+wm_theme_t g_wm_theme;
 static uint32_t blink_counter = 0;
 static uint8_t  cursor_blink_on = 1;
-#define BLINK_INTERVAL 15  /* poll iterations (~16ms * 15 = ~250ms) */
+#define WM_POLL_TIMEOUT_MS 8
+#define BLINK_INTERVAL 31  /* ~WM_POLL_TIMEOUT_MS * 31 ~= 248ms */
+
+static const wm_theme_t wm_themes[WM_THEME_COUNT] = {
+    { "Default",     0xFF1A1A2E, 0xFF252540, 0xFF7A98FF, 0xFF4A6099, 0xFFE0E0E0, 0xFF808090, 0xFF3A3A50, 0xFFFF4040, 0xFFFFFFFF, 0xFF7A98FF, 0xFF404050, 0xFF7A98FF, 0xFF303040, 0xFFE0E0E0, 0xFF1A1A2E }
+};
+
+static void overlay_reconfigure_alpha(wm_state_t *wm) {
+    fb_layer_config_t cfg = {0};
+    fb_layer_info_t info = {0};
+    cfg.size = sizeof(cfg);
+    cfg.alpha = 0;
+    cfg.hints = FB_LAYER_HINT_OPAQUE_CONTENT |
+                FB_LAYER_HINT_FREQUENT_UPDATES |
+                FB_LAYER_HINT_TRANSIENT;
+
+    if (wm->launcher_active) {
+        int lx = (SCREEN_W - LAUNCHER_W) / 2;
+        int ly = (SCREEN_H - LAUNCHER_H) / 2;
+        cfg.x0 = lx; cfg.y0 = ly;
+        cfg.x1 = lx + LAUNCHER_W; cfg.y1 = ly + LAUNCHER_H;
+        cfg.stride = LAUNCHER_W * BPP;
+        if (sys_5ht_rcfg_layer(LAYER_LAUNCHER, &cfg, &info) == 0) {
+            wm->launcher_fb = (uint32_t *)(uintptr_t)info.fb_user_va;
+            wm->launcher_meta = (volatile fb_layer_metadata_t *)(uintptr_t)info.metadata_user_va;
+        }
+    }
+}
 
 /* --- palette init --- */
 
@@ -70,6 +98,9 @@ static void init_cursor_layer(wm_state_t *wm) {
     cfg.x0 = 0; cfg.y0 = 0;
     cfg.x1 = CURSOR_W; cfg.y1 = CURSOR_H;
     cfg.alpha = 1;
+    cfg.hints = FB_LAYER_HINT_CURSOR_SPRITE |
+                FB_LAYER_HINT_FREQUENT_UPDATES |
+                FB_LAYER_HINT_TRANSIENT;
     cfg.stride = CURSOR_W * BPP;
 
     fb_layer_info_t info = {0};
@@ -100,6 +131,11 @@ static void init_cursor_layer(wm_state_t *wm) {
 }
 
 static void move_cursor(wm_state_t *wm, int x, int y) {
+    static int prev_x = -1;
+    static int prev_y = -1;
+    int old_x = prev_x;
+    int old_y = prev_y;
+
     fb_layer_config_t cfg = {0};
     cfg.size = sizeof(cfg);
     cfg.x0 = (uint16_t)x;
@@ -107,6 +143,9 @@ static void move_cursor(wm_state_t *wm, int x, int y) {
     cfg.x1 = (uint16_t)(x + CURSOR_W);
     cfg.y1 = (uint16_t)(y + CURSOR_H);
     cfg.alpha = 1;
+    cfg.hints = FB_LAYER_HINT_CURSOR_SPRITE |
+                FB_LAYER_HINT_FREQUENT_UPDATES |
+                FB_LAYER_HINT_TRANSIENT;
     cfg.stride = CURSOR_W * BPP;
 
     fb_layer_info_t info = {0};
@@ -121,6 +160,15 @@ static void move_cursor(wm_state_t *wm, int x, int y) {
     wm->cursor_meta->dx1 = CURSOR_W; wm->cursor_meta->dy1 = CURSOR_H;
     wm->cursor_meta->frame_id++;
     wm->cursor_meta->ready = 1;
+
+    /* Hint desktop damage for old/new cursor extents so underlying content is recomposited. */
+    if (old_x >= 0 && old_y >= 0)
+        desktop_mark_dirty(wm, (uint16_t)old_x, (uint16_t)old_y, CURSOR_W, CURSOR_H);
+    if (x >= 0 && y >= 0)
+        desktop_mark_dirty(wm, (uint16_t)x, (uint16_t)y, CURSOR_W, CURSOR_H);
+
+    prev_x = x;
+    prev_y = y;
 }
 
 /* --- taskbar --- */
@@ -133,6 +181,7 @@ static void init_taskbar(wm_state_t *wm) {
     cfg.x1 = SCREEN_W;
     cfg.y1 = SCREEN_H;
     cfg.alpha = 0;
+    cfg.hints = FB_LAYER_HINT_OPAQUE_CONTENT | FB_LAYER_HINT_STATIC_CONTENT;
     cfg.stride = SCREEN_W * BPP;
 
     fb_layer_info_t info = {0};
@@ -151,6 +200,7 @@ static void init_desktop(wm_state_t *wm) {
     cfg.x0 = 0; cfg.y0 = 0;
     cfg.x1 = SCREEN_W; cfg.y1 = SCREEN_H;
     cfg.alpha = 0;
+    cfg.hints = FB_LAYER_HINT_OPAQUE_CONTENT | FB_LAYER_HINT_STATIC_CONTENT;
     cfg.stride = SCREEN_W * BPP;
 
     fb_layer_info_t info = {0};
@@ -264,6 +314,50 @@ static int is_filtered(const char *name) {
     return 0;
 }
 
+static void theme_remap_term_defaults(term_state_t *ts, uint32_t old_fg, uint32_t old_bg,
+                                      uint32_t new_fg, uint32_t new_bg) {
+    uint32_t total = ts->cols * ts->rows;
+    for (uint32_t i = 0; i < total; i++) {
+        if (ts->cells[i].fg == old_fg) ts->cells[i].fg = new_fg;
+        if (ts->cells[i].bg == old_bg) ts->cells[i].bg = new_bg;
+        ts->cells[i].dirty = 1;
+    }
+    if (ts->alt_cells) {
+        for (uint32_t i = 0; i < total; i++) {
+            if (ts->alt_cells[i].fg == old_fg) ts->alt_cells[i].fg = new_fg;
+            if (ts->alt_cells[i].bg == old_bg) ts->alt_cells[i].bg = new_bg;
+            ts->alt_cells[i].dirty = 1;
+        }
+    }
+    if (ts->fg == old_fg) ts->fg = new_fg;
+    if (ts->bg == old_bg) ts->bg = new_bg;
+}
+
+void wm_apply_theme(wm_state_t *wm, int theme_idx) {
+    if (theme_idx < 0 || theme_idx >= WM_THEME_COUNT) return;
+    wm_theme_t old_theme = g_wm_theme;
+    g_wm_theme = wm_themes[theme_idx];
+    wm->theme_current = theme_idx;
+
+    if (wm->desktop_fb) {
+        draw_fill_rect(wm->desktop_fb, SCREEN_W, 0, 0, SCREEN_W, SCREEN_H, THEME_BG_DARK);
+        desktop_mark_dirty(wm, 0, 0, SCREEN_W, SCREEN_H);
+    }
+
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        wm_window_t *win = &wm->windows[i];
+        if (!win->active) continue;
+        theme_remap_term_defaults(&win->term, old_theme.term_fg, old_theme.term_bg,
+                                  THEME_TERM_FG, THEME_TERM_BG);
+        wm_render_window(wm, i);
+    }
+
+    render_taskbar(wm);
+    overlay_reconfigure_alpha(wm);
+    if (wm->launcher_active)
+        launcher_render(wm);
+}
+
 void launcher_open(wm_state_t *wm) {
     if (wm->launcher_active) return;
 
@@ -300,6 +394,9 @@ void launcher_open(wm_state_t *wm) {
     cfg.x0 = lx; cfg.y0 = ly;
     cfg.x1 = lx + LAUNCHER_W; cfg.y1 = ly + LAUNCHER_H;
     cfg.alpha = 0;
+    cfg.hints = FB_LAYER_HINT_OPAQUE_CONTENT |
+                FB_LAYER_HINT_FREQUENT_UPDATES |
+                FB_LAYER_HINT_TRANSIENT;
     cfg.stride = LAUNCHER_W * BPP;
 
     fb_layer_info_t info = {0};
@@ -324,24 +421,27 @@ void launcher_render(wm_state_t *wm) {
     if (!wm->launcher_fb) return;
 
     uint32_t stride = LAUNCHER_W;
+    uint32_t panel_bg = THEME_BG_DARK;
+    uint32_t border = THEME_ACCENT;
+    uint32_t sep = THEME_BORDER;
 
     /* background */
-    draw_fill_rect(wm->launcher_fb, stride, 0, 0, LAUNCHER_W, LAUNCHER_H, THEME_BG_DARK);
+    draw_fill_rect(wm->launcher_fb, stride, 0, 0, LAUNCHER_W, LAUNCHER_H, panel_bg);
 
     /* border */
-    draw_fill_rect(wm->launcher_fb, stride, 0, 0, LAUNCHER_W, 2, THEME_ACCENT);
-    draw_fill_rect(wm->launcher_fb, stride, 0, LAUNCHER_H - 2, LAUNCHER_W, 2, THEME_ACCENT);
-    draw_fill_rect(wm->launcher_fb, stride, 0, 0, 2, LAUNCHER_H, THEME_ACCENT);
-    draw_fill_rect(wm->launcher_fb, stride, LAUNCHER_W - 2, 0, 2, LAUNCHER_H, THEME_ACCENT);
+    draw_fill_rect(wm->launcher_fb, stride, 0, 0, LAUNCHER_W, 2, border);
+    draw_fill_rect(wm->launcher_fb, stride, 0, LAUNCHER_H - 2, LAUNCHER_W, 2, border);
+    draw_fill_rect(wm->launcher_fb, stride, 0, 0, 2, LAUNCHER_H, border);
+    draw_fill_rect(wm->launcher_fb, stride, LAUNCHER_W - 2, 0, 2, LAUNCHER_H, border);
 
     /* title */
     draw_text(wm->launcher_fb, stride, LAUNCHER_PAD, LAUNCHER_PAD,
-              "Launch Program", THEME_ACCENT, THEME_BG_DARK);
+              "Launch Program", THEME_ACCENT, panel_bg);
 
     /* separator */
     int sep_y = LAUNCHER_PAD + FONT_H + 4;
     draw_fill_rect(wm->launcher_fb, stride, LAUNCHER_PAD, sep_y,
-                   LAUNCHER_W - LAUNCHER_PAD * 2, 1, THEME_BORDER);
+                   LAUNCHER_W - LAUNCHER_PAD * 2, 1, sep);
 
     /* item list */
     int list_y = sep_y + 6;
@@ -352,7 +452,7 @@ void launcher_render(wm_state_t *wm) {
         int iy = list_y + i * LAUNCHER_ITEM_H;
         int selected = (idx == wm->launcher_selected);
 
-        uint32_t bg = selected ? THEME_ACCENT : THEME_BG_DARK;
+        uint32_t bg = selected ? THEME_ACCENT : panel_bg;
         uint32_t fg = selected ? 0xFF000000 : THEME_TEXT_PRIMARY;
 
         draw_fill_rect(wm->launcher_fb, stride,
@@ -367,7 +467,7 @@ void launcher_render(wm_state_t *wm) {
     draw_text(wm->launcher_fb, stride,
               LAUNCHER_PAD, LAUNCHER_H - LAUNCHER_PAD - FONT_H,
               "Enter=launch  Esc=close  \x18\x19=navigate",
-              THEME_TEXT_DIM, THEME_BG_DARK);
+              THEME_TEXT_DIM, panel_bg);
 
     /* submit */
     wm->launcher_meta->dx0 = 0; wm->launcher_meta->dy0 = 0;
@@ -524,6 +624,7 @@ void wm_render_window(wm_state_t *wm, int idx) {
     cfg.x1 = win->x + win->w;
     cfg.y1 = win->y + win->h;
     cfg.alpha = 0;
+    cfg.hints = FB_LAYER_HINT_OPAQUE_CONTENT | FB_LAYER_HINT_FREQUENT_UPDATES;
     cfg.stride = win->w * BPP;
 
     fb_layer_info_t info = {0};
@@ -629,6 +730,7 @@ int wm_launch_window(wm_state_t *wm, const char *program) {
     cfg.x1 = win->x + win->w;
     cfg.y1 = win->y + win->h;
     cfg.alpha = 0;
+    cfg.hints = FB_LAYER_HINT_OPAQUE_CONTENT | FB_LAYER_HINT_FREQUENT_UPDATES;
     cfg.stride = win->w * BPP;
 
     fb_layer_info_t info = {0};
@@ -806,6 +908,8 @@ int main(void) {
     wm.focused_idx = -1;
     wm.tiling.master_ratio = 0.6f;
     wm.tiling.master_count = 1;
+    wm.theme_current = 0;
+    g_wm_theme = wm_themes[wm.theme_current];
 
     setvbuf(stdout, NULL, _IONBF, 0);
     signal(17, (void *)sig_child); /* SIGCHLD */
@@ -869,7 +973,7 @@ int main(void) {
             npfds++;
         }
 
-        poll(pfds, npfds, 16); /* ~60Hz wake for cursor blink */
+        poll(pfds, npfds, WM_POLL_TIMEOUT_MS);
 
         /* handle keyboard */
         if (pfds[kb_idx].revents & POLLIN) {
@@ -940,23 +1044,6 @@ int main(void) {
         /* Flush desktop dirty rect (ghost cleanup for window moves) */
         desktop_submit(&wm);
 
-        /* Re-stamp ready on all layers the compositor has consumed.
-           The compositor clears ready after compositing; if we don't
-           re-set it, the layer is skipped next frame.  No re-rendering
-           needed — the framebuffer content is still valid. */
-        for (int i = 0; i < MAX_WINDOWS; i++) {
-            if (!wm.windows[i].active || !wm.windows[i].meta) continue;
-            volatile fb_layer_metadata_t *m = wm.windows[i].meta;
-            if (!m->ready) {
-                m->ready = 1;
-            }
-        }
-        if (wm.taskbar_meta && !wm.taskbar_meta->ready)
-            wm.taskbar_meta->ready = 1;
-        if (wm.desktop_meta && !wm.desktop_meta->ready)
-            wm.desktop_meta->ready = 1;
-        if (wm.launcher_active && wm.launcher_meta && !wm.launcher_meta->ready)
-            wm.launcher_meta->ready = 1;
     }
 
     return 0;

@@ -94,7 +94,8 @@
 #define RTL_RX_MAR          (1 << 15)   /* Multicast Address Matched */
 
 /* Buffer sizes */
-#define RTL_RX_BUF_SIZE     (8192 + 16 + 1500)  /* 8K + 16 header + 1500 wrap */
+#define RTL_RX_RING_SIZE    65536
+#define RTL_RX_BUF_SIZE     (RTL_RX_RING_SIZE + 16 + 1500)  /* ring + pad + wrap pad */
 #define RTL_TX_BUF_SIZE     1536
 #define RTL_NUM_TX_DESC      4
 
@@ -120,6 +121,7 @@ typedef struct {
     uint32_t rx_errors;
     uint32_t tx_errors;
     uint32_t rx_dropped;
+    uint32_t tx_busy_drops;
 } rtl8139_dev_t;
 
 typedef void (*rtl8139_rx_callback_t)(const uint8_t *data, uint16_t length);

@@ -87,6 +87,7 @@ int main(void) {
     cfg.x1 = LAYER_X0 + LAYER_WIDTH;
     cfg.y1 = LAYER_Y0 + LAYER_HEIGHT;
     cfg.alpha = 0;
+    cfg.hints = FB_LAYER_HINT_OPAQUE_CONTENT | FB_LAYER_HINT_FREQUENT_UPDATES;
     cfg.stride = STRIDE_BYTES;
 
     fb_layer_info_t info = {0};

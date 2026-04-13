@@ -28,7 +28,6 @@ void wm_handle_keyboard(wm_state_t *wm, keyboard_event_t *ev) {
         launcher_key(wm, ev);
         return;
     }
-
     /* WM keyboard shortcuts (Alt held) */
     if (alt_held) {
         switch (ev->scancode) {
@@ -200,7 +199,9 @@ void wm_handle_mouse(wm_state_t *wm, mouse_event_t *ev) {
             cfg.size = sizeof(cfg);
             cfg.x0 = win->x; cfg.y0 = win->y;
             cfg.x1 = win->x + win->w; cfg.y1 = win->y + win->h;
-            cfg.alpha = 0; cfg.stride = win->w * BPP;
+            cfg.alpha = 0;
+            cfg.hints = FB_LAYER_HINT_OPAQUE_CONTENT | FB_LAYER_HINT_FREQUENT_UPDATES;
+            cfg.stride = win->w * BPP;
             fb_layer_info_t info = {0};
             sys_5ht_rcfg_layer(win->layer_id, &cfg, &info);
             win->fb = (uint32_t *)(uintptr_t)info.fb_user_va;

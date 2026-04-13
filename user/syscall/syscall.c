@@ -298,6 +298,10 @@ unsigned int alarm(unsigned int seconds) {
     return (unsigned int)do_syscall(SYSTEM_CALL_ALARM, seconds, 0, 0);
 }
 
+int usleep(useconds_t useconds) {
+    return do_syscall(SYSTEM_CALL_USLEEP, (uint32_t)useconds, 0, 0);
+}
+
 /**
  * @brief Create a shared memory segment
  *

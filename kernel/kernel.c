@@ -610,9 +610,12 @@ void kernel_panic(char* str) {
  * @return void* A pointer to the allocated memory, or NULL on failure.
  */
 void *kernel_malloc(uint32_t size) {
+    uint32_t irqflags = irq_save();
+
     size = align(size);
     uint32_t guard_size = kernel_heap_guard_size();
     uint32_t alloc_size = size + guard_size;
+    void *result = NULL;
 
     // First allocation
     if (!heap_list) {
@@ -624,11 +627,12 @@ void *kernel_malloc(uint32_t size) {
         current_heap += sizeof(block_header_t) + alloc_size;
         if (current_heap > heap_end) {
             kernel_panic("out of kernel heap memory");
-            return NULL;
+        } else {
+            kernel_heap_init_guard(heap_list);
+            rover = heap_list;
+            result = (void *)(heap_list + 1);
         }
-        kernel_heap_init_guard(heap_list);
-        rover = heap_list;
-        return (void *)(heap_list + 1);
+        goto done;
     }
 
     if (!rover) rover = heap_list;
@@ -659,7 +663,8 @@ void *kernel_malloc(uint32_t size) {
             rover = curr->next ? curr->next : heap_list;
             curr->free = 0;
             kernel_heap_set_guard(curr);
-            return (void *)(curr + 1);
+            result = (void *)(curr + 1);
+            goto done;
         }
         if (!curr->next) { tail = curr; break; }
         curr = curr->next;
@@ -685,7 +690,8 @@ void *kernel_malloc(uint32_t size) {
             rover = curr->next ? curr->next : heap_list;
             curr->free = 0;
             kernel_heap_set_guard(curr);
-            return (void *)(curr + 1);
+            result = (void *)(curr + 1);
+            goto done;
         }
         if (!curr->next) break;
         curr = curr->next;
@@ -706,9 +712,8 @@ void *kernel_malloc(uint32_t size) {
     block_header_t *new_block = (block_header_t *)current_heap;
     current_heap += sizeof(block_header_t) + alloc_size;
     if (current_heap > heap_end) {
-        dump_heap_oom(size);
         kernel_panic("out of kernel heap memory");
-        return NULL;
+        goto done;
     }
 
     new_block->magic = HEAP_MAGIC;
@@ -717,8 +722,11 @@ void *kernel_malloc(uint32_t size) {
     new_block->next = NULL;
     tail->next = new_block;
     kernel_heap_init_guard(new_block);
+    result = (void *)(new_block + 1);
 
-    return (void *)(new_block + 1);
+done:
+    irq_restore(irqflags);
+    return result;
 }
 
 /**
@@ -728,6 +736,8 @@ void *kernel_malloc(uint32_t size) {
  */
 void kernel_free(void *ptr) {
     if (!ptr) return;
+
+    uint32_t irqflags = irq_save();
 
     uintptr_t ptr_addr = (uintptr_t)ptr;
     uintptr_t heap_start_addr = (uintptr_t)heap_start;
@@ -754,6 +764,8 @@ void kernel_free(void *ptr) {
         block->next = next->next;
         if (rover == next) rover = block;
     }
+
+    irq_restore(irqflags);
 }
 
 void *kernel_malloc_align(uint32_t align, uint32_t size) {
