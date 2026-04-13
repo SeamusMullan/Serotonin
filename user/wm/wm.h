@@ -21,6 +21,9 @@
 #define CLOSE_BTN_W  16
 #define CLOSE_BTN_H  16
 
+/* Inactive window opacity (0x00=invisible, 0xFF=opaque) */
+#define INACTIVE_ALPHA 0xC0
+
 /* Taskbar */
 #define TASKBAR_H    24
 
@@ -270,6 +273,7 @@ void draw_char(uint32_t *fb, uint32_t stride_px, int x, int y,
                char ch, uint8_t bold, uint32_t fg, uint32_t bg);
 void draw_text(uint32_t *fb, uint32_t stride_px, int x, int y,
                const char *str, uint32_t fg, uint32_t bg);
+void fb_set_alpha(uint32_t *fb, uint32_t pixel_count, uint8_t alpha);
 
 /* --- wm_terminal.c --- */
 void term_init(term_state_t *ts, uint32_t cols, uint32_t rows);

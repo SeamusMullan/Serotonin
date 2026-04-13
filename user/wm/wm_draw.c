@@ -149,6 +149,31 @@ void draw_char(uint32_t *fb, uint32_t stride_px, int x, int y,
         draw_fill_rect(fb, stride_px, x, y, FONT_W, FONT_H, bg);
 }
 
+void fb_set_alpha(uint32_t *fb, uint32_t pixel_count, uint8_t alpha) {
+    uint32_t aval = (uint32_t)alpha << 24;
+    __m128i mask = _mm_set1_epi32((int)0x00FFFFFF);
+    __m128i new_a = _mm_set1_epi32((int)aval);
+
+    uint32_t i = 0;
+    uint32_t bulk = pixel_count & ~15u;
+    for (; i < bulk; i += 16) {
+        __m128i p0 = _mm_loadu_si128((__m128i *)(fb + i));
+        __m128i p1 = _mm_loadu_si128((__m128i *)(fb + i + 4));
+        __m128i p2 = _mm_loadu_si128((__m128i *)(fb + i + 8));
+        __m128i p3 = _mm_loadu_si128((__m128i *)(fb + i + 12));
+        p0 = _mm_or_si128(_mm_and_si128(p0, mask), new_a);
+        p1 = _mm_or_si128(_mm_and_si128(p1, mask), new_a);
+        p2 = _mm_or_si128(_mm_and_si128(p2, mask), new_a);
+        p3 = _mm_or_si128(_mm_and_si128(p3, mask), new_a);
+        _mm_storeu_si128((__m128i *)(fb + i), p0);
+        _mm_storeu_si128((__m128i *)(fb + i + 4), p1);
+        _mm_storeu_si128((__m128i *)(fb + i + 8), p2);
+        _mm_storeu_si128((__m128i *)(fb + i + 12), p3);
+    }
+    for (; i < pixel_count; i++)
+        fb[i] = (fb[i] & 0x00FFFFFF) | aval;
+}
+
 void draw_text(uint32_t *fb, uint32_t stride_px, int x, int y,
                const char *str, uint32_t fg, uint32_t bg) {
     ensure_glyph_luts();

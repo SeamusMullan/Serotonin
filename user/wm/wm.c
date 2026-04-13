@@ -985,6 +985,30 @@ void settings_open(wm_state_t *wm) {
     render_taskbar(wm);
 }
 
+/* --- inactive window alpha --- */
+
+static void wm_set_win_blend(wm_window_t *win, int blend) {
+    fb_layer_config_t cfg = {0};
+    fb_layer_info_t info = {0};
+    cfg.size = sizeof(cfg);
+    cfg.x0 = win->x;
+    cfg.y0 = win->y;
+    cfg.x1 = win->x + win->w;
+    cfg.y1 = win->y + win->h;
+    cfg.stride = win->w * BPP;
+    cfg.hints = FB_LAYER_HINT_FREQUENT_UPDATES;
+    if (blend) {
+        cfg.alpha = FB_LAYER_ALPHA_BLEND;
+    } else {
+        cfg.alpha = FB_LAYER_ALPHA_OPAQUE;
+        cfg.hints |= FB_LAYER_HINT_OPAQUE_CONTENT;
+    }
+    if (sys_5ht_rcfg_layer(win->layer_id, &cfg, &info) == 0) {
+        win->fb = (uint32_t *)(uintptr_t)info.fb_user_va;
+        win->meta = (volatile fb_layer_metadata_t *)(uintptr_t)info.metadata_user_va;
+    }
+}
+
 /* --- window decorations --- */
 
 void wm_render_decorations(wm_state_t *wm, int idx) {
@@ -1092,8 +1116,13 @@ void wm_render_window(wm_state_t *wm, int idx) {
     cfg.y0 = win->y;
     cfg.x1 = win->x + win->w;
     cfg.y1 = win->y + win->h;
-    cfg.alpha = 0;
-    cfg.hints = FB_LAYER_HINT_OPAQUE_CONTENT | FB_LAYER_HINT_FREQUENT_UPDATES;
+    cfg.hints = FB_LAYER_HINT_FREQUENT_UPDATES;
+    if (win->focused) {
+        cfg.alpha = FB_LAYER_ALPHA_OPAQUE;
+        cfg.hints |= FB_LAYER_HINT_OPAQUE_CONTENT;
+    } else {
+        cfg.alpha = FB_LAYER_ALPHA_BLEND;
+    }
     cfg.stride = win->w * BPP;
 
     fb_layer_info_t info = {0};
@@ -1138,6 +1167,9 @@ void wm_render_window(wm_state_t *wm, int idx) {
     /* Mark all cells dirty and render terminal */
     term_mark_all_dirty(&win->term);
     term_render(win);
+
+    if (!win->focused)
+        fb_set_alpha(win->fb, (uint32_t)win->w * win->h, INACTIVE_ALPHA);
 
     /* Force-submit: after a full reconfigure + redraw, we must submit
        regardless of whether the compositor consumed the previous frame */
@@ -1388,6 +1420,12 @@ void wm_focus_window(wm_state_t *wm, int idx) {
             if (old_idx >= 0 && wm->windows[old_idx].active &&
                 old_idx != top_idx && old_idx != idx) {
                 wm_render_decorations(wm, old_idx);
+                fb_set_alpha(wm->windows[old_idx].fb,
+                             (uint32_t)wm->windows[old_idx].w * wm->windows[old_idx].h,
+                             INACTIVE_ALPHA);
+                wm_set_win_blend(&wm->windows[old_idx], 1);
+                wm_dirty_expand(&wm->windows[old_idx], 0, 0,
+                                wm->windows[old_idx].w, wm->windows[old_idx].h);
                 wm_submit_frame(&wm->windows[old_idx]);
             }
         }
@@ -1396,10 +1434,22 @@ void wm_focus_window(wm_state_t *wm, int idx) {
     if (!did_swap) {
         if (old_idx >= 0 && wm->windows[old_idx].active) {
             wm_render_decorations(wm, old_idx);
+            fb_set_alpha(wm->windows[old_idx].fb,
+                         (uint32_t)wm->windows[old_idx].w * wm->windows[old_idx].h,
+                         INACTIVE_ALPHA);
+            wm_set_win_blend(&wm->windows[old_idx], 1);
+            wm_dirty_expand(&wm->windows[old_idx], 0, 0,
+                            wm->windows[old_idx].w, wm->windows[old_idx].h);
             wm_submit_frame(&wm->windows[old_idx]);
         }
         if (idx >= 0 && wm->windows[idx].active) {
+            fb_set_alpha(wm->windows[idx].fb,
+                         (uint32_t)wm->windows[idx].w * wm->windows[idx].h,
+                         0xFF);
+            wm_set_win_blend(&wm->windows[idx], 0);
             wm_render_decorations(wm, idx);
+            wm_dirty_expand(&wm->windows[idx], 0, 0,
+                            wm->windows[idx].w, wm->windows[idx].h);
             wm_submit_frame(&wm->windows[idx]);
         }
     }
@@ -1532,6 +1582,9 @@ int main(void) {
                 if (!pty_got_data[i]) continue;
                 wm_window_t *win = &wm.windows[i];
                 term_render(win);
+                if (!win->focused)
+                    fb_set_alpha(win->fb, (uint32_t)win->w * win->h,
+                                 INACTIVE_ALPHA);
                 wm_submit_frame(win);
             }
         }
