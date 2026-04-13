@@ -51,6 +51,54 @@ static const wm_theme_t wm_themes[WM_THEME_COUNT] = {
     { "Rose Pine",      0xFF191724, 0xFF26233A, 0xFFC4A7E7, 0xFF6E6A86, 0xFFE0DEF4, 0xFF908CAA, 0xFF403D52, 0xFFEB6F92, 0xFF191724, 0xFFC4A7E7, 0xFF403D52, 0xFFC4A7E7, 0xFF26233A, 0xFFE0DEF4, 0xFF191724 },
 };
 
+static const char *wallpaper_names[WM_WALLPAPER_COUNT] = {
+    "Solid", "Static", "Grid", "Diamonds",
+    "Checkerboard", "Gradient", "Rings", "Plasma"
+};
+
+static const int8_t sin_lut[256] = {
+    0, 3, 6, 9, 12, 16, 19, 22, 25, 28, 31, 34, 37, 40, 43, 46,
+    49, 51, 54, 57, 60, 63, 65, 68, 71, 73, 76, 78, 81, 83, 85, 88,
+    90, 92, 94, 96, 98, 100, 102, 104, 106, 107, 109, 111, 112, 113, 115, 116,
+    117, 118, 120, 121, 122, 122, 123, 124, 125, 125, 126, 126, 126, 127, 127, 127,
+    127, 127, 127, 127, 126, 126, 126, 125, 125, 124, 123, 122, 122, 121, 120, 118,
+    117, 116, 115, 113, 112, 111, 109, 107, 106, 104, 102, 100, 98, 96, 94, 92,
+    90, 88, 85, 83, 81, 78, 76, 73, 71, 68, 65, 63, 60, 57, 54, 51,
+    49, 46, 43, 40, 37, 34, 31, 28, 25, 22, 19, 16, 12, 9, 6, 3,
+    0, -3, -6, -9, -12, -16, -19, -22, -25, -28, -31, -34, -37, -40, -43, -46,
+    -49, -51, -54, -57, -60, -63, -65, -68, -71, -73, -76, -78, -81, -83, -85, -88,
+    -90, -92, -94, -96, -98, -100, -102, -104, -106, -107, -109, -111, -112, -113, -115, -116,
+    -117, -118, -120, -121, -122, -122, -123, -124, -125, -125, -126, -126, -126, -127, -127, -127,
+    -127, -127, -127, -127, -126, -126, -126, -125, -125, -124, -123, -122, -122, -121, -120, -118,
+    -117, -116, -115, -113, -112, -111, -109, -107, -106, -104, -102, -100, -98, -96, -94, -92,
+    -90, -88, -85, -83, -81, -78, -76, -73, -71, -68, -65, -63, -60, -57, -54, -51,
+    -49, -46, -43, -40, -37, -34, -31, -28, -25, -22, -19, -16, -12, -9, -6, -3,
+};
+
+static uint32_t wp_hash(uint32_t x, uint32_t y) {
+    uint32_t h = x * 374761393u ^ y * 668265263u;
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return h ^ (h >> 16);
+}
+
+static uint32_t color_lerp(uint32_t c1, uint32_t c2, int t) {
+    if (t <= 0) return c1;
+    if (t >= 255) return c2;
+    int r1 = (c1 >> 16) & 0xFF, g1 = (c1 >> 8) & 0xFF, b1 = c1 & 0xFF;
+    int r2 = (c2 >> 16) & 0xFF, g2 = (c2 >> 8) & 0xFF, b2 = c2 & 0xFF;
+    int r = r1 + ((r2 - r1) * t >> 8);
+    int g = g1 + ((g2 - g1) * t >> 8);
+    int b = b1 + ((b2 - b1) * t >> 8);
+    return 0xFF000000 | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+}
+
+static int isqrt(uint32_t n) {
+    if (n == 0) return 0;
+    uint32_t x = n, y = (x + 1) >> 1;
+    while (y < x) { x = y; y = (x + n / x) >> 1; }
+    return (int)x;
+}
+
 static void overlay_reconfigure_alpha(wm_state_t *wm) {
     fb_layer_config_t cfg = {0};
     fb_layer_info_t info = {0};
@@ -245,6 +293,101 @@ static void init_taskbar(wm_state_t *wm) {
     wm->taskbar_meta = (volatile fb_layer_metadata_t *)(uintptr_t)info.metadata_user_va;
 }
 
+/* --- wallpaper rendering --- */
+
+void wm_render_wallpaper(wm_state_t *wm) {
+    if (!wm->desktop_fb) return;
+    uint32_t bg = THEME_BG_DARK;
+    uint32_t med = THEME_BG_MEDIUM;
+    uint32_t acc = THEME_ACCENT_DIM;
+
+    switch (wm->wallpaper_current) {
+    case 0: /* Solid */
+        draw_fill_rect(wm->desktop_fb, SCREEN_W, 0, 0, SCREEN_W, SCREEN_H, bg);
+        break;
+    case 1: { /* Static — grayscale noise */
+        int bgr = (bg >> 16) & 0xFF, bgg = (bg >> 8) & 0xFF, bgb = bg & 0xFF;
+        for (int y = 0; y < SCREEN_H; y++)
+            for (int x = 0; x < SCREEN_W; x++) {
+                int v = (int)(wp_hash(x, y) & 0x3F) - 32;
+                int r = bgr + v, g = bgg + v, b = bgb + v;
+                if (r < 0) r = 0; if (r > 255) r = 255;
+                if (g < 0) g = 0; if (g > 255) g = 255;
+                if (b < 0) b = 0; if (b > 255) b = 255;
+                wm->desktop_fb[y * SCREEN_W + x] =
+                    0xFF000000 | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+            }
+        break;
+    }
+    case 2: /* Grid */
+        for (int y = 0; y < SCREEN_H; y++)
+            for (int x = 0; x < SCREEN_W; x++)
+                wm->desktop_fb[y * SCREEN_W + x] =
+                    ((x % 32 == 0) || (y % 32 == 0)) ? med : bg;
+        break;
+    case 3: { /* Diamonds — Manhattan distance from center */
+        int cx = SCREEN_W / 2, cy = SCREEN_H / 2;
+        for (int y = 0; y < SCREEN_H; y++)
+            for (int x = 0; x < SCREEN_W; x++) {
+                int dx = x - cx; if (dx < 0) dx = -dx;
+                int dy = y - cy; if (dy < 0) dy = -dy;
+                int t = ((dx + dy) % 80) * 255 / 80;
+                wm->desktop_fb[y * SCREEN_W + x] = color_lerp(bg, acc, t);
+            }
+        break;
+    }
+    case 4: /* Checkerboard */
+        for (int y = 0; y < SCREEN_H; y++)
+            for (int x = 0; x < SCREEN_W; x++)
+                wm->desktop_fb[y * SCREEN_W + x] =
+                    (((x >> 5) + (y >> 5)) & 1) ? bg : med;
+        break;
+    case 5: /* Gradient — vertical blend */
+        for (int y = 0; y < SCREEN_H; y++) {
+            int t = y * 255 / SCREEN_H;
+            uint32_t c = color_lerp(bg, med, t);
+            for (int x = 0; x < SCREEN_W; x++)
+                wm->desktop_fb[y * SCREEN_W + x] = c;
+        }
+        break;
+    case 6: { /* Rings — concentric circles from center */
+        int cx = SCREEN_W / 2, cy = SCREEN_H / 2;
+        for (int y = 0; y < SCREEN_H; y++)
+            for (int x = 0; x < SCREEN_W; x++) {
+                int dx = x - cx, dy = y - cy;
+                int d = isqrt((uint32_t)(dx * dx + dy * dy));
+                int t = (d % 60) * 255 / 60;
+                wm->desktop_fb[y * SCREEN_W + x] = color_lerp(bg, med, t);
+            }
+        break;
+    }
+    case 7: { /* Plasma — sine wave interference */
+        for (int y = 0; y < SCREEN_H; y++)
+            for (int x = 0; x < SCREEN_W; x++) {
+                int v1 = sin_lut[(x * 2 + 17) & 0xFF];
+                int v2 = sin_lut[(y * 3 + 41) & 0xFF];
+                int v3 = sin_lut[((x + y * 2) >> 1) & 0xFF];
+                int v4 = sin_lut[((x * 5 + y * 3) >> 2) & 0xFF];
+                int v = (v1 + v2 + v3 + v4 + 508) * 255 / 1016;
+                wm->desktop_fb[y * SCREEN_W + x] = color_lerp(bg, acc, v);
+            }
+        break;
+    }
+    default:
+        draw_fill_rect(wm->desktop_fb, SCREEN_W, 0, 0, SCREEN_W, SCREEN_H, bg);
+        break;
+    }
+    desktop_mark_dirty(wm, 0, 0, SCREEN_W, SCREEN_H);
+}
+
+void wm_apply_wallpaper(wm_state_t *wm, int wp_idx) {
+    if (wp_idx < 0 || wp_idx >= WM_WALLPAPER_COUNT) return;
+    wm->wallpaper_current = wp_idx;
+    wm_render_wallpaper(wm);
+    if (wm->settings_active)
+        settings_render(wm);
+}
+
 /* --- desktop background layer --- */
 
 /**
@@ -270,8 +413,7 @@ static void init_desktop(wm_state_t *wm) {
     wm->desktop_fb = (uint32_t *)(uintptr_t)info.fb_user_va;
     wm->desktop_meta = (volatile fb_layer_metadata_t *)(uintptr_t)info.metadata_user_va;
 
-    /* Fill with desktop background color */
-    draw_fill_rect(wm->desktop_fb, SCREEN_W, 0, 0, SCREEN_W, SCREEN_H, THEME_BG_DARK);
+    wm_render_wallpaper(wm);
 
     /* Reset desktop dirty tracking */
     wm->desk_dirty_x0 = SCREEN_W;
@@ -441,10 +583,7 @@ void wm_apply_theme(wm_state_t *wm, int theme_idx) {
     g_wm_theme = wm_themes[theme_idx];
     wm->theme_current = theme_idx;
 
-    if (wm->desktop_fb) {
-        draw_fill_rect(wm->desktop_fb, SCREEN_W, 0, 0, SCREEN_W, SCREEN_H, THEME_BG_DARK);
-        desktop_mark_dirty(wm, 0, 0, SCREEN_W, SCREEN_H);
-    }
+    wm_render_wallpaper(wm);
 
     for (int i = 0; i < MAX_WINDOWS; i++) {
         wm_window_t *win = &wm->windows[i];
@@ -733,30 +872,79 @@ void settings_render(wm_state_t *wm) {
     draw_fill_rect(wm->settings_fb, stride, 0, 0, 2, sh, THEME_ACCENT);
     draw_fill_rect(wm->settings_fb, stride, SETTINGS_W - 2, 0, 2, sh, THEME_ACCENT);
 
-    /* title */
-    int ty = 2 + SETTINGS_PAD;
-    draw_text(wm->settings_fb, stride, SETTINGS_PAD + 2, ty,
-              "Theme", THEME_ACCENT, bg);
+    /* tab bar */
+    static const char *tab_labels[SETTINGS_SEC_COUNT] = {"Theme", "Wallpaper", "About"};
+    int tab_y = 2 + SETTINGS_PAD;
+    int tab_gap = 2;
+    int avail_w = SETTINGS_W - SETTINGS_PAD * 2 - tab_gap * (SETTINGS_SEC_COUNT - 1);
+    int tab_w = avail_w / SETTINGS_SEC_COUNT;
 
-    /* separator */
-    int sep_y = ty + FONT_H + 4;
+    for (int t = 0; t < SETTINGS_SEC_COUNT; t++) {
+        int tx = SETTINGS_PAD + t * (tab_w + tab_gap);
+        uint32_t tbg = (t == wm->settings_section) ? THEME_ACCENT : THEME_BG_MEDIUM;
+        uint32_t tfg = (t == wm->settings_section) ? 0xFF000000 : THEME_TEXT_PRIMARY;
+        draw_fill_rect(wm->settings_fb, stride, tx, tab_y, tab_w, SETTINGS_TAB_H, tbg);
+        int lbl_len = (int)strlen(tab_labels[t]);
+        int lbl_x = tx + (tab_w - lbl_len * FONT_W) / 2;
+        int lbl_y = tab_y + (SETTINGS_TAB_H - FONT_H) / 2;
+        draw_text(wm->settings_fb, stride, lbl_x, lbl_y, tab_labels[t], tfg, tbg);
+    }
+
+    /* separator below tabs */
+    int sep_y = tab_y + SETTINGS_TAB_H + SETTINGS_PAD;
     draw_fill_rect(wm->settings_fb, stride, SETTINGS_PAD, sep_y,
                    SETTINGS_W - SETTINGS_PAD * 2, 1, THEME_BORDER);
 
-    /* theme items */
-    int item_y = sep_y + 5;
-    for (int i = 0; i < WM_THEME_COUNT; i++) {
-        int iy = item_y + i * SETTINGS_ITEM_H;
-        int selected = (i == wm->theme_current);
-        uint32_t ibg = selected ? THEME_ACCENT : bg;
-        uint32_t ifg = selected ? 0xFF000000 : THEME_TEXT_PRIMARY;
+    int content_y = sep_y + 5;
 
+    switch (wm->settings_section) {
+    case SETTINGS_SEC_THEME:
+        for (int i = 0; i < WM_THEME_COUNT; i++) {
+            int iy = content_y + i * SETTINGS_ITEM_H;
+            int sel = (i == wm->theme_current);
+            uint32_t ibg = sel ? THEME_ACCENT : bg;
+            uint32_t ifg = sel ? 0xFF000000 : THEME_TEXT_PRIMARY;
+            draw_fill_rect(wm->settings_fb, stride, SETTINGS_PAD, iy,
+                           SETTINGS_W - SETTINGS_PAD * 2, SETTINGS_ITEM_H, ibg);
+            draw_text(wm->settings_fb, stride,
+                      SETTINGS_PAD + 8, iy + (SETTINGS_ITEM_H - FONT_H) / 2,
+                      wm_themes[i].name, ifg, ibg);
+        }
+        break;
+    case SETTINGS_SEC_WALLPAPER:
+        for (int i = 0; i < WM_WALLPAPER_COUNT; i++) {
+            int iy = content_y + i * SETTINGS_ITEM_H;
+            int sel = (i == wm->wallpaper_current);
+            uint32_t ibg = sel ? THEME_ACCENT : bg;
+            uint32_t ifg = sel ? 0xFF000000 : THEME_TEXT_PRIMARY;
+            draw_fill_rect(wm->settings_fb, stride, SETTINGS_PAD, iy,
+                           SETTINGS_W - SETTINGS_PAD * 2, SETTINGS_ITEM_H, ibg);
+            draw_text(wm->settings_fb, stride,
+                      SETTINGS_PAD + 8, iy + (SETTINGS_ITEM_H - FONT_H) / 2,
+                      wallpaper_names[i], ifg, ibg);
+        }
+        break;
+    case SETTINGS_SEC_ABOUT: {
+        int cy = content_y;
         draw_fill_rect(wm->settings_fb, stride,
-                       SETTINGS_PAD, iy,
-                       SETTINGS_W - SETTINGS_PAD * 2, SETTINGS_ITEM_H, ibg);
-        draw_text(wm->settings_fb, stride,
-                  SETTINGS_PAD + 8, iy + (SETTINGS_ITEM_H - FONT_H) / 2,
-                  wm_themes[i].name, ifg, ibg);
+                       SETTINGS_PAD + 8, cy, 40, 4, THEME_ACCENT);
+        cy += 12;
+        draw_text(wm->settings_fb, stride, SETTINGS_PAD + 8, cy,
+                  "Serotonin", THEME_ACCENT, bg);
+        cy += FONT_H + 8;
+        draw_text(wm->settings_fb, stride, SETTINGS_PAD + 8, cy,
+                  "Version 0.4.3", THEME_TEXT_PRIMARY, bg);
+        cy += FONT_H + 12;
+        draw_text(wm->settings_fb, stride, SETTINGS_PAD + 8, cy,
+                  "A hobby operating system", THEME_TEXT_DIM, bg);
+        cy += FONT_H + 2;
+        draw_text(wm->settings_fb, stride, SETTINGS_PAD + 8, cy,
+                  "written in C and x86 ASM", THEME_TEXT_DIM, bg);
+        cy += FONT_H + 12;
+        draw_text(wm->settings_fb, stride, SETTINGS_PAD + 8, cy,
+                  "(c) 2024-2026", THEME_TEXT_DIM, bg);
+        break;
+    }
     }
 
     wm->settings_meta->dx0 = 0;

@@ -248,12 +248,30 @@ void wm_handle_mouse(wm_state_t *wm, mouse_event_t *ev) {
             int sh = SETTINGS_POPUP_H;
             int sy = SCREEN_H - TASKBAR_H - sh;
             if (mx >= sx && mx < sx + SETTINGS_W && my >= sy && my < sy + sh) {
-                int item_y = sy + SETTINGS_HEADER_H;
-                if (my >= item_y) {
-                    int idx = (my - item_y) / SETTINGS_ITEM_H;
-                    if (idx >= 0 && idx < WM_THEME_COUNT) {
-                        settings_close(wm);
-                        wm_apply_theme(wm, idx);
+                int lx = mx - sx, ly = my - sy;
+                int tab_y = 2 + SETTINGS_PAD;
+                int tab_gap = 2;
+                int avail_w = SETTINGS_W - SETTINGS_PAD * 2 - tab_gap * (SETTINGS_SEC_COUNT - 1);
+                int tab_w = avail_w / SETTINGS_SEC_COUNT;
+                if (ly >= tab_y && ly < tab_y + SETTINGS_TAB_H) {
+                    int rel = lx - SETTINGS_PAD;
+                    if (rel >= 0) {
+                        int tab = rel / (tab_w + tab_gap);
+                        if (tab >= 0 && tab < SETTINGS_SEC_COUNT) {
+                            wm->settings_section = tab;
+                            settings_render(wm);
+                        }
+                    }
+                    return;
+                }
+                if (ly >= SETTINGS_CONTENT_Y) {
+                    int idx = (ly - SETTINGS_CONTENT_Y) / SETTINGS_ITEM_H;
+                    if (wm->settings_section == SETTINGS_SEC_THEME) {
+                        if (idx >= 0 && idx < WM_THEME_COUNT)
+                            wm_apply_theme(wm, idx);
+                    } else if (wm->settings_section == SETTINGS_SEC_WALLPAPER) {
+                        if (idx >= 0 && idx < WM_WALLPAPER_COUNT)
+                            wm_apply_wallpaper(wm, idx);
                     }
                 }
                 return;

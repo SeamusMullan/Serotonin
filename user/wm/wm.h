@@ -34,13 +34,23 @@
 #define WM_THEME_COUNT       7
 
 /* Settings popup */
-#define SETTINGS_W        220
+#define SETTINGS_W        240
 #define SETTINGS_ITEM_H   22
 #define SETTINGS_PAD      6
-#define SETTINGS_HEADER_H 34
-#define SETTINGS_POPUP_H  (SETTINGS_HEADER_H + WM_THEME_COUNT * SETTINGS_ITEM_H + SETTINGS_PAD + 2)
+#define SETTINGS_TAB_H    20
+#define SETTINGS_CONTENT_Y (2 + SETTINGS_PAD + SETTINGS_TAB_H + SETTINGS_PAD + 1 + 4)
+#define SETTINGS_POPUP_H  (SETTINGS_CONTENT_Y + 8 * SETTINGS_ITEM_H + SETTINGS_PAD + 2)
 #define SETTINGS_BTN_W    20
 #define SETTINGS_BTN_H    18
+
+/* Wallpapers */
+#define WM_WALLPAPER_COUNT 8
+
+/* Settings sections */
+#define SETTINGS_SEC_THEME     0
+#define SETTINGS_SEC_WALLPAPER 1
+#define SETTINGS_SEC_ABOUT     2
+#define SETTINGS_SEC_COUNT     3
 
 /* Layer assignments */
 #define LAYER_DESKTOP   1
@@ -239,6 +249,8 @@ typedef struct {
     uint8_t  settings_active;
     uint32_t *settings_fb;
     volatile fb_layer_metadata_t *settings_meta;
+    int      settings_section;
+    int      wallpaper_current;
     /* Desktop background layer */
     uint32_t    *desktop_fb;
     volatile fb_layer_metadata_t *desktop_meta;
@@ -296,5 +308,7 @@ void wm_apply_theme(wm_state_t *wm, int theme_idx);
 void settings_open(wm_state_t *wm);
 void settings_close(wm_state_t *wm);
 void settings_render(wm_state_t *wm);
+void wm_render_wallpaper(wm_state_t *wm);
+void wm_apply_wallpaper(wm_state_t *wm, int wp_idx);
 
 #endif
