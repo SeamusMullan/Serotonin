@@ -31,7 +31,16 @@
 #define LAUNCHER_PAD     8
 #define LAUNCHER_MAX_ITEMS 64
 
-#define WM_THEME_COUNT       1
+#define WM_THEME_COUNT       7
+
+/* Settings popup */
+#define SETTINGS_W        220
+#define SETTINGS_ITEM_H   22
+#define SETTINGS_PAD      6
+#define SETTINGS_HEADER_H 34
+#define SETTINGS_POPUP_H  (SETTINGS_HEADER_H + WM_THEME_COUNT * SETTINGS_ITEM_H + SETTINGS_PAD + 2)
+#define SETTINGS_BTN_W    20
+#define SETTINGS_BTN_H    18
 
 /* Layer assignments */
 #define LAYER_DESKTOP   1
@@ -226,6 +235,10 @@ typedef struct {
     int      launcher_filtered[LAUNCHER_MAX_ITEMS];
     int      launcher_filtered_count;
     int      theme_current;
+    /* Settings popup */
+    uint8_t  settings_active;
+    uint32_t *settings_fb;
+    volatile fb_layer_metadata_t *settings_meta;
     /* Desktop background layer */
     uint32_t    *desktop_fb;
     volatile fb_layer_metadata_t *desktop_meta;
@@ -280,5 +293,8 @@ void launcher_close(wm_state_t *wm);
 void launcher_render(wm_state_t *wm);
 void launcher_key(wm_state_t *wm, keyboard_event_t *ev);
 void wm_apply_theme(wm_state_t *wm, int theme_idx);
+void settings_open(wm_state_t *wm);
+void settings_close(wm_state_t *wm);
+void settings_render(wm_state_t *wm);
 
 #endif

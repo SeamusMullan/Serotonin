@@ -28,6 +28,15 @@ void wm_handle_keyboard(wm_state_t *wm, keyboard_event_t *ev) {
         launcher_key(wm, ev);
         return;
     }
+
+    /* Settings popup: Escape closes it */
+    if (wm->settings_active) {
+        if (ev->scancode == 0x01) {
+            settings_close(wm);
+            return;
+        }
+    }
+
     /* WM keyboard shortcuts (Alt held) */
     if (alt_held) {
         switch (ev->scancode) {
@@ -226,6 +235,46 @@ void wm_handle_mouse(wm_state_t *wm, mouse_event_t *ev) {
             win->h = (uint16_t)nh;
         }
         return;
+    }
+
+    /* Click: check overlays and taskbar first */
+    if (ev->event_type == MOUSE_EVENT_BUTTON_DOWN &&
+        (ev->buttons & MOUSE_BTN_LEFT)) {
+        int mx = ev->x, my = ev->y;
+
+        /* Settings popup click */
+        if (wm->settings_active) {
+            int sx = SCREEN_W - SETTINGS_W - 8;
+            int sh = SETTINGS_POPUP_H;
+            int sy = SCREEN_H - TASKBAR_H - sh;
+            if (mx >= sx && mx < sx + SETTINGS_W && my >= sy && my < sy + sh) {
+                int item_y = sy + SETTINGS_HEADER_H;
+                if (my >= item_y) {
+                    int idx = (my - item_y) / SETTINGS_ITEM_H;
+                    if (idx >= 0 && idx < WM_THEME_COUNT) {
+                        settings_close(wm);
+                        wm_apply_theme(wm, idx);
+                    }
+                }
+                return;
+            }
+            settings_close(wm);
+        }
+
+        /* Taskbar settings button */
+        if (my >= SCREEN_H - TASKBAR_H && my < SCREEN_H) {
+            int brand_x = SCREEN_W - 9 * FONT_W - 8;
+            int sbtn_x = brand_x - SETTINGS_BTN_W - 8;
+            int sbtn_y = SCREEN_H - TASKBAR_H + (TASKBAR_H - SETTINGS_BTN_H) / 2 + 1;
+            if (mx >= sbtn_x && mx < sbtn_x + SETTINGS_BTN_W &&
+                my >= sbtn_y && my < sbtn_y + SETTINGS_BTN_H) {
+                if (wm->settings_active)
+                    settings_close(wm);
+                else
+                    settings_open(wm);
+                return;
+            }
+        }
     }
 
     /* Click: find which window was hit */

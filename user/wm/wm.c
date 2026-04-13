@@ -42,7 +42,13 @@ static uint8_t  cursor_blink_on = 1;
 #define BLINK_INTERVAL 31  /* ~WM_POLL_TIMEOUT_MS * 31 ~= 248ms */
 
 static const wm_theme_t wm_themes[WM_THEME_COUNT] = {
-    { "Default",     0xFF1A1A2E, 0xFF252540, 0xFF7A98FF, 0xFF4A6099, 0xFFE0E0E0, 0xFF808090, 0xFF3A3A50, 0xFFFF4040, 0xFFFFFFFF, 0xFF7A98FF, 0xFF404050, 0xFF7A98FF, 0xFF303040, 0xFFE0E0E0, 0xFF1A1A2E }
+    { "Default",        0xFF1A1A2E, 0xFF252540, 0xFF7A98FF, 0xFF4A6099, 0xFFE0E0E0, 0xFF808090, 0xFF3A3A50, 0xFFFF4040, 0xFFFFFFFF, 0xFF7A98FF, 0xFF404050, 0xFF7A98FF, 0xFF303040, 0xFFE0E0E0, 0xFF1A1A2E },
+    { "Dracula",        0xFF282A36, 0xFF44475A, 0xFFBD93F9, 0xFF6D5FA0, 0xFFF8F8F2, 0xFF6272A4, 0xFF44475A, 0xFFFF5555, 0xFFF8F8F2, 0xFFBD93F9, 0xFF44475A, 0xFFBD93F9, 0xFF383A4A, 0xFFF8F8F2, 0xFF282A36 },
+    { "Monokai",        0xFF272822, 0xFF3E3D32, 0xFFA6E22E, 0xFF6D8F1E, 0xFFF8F8F2, 0xFF75715E, 0xFF3E3D32, 0xFFF92672, 0xFF272822, 0xFFA6E22E, 0xFF3E3D32, 0xFFA6E22E, 0xFF3E3D32, 0xFFF8F8F2, 0xFF272822 },
+    { "Nord",           0xFF2E3440, 0xFF3B4252, 0xFF88C0D0, 0xFF5E81AC, 0xFFECEFF4, 0xFF4C566A, 0xFF3B4252, 0xFFBF616A, 0xFF2E3440, 0xFF88C0D0, 0xFF3B4252, 0xFF88C0D0, 0xFF3B4252, 0xFFECEFF4, 0xFF2E3440 },
+    { "Gruvbox",        0xFF282828, 0xFF3C3836, 0xFFFE8019, 0xFFD65D0E, 0xFFFBF1C7, 0xFF928374, 0xFF3C3836, 0xFFCC241D, 0xFF282828, 0xFFFE8019, 0xFF3C3836, 0xFFFE8019, 0xFF3C3836, 0xFFFBF1C7, 0xFF282828 },
+    { "Solarized Dark", 0xFF002B36, 0xFF073642, 0xFF268BD2, 0xFF2176A7, 0xFF93A1A1, 0xFF586E75, 0xFF073642, 0xFFDC322F, 0xFFFDF6E3, 0xFF268BD2, 0xFF073642, 0xFF268BD2, 0xFF073642, 0xFF93A1A1, 0xFF002B36 },
+    { "Rose Pine",      0xFF191724, 0xFF26233A, 0xFFC4A7E7, 0xFF6E6A86, 0xFFE0DEF4, 0xFF908CAA, 0xFF403D52, 0xFFEB6F92, 0xFF191724, 0xFFC4A7E7, 0xFF403D52, 0xFFC4A7E7, 0xFF26233A, 0xFFE0DEF4, 0xFF191724 },
 };
 
 static void overlay_reconfigure_alpha(wm_state_t *wm) {
@@ -63,6 +69,19 @@ static void overlay_reconfigure_alpha(wm_state_t *wm) {
         if (sys_5ht_rcfg_layer(LAYER_LAUNCHER, &cfg, &info) == 0) {
             wm->launcher_fb = (uint32_t *)(uintptr_t)info.fb_user_va;
             wm->launcher_meta = (volatile fb_layer_metadata_t *)(uintptr_t)info.metadata_user_va;
+        }
+    }
+
+    if (wm->settings_active) {
+        int sx = SCREEN_W - SETTINGS_W - 8;
+        int sh = SETTINGS_POPUP_H;
+        int sy = SCREEN_H - TASKBAR_H - sh;
+        cfg.x0 = sx; cfg.y0 = sy;
+        cfg.x1 = sx + SETTINGS_W; cfg.y1 = sy + sh;
+        cfg.stride = SETTINGS_W * BPP;
+        if (sys_5ht_rcfg_layer(LAYER_LAUNCHER, &cfg, &info) == 0) {
+            wm->settings_fb = (uint32_t *)(uintptr_t)info.fb_user_va;
+            wm->settings_meta = (volatile fb_layer_metadata_t *)(uintptr_t)info.metadata_user_va;
         }
     }
 }
@@ -365,6 +384,19 @@ static void render_taskbar(wm_state_t *wm) {
     int brand_x = SCREEN_W - (int)strlen(brand) * FONT_W - 8;
     draw_text(wm->taskbar_fb, stride, brand_x, btn_y, brand, THEME_ACCENT, THEME_BG_MEDIUM);
 
+    /* settings button (hamburger icon) left of brand */
+    int sbtn_x = brand_x - SETTINGS_BTN_W - 8;
+    int sbtn_y = (TASKBAR_H - SETTINGS_BTN_H) / 2 + 1;
+    uint32_t sbtn_bg = wm->settings_active ? THEME_ACCENT_DIM : THEME_BG_DARK;
+    draw_fill_rect(wm->taskbar_fb, stride, sbtn_x, sbtn_y,
+                   SETTINGS_BTN_W, SETTINGS_BTN_H, sbtn_bg);
+    uint32_t line_color = wm->settings_active ? 0xFFFFFFFF : THEME_TEXT_PRIMARY;
+    int line_w = 12;
+    int line_x = sbtn_x + (SETTINGS_BTN_W - line_w) / 2;
+    draw_fill_rect(wm->taskbar_fb, stride, line_x, sbtn_y + 3, line_w, 2, line_color);
+    draw_fill_rect(wm->taskbar_fb, stride, line_x, sbtn_y + 8, line_w, 2, line_color);
+    draw_fill_rect(wm->taskbar_fb, stride, line_x, sbtn_y + 13, line_w, 2, line_color);
+
     /* submit frame */
     wm->taskbar_meta->dx0 = 0; wm->taskbar_meta->dy0 = 0;
     wm->taskbar_meta->dx1 = SCREEN_W; wm->taskbar_meta->dy1 = TASKBAR_H;
@@ -426,6 +458,8 @@ void wm_apply_theme(wm_state_t *wm, int theme_idx) {
     overlay_reconfigure_alpha(wm);
     if (wm->launcher_active)
         launcher_render(wm);
+    if (wm->settings_active)
+        settings_render(wm);
 }
 
 static void launcher_filter_update(wm_state_t *wm) {
@@ -459,6 +493,7 @@ static void launcher_filter_update(wm_state_t *wm) {
 
 void launcher_open(wm_state_t *wm) {
     if (wm->launcher_active) return;
+    if (wm->settings_active) settings_close(wm);
 
     /* enumerate /bin */
     char buf[2048];
@@ -670,6 +705,96 @@ void launcher_key(wm_state_t *wm, keyboard_event_t *ev) {
         break;
     }
     launcher_render(wm);
+}
+
+/* --- settings popup --- */
+
+void settings_close(wm_state_t *wm) {
+    if (!wm->settings_active) return;
+    sys_5ht_rel_buf(LAYER_LAUNCHER);
+    wm->settings_fb = NULL;
+    wm->settings_meta = NULL;
+    wm->settings_active = 0;
+    render_taskbar(wm);
+}
+
+void settings_render(wm_state_t *wm) {
+    if (!wm->settings_fb) return;
+
+    uint32_t stride = SETTINGS_W;
+    int sh = SETTINGS_POPUP_H;
+    uint32_t bg = THEME_BG_DARK;
+
+    draw_fill_rect(wm->settings_fb, stride, 0, 0, SETTINGS_W, sh, bg);
+
+    /* border */
+    draw_fill_rect(wm->settings_fb, stride, 0, 0, SETTINGS_W, 2, THEME_ACCENT);
+    draw_fill_rect(wm->settings_fb, stride, 0, sh - 2, SETTINGS_W, 2, THEME_ACCENT);
+    draw_fill_rect(wm->settings_fb, stride, 0, 0, 2, sh, THEME_ACCENT);
+    draw_fill_rect(wm->settings_fb, stride, SETTINGS_W - 2, 0, 2, sh, THEME_ACCENT);
+
+    /* title */
+    int ty = 2 + SETTINGS_PAD;
+    draw_text(wm->settings_fb, stride, SETTINGS_PAD + 2, ty,
+              "Theme", THEME_ACCENT, bg);
+
+    /* separator */
+    int sep_y = ty + FONT_H + 4;
+    draw_fill_rect(wm->settings_fb, stride, SETTINGS_PAD, sep_y,
+                   SETTINGS_W - SETTINGS_PAD * 2, 1, THEME_BORDER);
+
+    /* theme items */
+    int item_y = sep_y + 5;
+    for (int i = 0; i < WM_THEME_COUNT; i++) {
+        int iy = item_y + i * SETTINGS_ITEM_H;
+        int selected = (i == wm->theme_current);
+        uint32_t ibg = selected ? THEME_ACCENT : bg;
+        uint32_t ifg = selected ? 0xFF000000 : THEME_TEXT_PRIMARY;
+
+        draw_fill_rect(wm->settings_fb, stride,
+                       SETTINGS_PAD, iy,
+                       SETTINGS_W - SETTINGS_PAD * 2, SETTINGS_ITEM_H, ibg);
+        draw_text(wm->settings_fb, stride,
+                  SETTINGS_PAD + 8, iy + (SETTINGS_ITEM_H - FONT_H) / 2,
+                  wm_themes[i].name, ifg, ibg);
+    }
+
+    wm->settings_meta->dx0 = 0;
+    wm->settings_meta->dy0 = 0;
+    wm->settings_meta->dx1 = SETTINGS_W;
+    wm->settings_meta->dy1 = sh;
+    wm->settings_meta->frame_id++;
+    wm->settings_meta->ready = 1;
+}
+
+void settings_open(wm_state_t *wm) {
+    if (wm->settings_active) return;
+    if (wm->launcher_active) launcher_close(wm);
+
+    int sw = SETTINGS_W;
+    int sh = SETTINGS_POPUP_H;
+    int sx = SCREEN_W - sw - 8;
+    int sy = SCREEN_H - TASKBAR_H - sh;
+
+    fb_layer_config_t cfg = {0};
+    cfg.size = sizeof(cfg);
+    cfg.x0 = sx; cfg.y0 = sy;
+    cfg.x1 = sx + sw; cfg.y1 = sy + sh;
+    cfg.alpha = 0;
+    cfg.hints = FB_LAYER_HINT_OPAQUE_CONTENT |
+                FB_LAYER_HINT_FREQUENT_UPDATES |
+                FB_LAYER_HINT_TRANSIENT;
+    cfg.stride = sw * BPP;
+
+    fb_layer_info_t info = {0};
+    if (sys_5ht_req_buf(LAYER_LAUNCHER, &cfg, &info) != 0) return;
+
+    wm->settings_fb = (uint32_t *)(uintptr_t)info.fb_user_va;
+    wm->settings_meta = (volatile fb_layer_metadata_t *)(uintptr_t)info.metadata_user_va;
+    wm->settings_active = 1;
+
+    settings_render(wm);
+    render_taskbar(wm);
 }
 
 /* --- window decorations --- */
