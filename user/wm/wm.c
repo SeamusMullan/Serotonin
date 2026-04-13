@@ -41,6 +41,14 @@ static uint8_t  cursor_blink_on = 1;
 
 /* --- palette init --- */
 
+/**
+ * Initialize the color palette for the window manager.
+ *
+ * This populates the `palette` array with standard VGA colors,
+ * a 6×6×6 color cube, and a grayscale ramp.
+ *
+ * @param wm Pointer to the window manager state structure.
+ */
 void wm_init_palette(wm_state_t *wm) {
     /* 0-15: standard colors */
     for (int i = 0; i < 16; i++)
@@ -64,6 +72,14 @@ void wm_init_palette(wm_state_t *wm) {
 
 /* --- cursor layer --- */
 
+/**
+ * Initialize the cursor layer.
+ *
+ * Sets up a framebuffer layer for the mouse cursor, draws the cursor bitmap,
+ * and submits the initial frame to the compositor.
+ *
+ * @param wm Pointer to the window manager state.
+ */
 static void init_cursor_layer(wm_state_t *wm) {
     fb_layer_config_t cfg = {0};
     cfg.size = sizeof(cfg);
@@ -99,6 +115,16 @@ static void init_cursor_layer(wm_state_t *wm) {
     wm->cursor_meta->ready = 1;
 }
 
+/**
+ * Move the cursor to a new position.
+ *
+ * Reconfigures the cursor layer coordinates and marks the layer dirty
+ * so that the compositor will redraw the cursor at the new location.
+ *
+ * @param wm Pointer to the window manager state.
+ * @param x  New X coordinate for the cursor.
+ * @param y  New Y coordinate for the cursor.
+ */
 static void move_cursor(wm_state_t *wm, int x, int y) {
     fb_layer_config_t cfg = {0};
     cfg.size = sizeof(cfg);
@@ -125,6 +151,14 @@ static void move_cursor(wm_state_t *wm, int x, int y) {
 
 /* --- taskbar --- */
 
+/**
+ * Initialize the taskbar layer.
+ *
+ * Allocates a framebuffer layer for the taskbar, sets its geometry
+ * to the bottom of the screen and prepares it for rendering.
+ *
+ * @param wm Pointer to the window manager state.
+ */
 static void init_taskbar(wm_state_t *wm) {
     fb_layer_config_t cfg = {0};
     cfg.size = sizeof(cfg);
@@ -145,6 +179,14 @@ static void init_taskbar(wm_state_t *wm) {
 
 /* --- desktop background layer --- */
 
+/**
+ * Initialize the desktop background layer.
+ *
+ * Creates a fullscreen framebuffer layer, fills it with the background
+ * color, and submits the initial frame.
+ *
+ * @param wm Pointer to the window manager state.
+ */
 static void init_desktop(wm_state_t *wm) {
     fb_layer_config_t cfg = {0};
     cfg.size = sizeof(cfg);
@@ -177,6 +219,17 @@ static void init_desktop(wm_state_t *wm) {
     wm->desktop_meta->ready = 1;
 }
 
+/**
+ * Mark a region of the desktop as dirty.
+ *
+ * The compositor will redraw only the specified rectangle.
+ *
+ * @param wm Pointer to the window manager state.
+ * @param x  X coordinate of the rectangle.
+ * @param y  Y coordinate of the rectangle.
+ * @param w  Width of the rectangle.
+ * @param h  Height of the rectangle.
+ */
 void desktop_mark_dirty(wm_state_t *wm, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
     uint16_t x1 = x + w;
     uint16_t y1 = y + h;
@@ -188,6 +241,15 @@ void desktop_mark_dirty(wm_state_t *wm, uint16_t x, uint16_t y, uint16_t w, uint
     if (y1 > wm->desk_dirty_y1) wm->desk_dirty_y1 = y1;
 }
 
+/**
+ * Submit any pending desktop updates to the compositor.
+ *
+ * If the desktop layer is not ready or there are no dirty regions,
+ * the function returns early. Otherwise it updates the dirty rectangle
+ * metadata and marks the layer ready.
+ *
+ * @param wm Pointer to the window manager state.
+ */
 void desktop_submit(wm_state_t *wm) {
     if (!wm->desktop_meta) return;
     if (wm->desktop_meta->ready) return;
@@ -209,6 +271,14 @@ void desktop_submit(wm_state_t *wm) {
 
 /* --- taskbar --- */
 
+/**
+ * Render the taskbar.
+ *
+ * Draws the background, border, window buttons, and the static brand label.
+ * Submits the frame to the compositor.
+ *
+ * @param wm Pointer to the window manager state.
+ */
 static void render_taskbar(wm_state_t *wm) {
     if (!wm->taskbar_fb) return;
 
