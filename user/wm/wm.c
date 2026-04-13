@@ -1034,20 +1034,61 @@ void wm_close_window(wm_state_t *wm, int idx) {
 void wm_focus_window(wm_state_t *wm, int idx) {
     if (idx == wm->focused_idx) return;
 
+    int old_idx = wm->focused_idx;
+
     /* unfocus old */
-    if (wm->focused_idx >= 0 && wm->windows[wm->focused_idx].active) {
-        wm->windows[wm->focused_idx].focused = 0;
-        wm_render_decorations(wm, wm->focused_idx);
-        wm_submit_frame(&wm->windows[wm->focused_idx]);
-    }
+    if (old_idx >= 0 && wm->windows[old_idx].active)
+        wm->windows[old_idx].focused = 0;
 
     wm->focused_idx = idx;
 
     /* focus new */
-    if (idx >= 0 && wm->windows[idx].active) {
+    if (idx >= 0 && wm->windows[idx].active)
         wm->windows[idx].focused = 1;
-        wm_render_decorations(wm, idx);
-        wm_submit_frame(&wm->windows[idx]);
+
+    /*
+     * Promote focused window to the highest active layer so it composites
+     * on top of all other windows (critical for overlapping floating windows).
+     * Swap layer IDs with whoever currently holds the top layer, then
+     * re-render both on their new layers.
+     */
+    int did_swap = 0;
+    if (idx >= 0 && wm->windows[idx].active && wm->num_windows > 1) {
+        int top_idx = -1;
+        uint16_t top_layer = 0;
+        for (int i = 0; i < MAX_WINDOWS; i++) {
+            if (wm->windows[i].active && wm->windows[i].layer_id > top_layer) {
+                top_layer = wm->windows[i].layer_id;
+                top_idx = i;
+            }
+        }
+
+        if (top_idx >= 0 && top_idx != idx) {
+            uint16_t tmp = wm->windows[idx].layer_id;
+            wm->windows[idx].layer_id = wm->windows[top_idx].layer_id;
+            wm->windows[top_idx].layer_id = tmp;
+
+            wm_render_window(wm, top_idx);
+            wm_render_window(wm, idx);
+            did_swap = 1;
+
+            if (old_idx >= 0 && wm->windows[old_idx].active &&
+                old_idx != top_idx && old_idx != idx) {
+                wm_render_decorations(wm, old_idx);
+                wm_submit_frame(&wm->windows[old_idx]);
+            }
+        }
+    }
+
+    if (!did_swap) {
+        if (old_idx >= 0 && wm->windows[old_idx].active) {
+            wm_render_decorations(wm, old_idx);
+            wm_submit_frame(&wm->windows[old_idx]);
+        }
+        if (idx >= 0 && wm->windows[idx].active) {
+            wm_render_decorations(wm, idx);
+            wm_submit_frame(&wm->windows[idx]);
+        }
     }
 
     render_taskbar(wm);
