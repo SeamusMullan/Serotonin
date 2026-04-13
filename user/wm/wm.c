@@ -428,6 +428,35 @@ void wm_apply_theme(wm_state_t *wm, int theme_idx) {
         launcher_render(wm);
 }
 
+static void launcher_filter_update(wm_state_t *wm) {
+    wm->launcher_filtered_count = 0;
+    for (int i = 0; i < wm->launcher_count; i++) {
+        if (wm->launcher_search_len == 0) {
+            wm->launcher_filtered[wm->launcher_filtered_count++] = i;
+            continue;
+        }
+        /* case-insensitive substring match */
+        const char *hay = wm->launcher_items[i];
+        const char *needle = wm->launcher_search;
+        int nlen = wm->launcher_search_len;
+        int hlen = (int)strlen(hay);
+        int found = 0;
+        for (int h = 0; h <= hlen - nlen; h++) {
+            int match = 1;
+            for (int n = 0; n < nlen; n++) {
+                char a = hay[h + n]; if (a >= 'A' && a <= 'Z') a += 32;
+                char b = needle[n];  if (b >= 'A' && b <= 'Z') b += 32;
+                if (a != b) { match = 0; break; }
+            }
+            if (match) { found = 1; break; }
+        }
+        if (found)
+            wm->launcher_filtered[wm->launcher_filtered_count++] = i;
+    }
+    wm->launcher_selected = 0;
+    wm->launcher_scroll = 0;
+}
+
 void launcher_open(wm_state_t *wm) {
     if (wm->launcher_active) return;
 
@@ -452,8 +481,11 @@ void launcher_open(wm_state_t *wm) {
 
     if (wm->launcher_count == 0) return;
 
+    wm->launcher_search[0] = '\0';
+    wm->launcher_search_len = 0;
     wm->launcher_selected = 0;
     wm->launcher_scroll = 0;
+    launcher_filter_update(wm);
 
     /* allocate layer */
     int lx = (SCREEN_W - LAUNCHER_W) / 2;
@@ -508,19 +540,50 @@ void launcher_render(wm_state_t *wm) {
     draw_text(wm->launcher_fb, stride, LAUNCHER_PAD, LAUNCHER_PAD,
               "Launch Program", THEME_ACCENT, panel_bg);
 
+    /* search box */
+    int search_y = LAUNCHER_PAD + FONT_H + 6;
+    int search_box_w = LAUNCHER_W - LAUNCHER_PAD * 2;
+    int search_box_h = FONT_H + 8;
+    uint32_t search_bg = THEME_BG_MEDIUM;
+    draw_fill_rect(wm->launcher_fb, stride, LAUNCHER_PAD, search_y,
+                   search_box_w, search_box_h, search_bg);
+    draw_fill_rect(wm->launcher_fb, stride, LAUNCHER_PAD, search_y,
+                   search_box_w, 1, sep);
+    draw_fill_rect(wm->launcher_fb, stride, LAUNCHER_PAD, search_y + search_box_h - 1,
+                   search_box_w, 1, sep);
+    draw_fill_rect(wm->launcher_fb, stride, LAUNCHER_PAD, search_y,
+                   1, search_box_h, sep);
+    draw_fill_rect(wm->launcher_fb, stride, LAUNCHER_PAD + search_box_w - 1, search_y,
+                   1, search_box_h, sep);
+
+    int text_x = LAUNCHER_PAD + 6;
+    int text_y = search_y + 4;
+    if (wm->launcher_search_len > 0) {
+        draw_text(wm->launcher_fb, stride, text_x, text_y,
+                  wm->launcher_search, THEME_TEXT_PRIMARY, search_bg);
+        /* cursor bar after text */
+        int cx = text_x + wm->launcher_search_len * FONT_W;
+        draw_fill_rect(wm->launcher_fb, stride, cx, text_y, 2, FONT_H, THEME_ACCENT);
+    } else {
+        draw_text(wm->launcher_fb, stride, text_x, text_y,
+                  "Type to search...", THEME_TEXT_DIM, search_bg);
+        draw_fill_rect(wm->launcher_fb, stride, text_x, text_y, 2, FONT_H, THEME_ACCENT);
+    }
+
     /* separator */
-    int sep_y = LAUNCHER_PAD + FONT_H + 4;
+    int sep_y = search_y + search_box_h + 4;
     draw_fill_rect(wm->launcher_fb, stride, LAUNCHER_PAD, sep_y,
                    LAUNCHER_W - LAUNCHER_PAD * 2, 1, sep);
 
-    /* item list */
+    /* item list (filtered) */
     int list_y = sep_y + 6;
-    int visible = (LAUNCHER_H - list_y - LAUNCHER_PAD) / LAUNCHER_ITEM_H;
+    int visible = (LAUNCHER_H - list_y - LAUNCHER_PAD - FONT_H - 4) / LAUNCHER_ITEM_H;
 
-    for (int i = 0; i < visible && (i + wm->launcher_scroll) < wm->launcher_count; i++) {
-        int idx = i + wm->launcher_scroll;
+    for (int i = 0; i < visible && (i + wm->launcher_scroll) < wm->launcher_filtered_count; i++) {
+        int fi = i + wm->launcher_scroll;
+        int src_idx = wm->launcher_filtered[fi];
         int iy = list_y + i * LAUNCHER_ITEM_H;
-        int selected = (idx == wm->launcher_selected);
+        int selected = (fi == wm->launcher_selected);
 
         uint32_t bg = selected ? THEME_ACCENT : panel_bg;
         uint32_t fg = selected ? 0xFF000000 : THEME_TEXT_PRIMARY;
@@ -530,7 +593,13 @@ void launcher_render(wm_state_t *wm) {
                        LAUNCHER_W - LAUNCHER_PAD * 2, LAUNCHER_ITEM_H, bg);
         draw_text(wm->launcher_fb, stride,
                   LAUNCHER_PAD + 8, iy + (LAUNCHER_ITEM_H - FONT_H) / 2,
-                  wm->launcher_items[idx], fg, bg);
+                  wm->launcher_items[src_idx], fg, bg);
+    }
+
+    if (wm->launcher_filtered_count == 0) {
+        draw_text(wm->launcher_fb, stride,
+                  LAUNCHER_PAD + 8, list_y + (LAUNCHER_ITEM_H - FONT_H) / 2,
+                  "No matches", THEME_TEXT_DIM, panel_bg);
     }
 
     /* hint text */
@@ -549,17 +618,20 @@ void launcher_render(wm_state_t *wm) {
 void launcher_key(wm_state_t *wm, keyboard_event_t *ev) {
     if (ev->flags & KEY_FLAG_RELEASED) return;
 
-    int sep_y = LAUNCHER_PAD + FONT_H + 4 + 6;
-    int visible = (LAUNCHER_H - sep_y - LAUNCHER_PAD) / LAUNCHER_ITEM_H;
+    int search_box_h = FONT_H + 8;
+    int sep_y = LAUNCHER_PAD + FONT_H + 6 + search_box_h + 4 + 6;
+    int visible = (LAUNCHER_H - sep_y - LAUNCHER_PAD - FONT_H - 4) / LAUNCHER_ITEM_H;
 
     switch (ev->scancode) {
     case 0x01: /* Escape */
         launcher_close(wm);
         return;
     case 0x1C: /* Enter */ {
-        if (wm->launcher_selected >= 0 && wm->launcher_selected < wm->launcher_count) {
+        if (wm->launcher_selected >= 0 &&
+            wm->launcher_selected < wm->launcher_filtered_count) {
+            int src = wm->launcher_filtered[wm->launcher_selected];
             char name[32];
-            strncpy(name, wm->launcher_items[wm->launcher_selected], sizeof(name));
+            strncpy(name, wm->launcher_items[src], sizeof(name));
             name[31] = '\0';
             launcher_close(wm);
             wm_launch_window(wm, name);
@@ -574,14 +646,28 @@ void launcher_key(wm_state_t *wm, keyboard_event_t *ev) {
         }
         break;
     case 0x50: /* Down arrow */
-        if (wm->launcher_selected < wm->launcher_count - 1) {
+        if (wm->launcher_selected < wm->launcher_filtered_count - 1) {
             wm->launcher_selected++;
             if (wm->launcher_selected >= wm->launcher_scroll + visible)
                 wm->launcher_scroll = wm->launcher_selected - visible + 1;
         }
         break;
+    case 0x0E: /* Backspace */
+        if (wm->launcher_search_len > 0) {
+            wm->launcher_search[--wm->launcher_search_len] = '\0';
+            launcher_filter_update(wm);
+        }
+        break;
     default:
-        return;
+        if (ev->ascii >= 0x20 && ev->ascii < 0x7F &&
+            wm->launcher_search_len < 30) {
+            wm->launcher_search[wm->launcher_search_len++] = ev->ascii;
+            wm->launcher_search[wm->launcher_search_len] = '\0';
+            launcher_filter_update(wm);
+        } else {
+            return;
+        }
+        break;
     }
     launcher_render(wm);
 }

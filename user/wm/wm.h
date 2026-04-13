@@ -221,6 +221,10 @@ typedef struct {
     int      launcher_scroll;
     int      launcher_count;
     char     launcher_items[LAUNCHER_MAX_ITEMS][32];
+    char     launcher_search[32];
+    int      launcher_search_len;
+    int      launcher_filtered[LAUNCHER_MAX_ITEMS];
+    int      launcher_filtered_count;
     int      theme_current;
     /* Desktop background layer */
     uint32_t    *desktop_fb;
