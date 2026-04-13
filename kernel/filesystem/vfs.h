@@ -90,6 +90,7 @@ int vfs_truncate(vfs_node_t *node, uint32_t size);
 int vfs_unlink(const char *path);
 int vfs_rmdir(const char *path);
 void vfs_close(vfs_node_t *node);
+void vfs_put(vfs_node_t *node);
 void vfs_list_dir(const char *path);
 vfs_node_t *vfs_create(const char *path);
 int vfs_mkdir(const char *path);

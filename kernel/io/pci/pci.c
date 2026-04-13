@@ -1,7 +1,7 @@
-#include "pci.h"
-#include "../io.h"
-#include "../../kernel.h"
-#include "../../stdio/stdio.h"
+#include <kernel/io/pci/pci.h>
+#include <kernel/io/io.h>
+#include <kernel/kernel.h>
+#include <kernel/stdio/stdio.h>
 
 #define PCI_LOG(fmt, ...) printfs(PRINT_STATUS_INFO, "pci: " fmt, ##__VA_ARGS__)
 

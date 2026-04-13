@@ -1,8 +1,8 @@
 // kernel/test/test_string.c
-#include "ktest.h"
-#include "../string.h"
-#include "../stdlib/stdlib.h"
-#include "../stdio/stdio.h"
+#include <kernel/test/ktest.h>
+#include <kernel/string.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/stdio/stdio.h>
 
 // Test strlen
 KTEST_DEFINE(strlen_basic) {

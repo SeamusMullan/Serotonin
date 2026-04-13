@@ -1,7 +1,7 @@
 // kernel/test/ktest.c
-#include "ktest.h"
-#include "../stdio/stdio.h"
-#include "../stdlib/stdlib.h"
+#include <kernel/test/ktest.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/stdlib/stdlib.h>
 
 static ktest_results_t global_results = {0, 0, 0, 0};
 

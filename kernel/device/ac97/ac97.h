@@ -2,7 +2,7 @@
 #define _DEVICE_AC97
 
 #include <stdint.h>
-#include "../../schedule/schedule.h"
+#include <kernel/schedule/schedule.h>
 
 #define AC97_PCI_CLASS      0x04    /* Multimedia */
 #define AC97_PCI_SUBCLASS   0x01    /* Audio device */

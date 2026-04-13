@@ -8,11 +8,11 @@
  * 3. Calls main(argc, argv, envp)
  * 4. Runs C++ global destructors via __run_fini_array
  * 5. Calls __cxa_finalize for static destructor support
- * 6. Calls _exit with main's return value
+ * 6. Calls exit (flushes stdio) with main's return value
  */
 
 .extern main
-.extern _exit
+.extern exit
 .extern __run_init_array
 .extern __run_fini_array
 .extern __cxa_finalize
@@ -48,4 +48,4 @@ _start:
     pushl $0
     call __cxa_finalize
     pushl %ebx
-    call _exit
+    call exit

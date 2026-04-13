@@ -1,4 +1,4 @@
-#include "audio_mixer.h"
+#include <kernel/audio/mixer/audio_mixer.h>
 #include <stddef.h>
 
 AudioMixer *audio_mixer_create(void) {

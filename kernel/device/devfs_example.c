@@ -1,11 +1,11 @@
-#include "devfs_example.h"
-#include "../filesystem/devfs/devfs.h"
-#include "../filesystem/vfs.h"
-#include "../kernel.h"
-#include "../stdlib/stdlib.h"
-#include "../string.h"
-#include "../stdio/stdio.h"
-#include "../syscall/sys/file.h"
+#include <kernel/device/devfs_example.h>
+#include <kernel/filesystem/devfs/devfs.h>
+#include <kernel/filesystem/vfs.h>
+#include <kernel/kernel.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/string.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/syscall/sys/file.h>
 
 static const char devfs_number_value[] = "67\n";
 

@@ -1,6 +1,6 @@
-#include "stdlib.h"
+#include <kernel/stdlib/stdlib.h>
 #include <stdint.h>
-#include "../stdio/stdio.h"
+#include <kernel/stdio/stdio.h>
 
 /**
  * @brief Convert an integer to a string (base 10).

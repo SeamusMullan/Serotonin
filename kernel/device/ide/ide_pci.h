@@ -2,8 +2,8 @@
 #define _DEVICE_IDE_PCI_H
 
 #include <stdint.h>
-#include "../../schedule/schedule.h"
-#include "../../vmm/vmm.h"
+#include <kernel/schedule/schedule.h>
+#include <kernel/vmm/vmm.h>
 
 #define ATA_CMD_IDENTIFY       0xEC
 #define ATA_CMD_READ_SECTORS   0x20
@@ -93,5 +93,6 @@ int ide_wait(uint8_t mask, uint8_t value, int timeout);
 void ide_start_worker(void);
 void ide_submit_disk_read(process_control_block_t *task, file_handle_t *handle, address_space_t *as, uint32_t user_buf, uint32_t count, uint32_t flags);
 void ide_submit_disk_write(process_control_block_t *task, file_handle_t *handle, address_space_t *as, uint32_t user_buf, uint32_t count, char *kbuf, uint32_t flags);
+int ide_cache_flush(uint8_t drive);
 
 #endif

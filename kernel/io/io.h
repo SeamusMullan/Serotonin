@@ -169,6 +169,25 @@ static inline void enable_interrupts(void) {
 }
 
 /**
+ * @brief Save interrupt state and disable interrupts.
+ *
+ * Returns the EFLAGS value before disabling, for use with irq_restore().
+ * Safe to call even if interrupts are already disabled.
+ */
+static inline uint32_t irq_save(void) {
+    uint32_t flags;
+    asm volatile ("pushf; pop %0; cli" : "=r"(flags) :: "memory");
+    return flags;
+}
+
+/**
+ * @brief Restore interrupt state saved by irq_save().
+ */
+static inline void irq_restore(uint32_t flags) {
+    asm volatile ("push %0; popf" :: "r"(flags) : "cc", "memory");
+}
+
+/**
  * @brief Read a byte from the CMOS.
  *
  * @param reg The CMOS register to read from.

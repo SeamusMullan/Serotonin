@@ -2,7 +2,7 @@
 #define AUDIO_MIXER_H
 
 #include <stddef.h>
-#include "../stream/audio_stream.h"
+#include <kernel/audio/stream/audio_stream.h>
 
 // Mixer struct: mixes multiple streams into a single output
 #define MAX_MIXER_STREAMS 8

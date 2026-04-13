@@ -28,7 +28,6 @@ void wm_handle_keyboard(wm_state_t *wm, keyboard_event_t *ev) {
         launcher_key(wm, ev);
         return;
     }
-
     /* WM keyboard shortcuts (Alt held) */
     if (alt_held) {
         switch (ev->scancode) {
@@ -118,6 +117,29 @@ void wm_handle_keyboard(wm_state_t *wm, keyboard_event_t *ev) {
     /* Forward to focused window's PTY */
     if (wm->focused_idx >= 0 && wm->windows[wm->focused_idx].active) {
         wm_window_t *win = &wm->windows[wm->focused_idx];
+
+        /* Cursor / navigation keys → ANSI escape sequences */
+        {
+            const char *seq = 0;
+            switch (ev->scancode) {
+            case 0x48: seq = "\033[A"; break; /* Up    */
+            case 0x50: seq = "\033[B"; break; /* Down  */
+            case 0x4D: seq = "\033[C"; break; /* Right */
+            case 0x4B: seq = "\033[D"; break; /* Left  */
+            case 0x47: seq = "\033[H"; break; /* Home  */
+            case 0x4F: seq = "\033[F"; break; /* End   */
+            case 0x49: seq = "\033[5~"; break; /* PgUp  */
+            case 0x51: seq = "\033[6~"; break; /* PgDn  */
+            case 0x52: seq = "\033[2~"; break; /* Ins   */
+            case 0x53: seq = "\033[3~"; break; /* Del   */
+            }
+            if (seq) {
+                while (*seq)
+                    write(win->pty_master_fd, seq++, 1);
+                return;
+            }
+        }
+
         char ch = 0;
 
         if (ev->flags & KEY_FLAG_CTRL) {
@@ -177,7 +199,9 @@ void wm_handle_mouse(wm_state_t *wm, mouse_event_t *ev) {
             cfg.size = sizeof(cfg);
             cfg.x0 = win->x; cfg.y0 = win->y;
             cfg.x1 = win->x + win->w; cfg.y1 = win->y + win->h;
-            cfg.alpha = 0; cfg.stride = win->w * BPP;
+            cfg.alpha = 0;
+            cfg.hints = FB_LAYER_HINT_OPAQUE_CONTENT | FB_LAYER_HINT_FREQUENT_UPDATES;
+            cfg.stride = win->w * BPP;
             fb_layer_info_t info = {0};
             sys_5ht_rcfg_layer(win->layer_id, &cfg, &info);
             win->fb = (uint32_t *)(uintptr_t)info.fb_user_va;

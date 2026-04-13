@@ -8,7 +8,7 @@
  */
 
 #include <stdio.h>
-#include "../syscall/lib5ht/lib5ht.h"
+#include <lib5ht.h>
 
 /**
  * @brief Main entry point for process listing utility

@@ -1,4 +1,4 @@
-#include "audio_buffer.h"
+#include <kernel/audio/utils/audio_buffer.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <kernel.h> // for kernel_malloc, kernel_free

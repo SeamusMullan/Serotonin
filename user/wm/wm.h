@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "../syscall/lib5ht/lib5ht.h"
+#include <lib5ht.h>
 
 /* Screen and font dimensions */
 #define SCREEN_W     1920
@@ -31,6 +31,8 @@
 #define LAUNCHER_PAD     8
 #define LAUNCHER_MAX_ITEMS 64
 
+#define WM_THEME_COUNT       1
+
 /* Layer assignments */
 #define LAYER_DESKTOP   1
 #define LAYER_WIN_BASE  2
@@ -39,22 +41,43 @@
 #define LAYER_TASKBAR   14
 #define LAYER_CURSOR    15
 
-/* Theme colors (ARGB) */
-#define THEME_BG_DARK       0xFF1A1A2E
-#define THEME_BG_MEDIUM     0xFF252540
-#define THEME_ACCENT        0xFF7A98FF
-#define THEME_ACCENT_DIM    0xFF4A6099
-#define THEME_TEXT_PRIMARY   0xFFE0E0E0
-#define THEME_TEXT_DIM       0xFF808090
-#define THEME_BORDER         0xFF3A3A50
-#define THEME_CLOSE_BTN     0xFFFF4040
-#define THEME_TITLEBAR_FG   0xFFFFFFFF
-#define THEME_TITLEBAR_BG   0xFF7A98FF
-#define THEME_TITLEBAR_INACTIVE 0xFF404050
-#define THEME_BORDER_ACTIVE 0xFF7A98FF
-#define THEME_BORDER_INACTIVE 0xFF303040
-#define THEME_TERM_FG       0xFFE0E0E0
-#define THEME_TERM_BG       0xFF1A1A2E
+typedef struct {
+    char name[24];
+    uint32_t bg_dark;
+    uint32_t bg_medium;
+    uint32_t accent;
+    uint32_t accent_dim;
+    uint32_t text_primary;
+    uint32_t text_dim;
+    uint32_t border;
+    uint32_t close_btn;
+    uint32_t titlebar_fg;
+    uint32_t titlebar_bg;
+    uint32_t titlebar_inactive;
+    uint32_t border_active;
+    uint32_t border_inactive;
+    uint32_t term_fg;
+    uint32_t term_bg;
+} wm_theme_t;
+
+extern wm_theme_t g_wm_theme;
+
+/* Active theme colors (ARGB) */
+#define THEME_BG_DARK          (g_wm_theme.bg_dark)
+#define THEME_BG_MEDIUM        (g_wm_theme.bg_medium)
+#define THEME_ACCENT           (g_wm_theme.accent)
+#define THEME_ACCENT_DIM       (g_wm_theme.accent_dim)
+#define THEME_TEXT_PRIMARY     (g_wm_theme.text_primary)
+#define THEME_TEXT_DIM         (g_wm_theme.text_dim)
+#define THEME_BORDER           (g_wm_theme.border)
+#define THEME_CLOSE_BTN        (g_wm_theme.close_btn)
+#define THEME_TITLEBAR_FG      (g_wm_theme.titlebar_fg)
+#define THEME_TITLEBAR_BG      (g_wm_theme.titlebar_bg)
+#define THEME_TITLEBAR_INACTIVE (g_wm_theme.titlebar_inactive)
+#define THEME_BORDER_ACTIVE    (g_wm_theme.border_active)
+#define THEME_BORDER_INACTIVE  (g_wm_theme.border_inactive)
+#define THEME_TERM_FG          (g_wm_theme.term_fg)
+#define THEME_TERM_BG          (g_wm_theme.term_bg)
 
 /* ANSI 16-color table (no alpha, added at render time) */
 static const uint32_t ansi_color_table[16] = {
@@ -198,6 +221,7 @@ typedef struct {
     int      launcher_scroll;
     int      launcher_count;
     char     launcher_items[LAUNCHER_MAX_ITEMS][32];
+    int      theme_current;
     /* Desktop background layer */
     uint32_t    *desktop_fb;
     volatile fb_layer_metadata_t *desktop_meta;
@@ -251,5 +275,6 @@ void launcher_open(wm_state_t *wm);
 void launcher_close(wm_state_t *wm);
 void launcher_render(wm_state_t *wm);
 void launcher_key(wm_state_t *wm, keyboard_event_t *ev);
+void wm_apply_theme(wm_state_t *wm, int theme_idx);
 
 #endif

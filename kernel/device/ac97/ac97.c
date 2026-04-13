@@ -1,13 +1,13 @@
-#include "ac97.h"
-#include "dev_ac97.h"
-#include "../../io/io.h"
-#include "../../io/pci/pci.h"
-#include "../../vmm/paging_init.h"
-#include "../../kernel.h"
-#include "../../stdio/stdio.h"
-#include "../../stdlib/stdlib.h"
-#include "../../schedule/schedule.h"
-#include "../../syscall/sys/errno.h"
+#include <kernel/device/ac97/ac97.h>
+#include <kernel/device/ac97/dev_ac97.h>
+#include <kernel/io/io.h>
+#include <kernel/io/pci/pci.h>
+#include <kernel/vmm/paging_init.h>
+#include <kernel/kernel.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/syscall/sys/errno.h>
 
 #define AC97_LOG(fmt, ...) printfs(PRINT_STATUS_INFO, "ac97: " fmt, ##__VA_ARGS__)
 

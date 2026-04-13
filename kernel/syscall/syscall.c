@@ -1,25 +1,27 @@
 #include "syscall.h"
-#include "../stdio/stdio.h"
-#include "../schedule/schedule.h"
-#include "../io/io.h"
-#include "../kernel.h"
-#include "../stdlib/stdlib.h"
-#include "../vmm/paging_init.h"
-#include "../vmm/vmm.h"
-#include "../string.h"
-#include "../filesystem/vfs.h"
-#include "../filesystem/vfs_perm.h"
-#include "../filesystem/devfs/devfs.h"
-#include "../filesystem/user_fs/user_fs.h"
-#include "../video/vbe/vbe.h"
-#include "../io/serial.h"
-#include "sys/errno.h"
-#include "sys/types.h"
-#include "sys/timespec.h"
-#include "sys/file.h"
 #include "sys/lib5ht.h"
-#include "../pty/pty.h"
-#include "../device/ide/ide_pci.h"
+#include <kernel/syscall/syscall.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/io/io.h>
+#include <kernel/kernel.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/vmm/paging_init.h>
+#include <kernel/vmm/vmm.h>
+#include <kernel/string.h>
+#include <kernel/filesystem/vfs.h>
+#include <kernel/filesystem/vfs_perm.h>
+#include <kernel/filesystem/devfs/devfs.h>
+#include <kernel/filesystem/user_fs/user_fs.h>
+#include <kernel/video/vbe/vbe.h>
+#include <kernel/io/serial.h>
+#include <kernel/syscall/sys/errno.h>
+#include <kernel/syscall/sys/types.h>
+#include <kernel/syscall/sys/timespec.h>
+#include <kernel/syscall/sys/file.h>
+#include <kernel/syscall/sys/lib5ht.h>
+#include <kernel/pty/pty.h>
+#include <kernel/device/ide/ide_pci.h>
 #include <stdint.h>
 
 
@@ -177,6 +179,10 @@ static int layer_config_valid(const fb_layer_config_t *cfg) {
         return 0;
     if (cfg->stride < (uint32_t)(cfg->x1 - cfg->x0) * sizeof(uint32_t))
         return 0;
+    if (cfg->alpha > FB_LAYER_ALPHA_BLEND)
+        return 0;
+    if (cfg->hints & ~FB_LAYER_HINT_ALL_MASK)
+        return 0;
     return 1;
 }
 
@@ -283,11 +289,11 @@ static int dir_has_entries(vfs_node_t *node) {
         if (!child) break;
 
         if (strcmp(child->name, ".") != 0 && strcmp(child->name, "..") != 0) {
-            vfs_close(child);
+            vfs_put(child);
             return 1;
         }
 
-        vfs_close(child);
+        vfs_put(child);
     }
 
     return 0;
@@ -583,9 +589,11 @@ static void sys_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
             split_path(abs_path, parent_path, child_name);
             vfs_node_t *parent_node = vfs_resolve_path(parent_path);
             if (parent_node && vfs_check_dir_write(parent_node, current_task) != 0) {
+                vfs_put(parent_node);
                 errno = -EACCES;
                 return;
             }
+            vfs_put(parent_node);
             node = vfs_create(abs_path);
             goto nodeCreated;
         }
@@ -1220,6 +1228,12 @@ static void sys_dup(uint32_t arg2, uint32_t arg3) {
     errno = newfd;
 }
 
+static void free_string_array(const char **arr, int count) {
+    for (int i = 0; i < count; i++)
+        kernel_free((void*)arr[i]);
+    kernel_free(arr);
+}
+
 static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
     char abs_path[256];
     if (build_abs_path((char*)arg2, abs_path, sizeof(abs_path)) != 0) {
@@ -1239,6 +1253,7 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
     }
 
     if (vfs_check_permission(node, current_task, PERM_EXEC) != 0) {
+        vfs_put(node);
         kernel_free(path);
         errno = -EACCES;
         return;
@@ -1247,6 +1262,10 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
     uint32_t exec_mode = node->mode;
     uint16_t exec_uid = node->uid;
     uint16_t exec_gid = node->gid;
+    char pname[256];
+    strncpy(pname, node->name, sizeof(pname));
+    pname[sizeof(pname) - 1] = '\0';
+    vfs_put(node);
 
     const char **argv_temp = (const char**)arg3;
     const char **envp_temp = (const char**)arg4;
@@ -1288,7 +1307,7 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
     current_task->brk_start   = USER_HEAP_START;
     current_task->brk_end     = USER_HEAP_START;
 
-    int execve_stat = kernel_load_elf(current_task, path, path, argv, argc, envp, envc);
+    int execve_stat = kernel_load_elf(current_task, path, pname, argv, argc, envp, envc);
     if (!execve_stat) {
         destroy_address_space(oldas);
         if (exec_mode & S_ISUID) current_task->euid = exec_uid;
@@ -1299,14 +1318,14 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
         current_task->signal_bitmask = 0;
         current_task->in_signal_handler = 0;
         printfs(PRINT_STATUS_DEBUG, "execve: executing %s, pid=%d\n", path, current_task->pid);
-        kernel_free(argv);
-        kernel_free(envp);
+        free_string_array(argv, argc);
+        free_string_array(envp, envc);
         kernel_free(path);
         task_yield(0);
     } else {
         printfs(PRINT_STATUS_WARNING, "execve: failed to load elf %s, pid=%d\n", path, current_task->pid);
-        kernel_free(argv);
-        kernel_free(envp);
+        free_string_array(argv, argc);
+        free_string_array(envp, envc);
         kernel_free(path);
         printf("lol:%p\n",current_task->processor_context->eip);
         errno = -EIO;
@@ -1501,8 +1520,9 @@ static void sys_isatty(uint32_t arg2) {
 
 static void sys_gettimeofday(uint32_t arg2) {
     struct timeval *timestr = (struct timeval*)arg2;
-    timestr->tv_sec = unix_timestamp;
-    timestr->tv_usec = 0;
+    uint32_t ms = (uint32_t)timer_ticks; /* low 32 bits — wraps ~49 days, fine for diffs */
+    timestr->tv_sec  = (long)(ms / 1000u);
+    timestr->tv_usec = (long)((ms % 1000u) * 1000u);
     errno = 0;
 }
 
@@ -1624,7 +1644,9 @@ static void sys_mkdir(uint32_t arg2) {
         return;
     }
 
-    if (vfs_resolve_path(abs_path)) {
+    vfs_node_t *existing = vfs_resolve_path(abs_path);
+    if (existing) {
+        vfs_put(existing);
         errno = -EEXIST;
         return;
     }
@@ -1633,9 +1655,11 @@ static void sys_mkdir(uint32_t arg2) {
     split_path(abs_path, parent_path, child_name);
     vfs_node_t *parent_node = vfs_resolve_path(parent_path);
     if (parent_node && vfs_check_dir_write(parent_node, current_task) != 0) {
+        vfs_put(parent_node);
         errno = -EACCES;
         return;
     }
+    vfs_put(parent_node);
 
     if (vfs_mkdir(abs_path) != 0) {
         errno = -EIO;
@@ -1660,6 +1684,7 @@ static void sys_unlink(uint32_t arg2) {
         return;
     }
     if (node->flags & VFS_FLAG_DIRECTORY) {
+        vfs_put(node);
         errno = -EISDIR;
         return;
     }
@@ -1669,15 +1694,21 @@ static void sys_unlink(uint32_t arg2) {
     vfs_node_t *parent_node = vfs_resolve_path(parent_path);
     if (parent_node) {
         if (vfs_check_dir_write(parent_node, current_task) != 0) {
+            vfs_put(node);
+            vfs_put(parent_node);
             errno = -EACCES;
             return;
         }
         if ((parent_node->mode & S_ISVTX) && current_task->euid != 0 &&
             current_task->euid != node->uid && current_task->euid != parent_node->uid) {
+            vfs_put(node);
+            vfs_put(parent_node);
             errno = -EACCES;
             return;
         }
     }
+    vfs_put(node);
+    vfs_put(parent_node);
 
     if (vfs_unlink(abs_path) != 0) {
         errno = -EIO;
@@ -1702,11 +1733,13 @@ static void sys_rmdir(uint32_t arg2) {
         return;
     }
     if (!(node->flags & VFS_FLAG_DIRECTORY)) {
+        vfs_put(node);
         errno = -ENOTDIR;
         return;
     }
 
     if (!node->ops || !node->ops->rmdir) {
+        vfs_put(node);
         errno = -ENOSYS;
         return;
     }
@@ -1716,20 +1749,27 @@ static void sys_rmdir(uint32_t arg2) {
     vfs_node_t *parent_node = vfs_resolve_path(parent_path);
     if (parent_node) {
         if (vfs_check_dir_write(parent_node, current_task) != 0) {
+            vfs_put(node);
+            vfs_put(parent_node);
             errno = -EACCES;
             return;
         }
         if ((parent_node->mode & S_ISVTX) && current_task->euid != 0 &&
             current_task->euid != node->uid && current_task->euid != parent_node->uid) {
+            vfs_put(node);
+            vfs_put(parent_node);
             errno = -EACCES;
             return;
         }
     }
+    vfs_put(parent_node);
 
     if (dir_has_entries(node)) {
+        vfs_put(node);
         errno = -ENOTEMPTY;
         return;
     }
+    vfs_put(node);
 
     if (vfs_rmdir(abs_path) != 0) {
         errno = -EIO;
@@ -1754,14 +1794,17 @@ static void sys_chdir(uint32_t arg2) {
         return;
     }
     if (!(node->flags & VFS_FLAG_DIRECTORY)) {
+        vfs_put(node);
         errno = -ENOTDIR;
         return;
     }
 
     if (vfs_check_permission(node, current_task, PERM_EXEC) != 0) {
+        vfs_put(node);
         errno = -EACCES;
         return;
     }
+    vfs_put(node);
 
     char temp[256];
     strncpy(temp, abs_path, sizeof(temp));
@@ -1867,10 +1910,12 @@ static void sys_listdir(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
         return;
     }
     if (!(node->flags & VFS_FLAG_DIRECTORY)) {
+        vfs_put(node);
         errno = -ENOTDIR;
         return;
     }
     if (!node->ops || !node->ops->readdir) {
+        vfs_put(node);
         errno = -ENOSYS;
         return;
     }
@@ -1881,29 +1926,35 @@ static void sys_listdir(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
         if (!child) break;
 
         size_t len = strlen(child->name);
-        if (off + len + 1 >= size) {
-            errno = off;
-            return;
+        int done = (off + len + 1 >= size);
+        int fail = 0;
+
+        if (!done) {
+            if (copy_to_user(current_task->address_space, (uint32_t)(buf + off), child->name, len) != 0) {
+                fail = 1;
+            } else {
+                off += len;
+                if (copy_to_user(current_task->address_space, (uint32_t)(buf + off), "\n", 1) != 0)
+                    fail = 1;
+                else
+                    off += 1;
+            }
         }
 
-        if (copy_to_user(current_task->address_space, (uint32_t)(buf + off), child->name, len) != 0) {
-            errno = -EFAULT;
-            return;
-        }
-        off += len;
-        if (copy_to_user(current_task->address_space, (uint32_t)(buf + off), "\n", 1) != 0) {
-            errno = -EFAULT;
-            return;
-        }
-        off += 1;
+        vfs_put(child);
+
+        if (done) { vfs_put(node); errno = off; return; }
+        if (fail) { vfs_put(node); errno = -EFAULT; return; }
     }
 
     if (off < size) {
         if (copy_to_user(current_task->address_space, (uint32_t)(buf + off), "\0", 1) != 0) {
+            vfs_put(node);
             errno = -EFAULT;
             return;
         }
     }
+    vfs_put(node);
     errno = off;
 }
 
@@ -2231,11 +2282,13 @@ static void sys_chmod(uint32_t arg2, uint32_t arg3) {
     }
 
     if (current_task->euid != 0 && current_task->euid != node->uid) {
+        vfs_put(node);
         errno = -EPERM;
         return;
     }
 
     node->mode = (node->mode & S_IFMT) | (new_mode & ~S_IFMT);
+    vfs_put(node);
     errno = 0;
 }
 
@@ -2269,6 +2322,7 @@ static void sys_chown(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
     } else {
         errno = -EPERM;
     }
+    vfs_put(node);
 }
 
 static void sys_umask(uint32_t arg2) {
@@ -2666,6 +2720,32 @@ static int poll_waiter_try_poll(poll_waiter_t *w) {
     return -1;
 }
 
+static void sys_usleep(uint32_t us) {
+    if (us == 0) {
+        errno = 0;
+        return;
+    }
+
+    uint64_t timeout_ms = ((uint64_t)us + 999) / 1000;
+    uint64_t deadline   = timer_ticks + timeout_ms;
+
+    poll_waiter_t *w = kernel_malloc(sizeof(poll_waiter_t));
+    if (!w) { errno = -ENOMEM; return; }
+
+    memset(w, 0, sizeof(*w));
+    w->task        = current_task;
+    w->type        = POLL_WAITER_SELECT;
+    w->has_timeout = 1;
+    w->deadline    = deadline;
+
+    lock_scheduler();
+    poll_waiter_add(w);
+    current_task->state = PROCESS_STATE_BLOCKED;
+    unlock_scheduler();
+    task_yield(1);
+    __builtin_unreachable();
+}
+
 void poll_waiter_tick(void) {
     poll_waiter_t *w = poll_waiters_head;
     while (w) {
@@ -2883,6 +2963,19 @@ static void sys_poll(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
     unlock_scheduler();
     task_yield(1);
     __builtin_unreachable();
+}
+
+static void sys_5ht_sysinfo(uint32_t arg2) {
+    sysinfo_5ht_t sysinfo = {0};
+    sysinfo.mem_free = (buddy_free_pages() *4000)/1000000;
+    sysinfo.mem_total = (buddy_total_pages() *4000)/1000000;
+    sysinfo.cpu_free = 0;
+    sysinfo.cpu_used = 0;
+
+    if (copy_to_user(current_task->address_space, (uint32_t)arg2, &sysinfo, sizeof(sysinfo)) != 0) {
+        errno = -EFAULT;
+        return;
+    }
 }
 
 /**
@@ -3119,6 +3212,12 @@ void system_call(processor_context_t *ctx) {
         case SYSTEM_CALL_5HT_GRAB_INPUT:
             keyboard_grab_active = arg2 ? 1 : 0;
             ctx->eax = 0;
+            break;
+        case SYSTEM_CALL_5HT_SYSINFO:
+            sys_5ht_sysinfo(arg2);
+            break;
+        case SYSTEM_CALL_USLEEP:
+            sys_usleep(arg2);
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);

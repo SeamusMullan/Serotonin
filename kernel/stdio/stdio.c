@@ -1,14 +1,14 @@
-#include "../stdlib/stdlib.h"
-#include "../tty.h"
-#include "stdio.h"
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/tty.h>
+#include <kernel/stdio/stdio.h>
 #include <stdint.h>
 #include <stddef.h>
-#include "../string.h"
-#include "../video/vbe/vbe.h"
-#include "../schedule/schedule.h"
-#include "../vmm/vmm.h"
-#include "../vmm/paging_init.h"
-#include "../io/io.h"
+#include <kernel/string.h>
+#include <kernel/video/vbe/vbe.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/vmm/vmm.h>
+#include <kernel/vmm/paging_init.h>
+#include <kernel/io/io.h>
 
 static uint32_t printfs_status_mask = 0xFFFFFFFF;
 

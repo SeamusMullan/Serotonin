@@ -1,4 +1,4 @@
-#include "audio_core.h"
+#include <kernel/audio/core/audio_core.h>
 
 static audio_event_callback_t g_event_cb = 0;
 static void *g_event_cb_data = 0;

@@ -1,10 +1,10 @@
 #ifndef AUDIO_CORE_H
 #define AUDIO_CORE_H
 
-#include "../device/audio_device.h"
-#include "../stream/audio_stream.h"
-#include "../mixer/audio_mixer.h"
-#include "../format/audio_format.h"
+#include <kernel/audio/device/audio_device.h>
+#include <kernel/audio/stream/audio_stream.h>
+#include <kernel/audio/mixer/audio_mixer.h>
+#include <kernel/audio/format/audio_format.h>
 
 // Audio engine core API
 void audio_core_init(void);

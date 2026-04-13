@@ -1,4 +1,4 @@
-#include "paging_init.h"
+#include <kernel/vmm/paging_init.h>
 #include <stdint.h>
 
 // Page structures in identity-mapped memory

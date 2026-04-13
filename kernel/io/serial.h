@@ -1,7 +1,7 @@
 #ifndef _IO_SERIAL
 #define _IO_SERIAL
 
-#include "io.h"
+#include <kernel/io/io.h>
 
 #define COM1_BASE 0x3F8
 #define COM2_BASE 0x2F8

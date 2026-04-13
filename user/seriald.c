@@ -16,7 +16,7 @@
 #include <fcntl.h>
 #include <errno.h>
 
-#include "syscall/lib5ht/lib5ht.h"
+#include <lib5ht.h>
 
 int snprintf(char *str, size_t size, const char *fmt, ...);
 int waitpid(pid_t pid, int *status);

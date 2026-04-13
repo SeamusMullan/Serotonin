@@ -3,18 +3,18 @@
     VESA BIOS Extensions (VBE) Graphics Driver for Serotonin.
 */
 
-#include "vbe.h"
-#include "../../kernel.h"
-#include "../../stdlib/stdlib.h"
-#include "../../schedule/schedule.h"
+#include <kernel/video/vbe/vbe.h>
+#include <kernel/kernel.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/schedule/schedule.h>
 #include <stdint.h>
 #include <stddef.h>
-#include "../../syscall/sys/lib5ht.h"
-#include "../../multiboot.h"
-#include "../../vmm/paging_init.h"
-#include "../font.h"
-#include "../../pty/pty.h"
-#include "../../io/io.h"
+#include <kernel/syscall/sys/lib5ht.h>
+#include <kernel/multiboot.h>
+#include <kernel/vmm/paging_init.h>
+#include <kernel/video/font.h>
+#include <kernel/pty/pty.h>
+#include <kernel/io/io.h>
 
 #include <xmmintrin.h>
 #include <emmintrin.h>
@@ -46,6 +46,12 @@ static inline int vbe_z_valid(uint8_t z) { return (z > 0 && z < VBE_NUM_Z_LAYERS
 
 static uint32_t dirty_bitmap_size;
 uint8_t *dirty_bitmap;
+static uint8_t *dirty_tiles;
+static uint8_t *dirty_tiles_work;
+static uint32_t dirty_tiles_size;
+static uint16_t dirty_tiles_x;
+static uint16_t dirty_tiles_y;
+static uint32_t vbe_layer_last_frame_id[VBE_NUM_Z_LAYERS];
 
 uint32_t vbe_colors[16] = {
     0x00000000, // BLACK
@@ -103,6 +109,20 @@ uint8_t in_alt_screen = 0;
 // dirty bounding box used for rect dirty marking
 dirty_bb_t *dbb;
 
+static inline void vbe_mark_dirty_tile(uint16_t tx, uint16_t ty) {
+    if (tx >= dirty_tiles_x || ty >= dirty_tiles_y)
+        return;
+    uint32_t idx = (uint32_t)ty * dirty_tiles_x + tx;
+    dirty_tiles[idx >> 3] |= (uint8_t)(1u << (idx & 7u));
+}
+
+static inline int vbe_tile_is_dirty_map(const uint8_t *bitmap, uint16_t tx, uint16_t ty) {
+    if (tx >= dirty_tiles_x || ty >= dirty_tiles_y)
+        return 0;
+    uint32_t idx = (uint32_t)ty * dirty_tiles_x + tx;
+    return (bitmap[idx >> 3] & (uint8_t)(1u << (idx & 7u))) != 0;
+}
+
 /**
  * @brief Get the maximum number of terminal columns.
  *
@@ -131,6 +151,7 @@ vbe_z_layer_t* vbe_create_z_layer(uint8_t z, uint8_t alpha, uint8_t active) {
     z_layer->z = z;
     z_layer->alpha = alpha;
     z_layer->active = active;
+    z_layer->hints = FB_LAYER_HINT_NONE;
     z_layer->width = vbe_info.width;
     z_layer->height = vbe_info.height;
     z_layer->x0 = 0;
@@ -147,43 +168,70 @@ vbe_z_layer_t* vbe_create_z_layer(uint8_t z, uint8_t alpha, uint8_t active) {
     return z_layer;
 }
 
-void vbe_layer_attach(uint8_t z, uint32_t *bufptr, const fb_layer_config_t *cfg, fb_layer_metadata_t *meta)
-{
+void vbe_layer_attach(uint8_t z, uint32_t *bufptr, const fb_layer_config_t *cfg, fb_layer_metadata_t *meta) {
     if (!vbe_z_valid(z) || !vbe_z_layers[z])
         return;
+
+    vbe_z_layer_t *layer = vbe_z_layers[z];
+    uint8_t was_active = layer->active;
+    uint16_t old_x0 = layer->x0;
+    uint16_t old_y0 = layer->y0;
+    uint16_t old_w = layer->width;
+    uint16_t old_h = layer->height;
 
     if (!vbe_layer_default_bufs[z])
-        vbe_layer_default_bufs[z] = vbe_z_layers[z]->bufptr;
+        vbe_layer_default_bufs[z] = layer->bufptr;
 
-    vbe_z_layers[z]->bufptr = bufptr;
-    vbe_z_layers[z]->alpha = cfg ? cfg->alpha : 0;
-    vbe_z_layers[z]->width = cfg ? (uint16_t)(cfg->x1 - cfg->x0) : vbe_info.width;
-    vbe_z_layers[z]->height = cfg ? (uint16_t)(cfg->y1 - cfg->y0) : vbe_info.height;
-    vbe_z_layers[z]->x0 = cfg ? cfg->x0 : 0;
-    vbe_z_layers[z]->y0 = cfg ? cfg->y0 : 0;
-    vbe_z_layers[z]->pitch = cfg ? cfg->stride : vbe_info.pitch;
-    vbe_z_layers[z]->active = 1;
+    layer->bufptr = bufptr;
+    layer->hints = cfg ? cfg->hints : FB_LAYER_HINT_NONE;
+    layer->alpha = cfg ? cfg->alpha : 0;
+    if (layer->alpha && (layer->hints & FB_LAYER_HINT_OPAQUE_CONTENT))
+        layer->alpha = 0;
+    layer->width = cfg ? (uint16_t)(cfg->x1 - cfg->x0) : vbe_info.width;
+    layer->height = cfg ? (uint16_t)(cfg->y1 - cfg->y0) : vbe_info.height;
+    layer->x0 = cfg ? cfg->x0 : 0;
+    layer->y0 = cfg ? cfg->y0 : 0;
+    layer->pitch = cfg ? cfg->stride : vbe_info.pitch;
+    layer->active = 1;
     vbe_layer_meta[z] = meta;
+
+    // reconfig: force redraw
+    if (was_active && old_w > 0 && old_h > 0) {
+        vbe_mark_region_dirty(old_x0, old_y0, old_w, old_h);
+    }
+    if (layer->width > 0 && layer->height > 0) {
+        vbe_mark_region_dirty(layer->x0, layer->y0, layer->width, layer->height);
+    }
 }
 
-void vbe_layer_detach(uint8_t z)
-{
+void vbe_layer_detach(uint8_t z) {
     if (!vbe_z_valid(z) || !vbe_z_layers[z])
         return;
 
-    vbe_z_layers[z]->active = 0;
+    vbe_z_layer_t *layer = vbe_z_layers[z];
+    uint8_t was_active = layer->active;
+    uint16_t old_x0 = layer->x0;
+    uint16_t old_y0 = layer->y0;
+    uint16_t old_w = layer->width;
+    uint16_t old_h = layer->height;
+
+    layer->active = 0;
     if (vbe_layer_default_bufs[z])
-        vbe_z_layers[z]->bufptr = vbe_layer_default_bufs[z];
-    vbe_z_layers[z]->width = vbe_info.width;
-    vbe_z_layers[z]->height = vbe_info.height;
-    vbe_z_layers[z]->x0 = 0;
-    vbe_z_layers[z]->y0 = 0;
-    vbe_z_layers[z]->pitch = vbe_info.pitch;
+        layer->bufptr = vbe_layer_default_bufs[z];
+    layer->width = vbe_info.width;
+    layer->height = vbe_info.height;
+    layer->x0 = 0;
+    layer->y0 = 0;
+    layer->pitch = vbe_info.pitch;
     vbe_layer_meta[z] = NULL;
+    vbe_layer_last_frame_id[z] = 0;
+
+    /* Always dirty uncovered area so transient overlays disappear immediately. */
+    if (was_active && old_w > 0 && old_h > 0)
+        vbe_mark_region_dirty(old_x0, old_y0, old_w, old_h);
 }
 
-fb_layer_metadata_t *vbe_layer_get_metadata(uint8_t z)
-{
+fb_layer_metadata_t *vbe_layer_get_metadata(uint8_t z) {
     if (!vbe_z_valid(z))
         return NULL;
     return vbe_layer_meta[z];
@@ -197,8 +245,7 @@ fb_layer_metadata_t *vbe_layer_get_metadata(uint8_t z)
  *
  * @param mbi The multiboot information structure.
  */
-void vbe_init(multiboot_info_t *mbi)
-{
+void vbe_init(multiboot_info_t *mbi) {
     uint32_t phys_fb = (uint32_t)(mbi->framebuffer_addr);
     uint32_t pitch = (uint32_t)(mbi->framebuffer_pitch);
     uint32_t width = (uint32_t)(mbi->framebuffer_width);
@@ -227,6 +274,14 @@ void vbe_init(multiboot_info_t *mbi)
     dirty_bitmap = (uint8_t *)kernel_malloc(dirty_bitmap_size);
     memset(dirty_bitmap, 0, dirty_bitmap_size);
 
+    dirty_tiles_x = (uint16_t)((width + VBE_TILE_W - 1) / VBE_TILE_W);
+    dirty_tiles_y = (uint16_t)((height + VBE_TILE_H - 1) / VBE_TILE_H);
+    dirty_tiles_size = ((uint32_t)dirty_tiles_x * dirty_tiles_y + 7u) / 8u;
+    dirty_tiles = (uint8_t *)kernel_malloc(dirty_tiles_size);
+    dirty_tiles_work = (uint8_t *)kernel_malloc(dirty_tiles_size);
+    memset(dirty_tiles, 0, dirty_tiles_size);
+    memset(dirty_tiles_work, 0, dirty_tiles_size);
+
     vbe_info.backbuffer = (uint32_t *)kernel_malloc_align(16, fb_size_bytes);
     if (!vbe_info.backbuffer)
     {
@@ -254,15 +309,11 @@ void vbe_init(multiboot_info_t *mbi)
  * @param x X-coordinate.
  * @param y Y-coordinate.
  */
-// static inline void vbe_mark_pixel_dirty(uint32_t x, uint32_t y) {
-//     if (x >= SCREEN_WIDTH || y >= SCREEN_HEIGHT) return;
-//     dirty_lines[y] = 1;
-// }
-
-static inline void vbe_mark_pixel_dirty(uint16_t x, uint16_t y)
-{
+static inline void vbe_mark_pixel_dirty(uint16_t x, uint16_t y) {
     if (x >= vbe_info.width || y >= vbe_info.height)
         return;
+
+    vbe_mark_dirty_tile((uint16_t)(x / VBE_TILE_W), (uint16_t)(y / VBE_TILE_H));
 
     // check if outside existing bb and update the points to respect the new bounds
 
@@ -288,12 +339,23 @@ static inline void vbe_mark_pixel_dirty(uint16_t x, uint16_t y)
 }
 
 
-inline void vbe_mark_region_dirty(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
-{
+inline void vbe_mark_region_dirty(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
     if (x + w > vbe_info.width)
         w = vbe_info.width - x;
     if (y + h > vbe_info.height)
         h = vbe_info.height - y;
+    if (w == 0 || h == 0)
+        return;
+
+    uint16_t tx0 = (uint16_t)(x / VBE_TILE_W);
+    uint16_t ty0 = (uint16_t)(y / VBE_TILE_H);
+    uint16_t tx1 = (uint16_t)((x + w - 1) / VBE_TILE_W);
+    uint16_t ty1 = (uint16_t)((y + h - 1) / VBE_TILE_H);
+    for (uint16_t ty = ty0; ty <= ty1; ty++) {
+        for (uint16_t tx = tx0; tx <= tx1; tx++) {
+            vbe_mark_dirty_tile(tx, ty);
+        }
+    }
 
     if (dbb->x0 == (uint16_t)-1 ||
         dbb->x1 == (uint16_t)-1 ||
@@ -322,8 +384,7 @@ inline void vbe_mark_region_dirty(uint16_t x, uint16_t y, uint16_t w, uint16_t h
  * @param y The y-coordinate.
  * @param color The pixel color.
  */
-void vbe_putpixel(uint32_t x, uint32_t y, uint32_t color)
-{
+void vbe_putpixel(uint32_t x, uint32_t y, uint32_t color) {
     if (x >= vbe_info.width || y >= vbe_info.height)
         return;
     uint8_t *row_start = (uint8_t *)vbe_z_layers[0]->bufptr + (y * vbe_info.pitch);
@@ -342,8 +403,7 @@ void vbe_putpixel(uint32_t x, uint32_t y, uint32_t color)
  * @param w Width of the line.
  * @param color Line color.
  */
-void vbe_fast_draw_hline(uint32_t *buf, uint32_t pitch, uint32_t x, uint32_t y, uint32_t w, uint32_t color)
-{
+void vbe_fast_draw_hline(uint32_t *buf, uint32_t pitch, uint32_t x, uint32_t y, uint32_t w, uint32_t color) {
     uint8_t *row = (uint8_t *)buf + y * pitch;
     uint32_t *dst = ((uint32_t *)row) + x;
     for (uint32_t i = 0; i < w; i++)
@@ -364,8 +424,7 @@ void vbe_fast_draw_hline(uint32_t *buf, uint32_t pitch, uint32_t x, uint32_t y, 
  * @param h Height of the rectangle.
  * @param color The fill color.
  */
-void vbe_fillrect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color)
-{
+void vbe_fillrect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
     if (x + w > vbe_info.width)
         w = vbe_info.width - x;
     if (y + h > vbe_info.height)
@@ -390,14 +449,12 @@ void vbe_fillrect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color
  * @param y Y-coordinate.
  * @param color Pixel color.
  */
-inline void fast_putpixel(uint32_t *buf, uint32_t pitch, uint32_t width, uint32_t height, uint32_t x, uint32_t y, uint32_t color)
-{
+inline void fast_putpixel(uint32_t *buf, uint32_t pitch, uint32_t width, uint32_t height, uint32_t x, uint32_t y, uint32_t color) {
     uint8_t *row = (uint8_t *)buf + y * pitch;
     ((uint32_t *)row)[x] = color;
 }
 
-inline uint32_t div255(uint32_t p)
-{
+inline uint32_t div255(uint32_t p) {
     p = p + ((p + 257u) >> 8);
     return p >> 8;
 }
@@ -649,91 +706,178 @@ static void vbe_blend_area_stride(uint32_t *dst, uint32_t dst_pitch, uint32_t *s
     }
 }
 
-/**
- * @brief Copy the backbuffer contents to the framebuffer.
- */
-void vbe_flip(void)
-{
-    if (dbb->x0 == (uint16_t)-1 || dbb->y0 == (uint16_t)-1)
+static void vbe_compose_rect(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
+    if (x0 >= x1 || y0 >= y1)
         return;
-
-    uint16_t x0 = dbb->x0;
-    uint16_t x1 = dbb->x1;
-    uint16_t y0 = dbb->y0;
-    uint16_t y1 = dbb->y1;
-
-    /* Clamp to screen bounds */
-    if (x1 > vbe_info.width)  x1 = vbe_info.width;
-    if (y1 > vbe_info.height) y1 = vbe_info.height;
-    if (x0 >= x1 || y0 >= y1) goto reset;
 
     uint32_t pitch = vbe_info.pitch;
     uint32_t bpp = sizeof(uint32_t);
-    uint32_t dirty_row_bytes = (x1 - x0) * bpp;
+    uint32_t dirty_row_bytes = (uint32_t)(x1 - x0) * bpp;
 
-    /* Step 1: Copy only the dirty columns of layer 0 to backbuffer */
     for (uint16_t y = y0; y < y1; y++) {
-        uint8_t *bb_row  = (uint8_t *)vbe_info.backbuffer      + y * pitch + x0 * bpp;
+        uint8_t *bb_row = (uint8_t *)vbe_info.backbuffer + y * pitch + x0 * bpp;
         uint8_t *buf0_row = (uint8_t *)vbe_z_layers[0]->bufptr + y * pitch + x0 * bpp;
         memcpy(bb_row, buf0_row, dirty_row_bytes);
     }
-
-    /* Step 2: Blend layers 1..init_z within dirty rect */
-    for (uint8_t z = 1; z < init_z; z++) {
-        vbe_z_layer_t *layer = (vbe_z_layer_t*)vbe_z_layers[z];
-        if (!layer->active)
-            continue;
-
-        uint16_t layer_x0 = layer->x0;
-        uint16_t layer_y0 = layer->y0;
-        uint16_t layer_x1 = layer_x0 + layer->width;
-        uint16_t layer_y1 = layer_y0 + layer->height;
-
-        uint16_t ix0 = (x0 > layer_x0) ? x0 : layer_x0;
-        uint16_t iy0 = (y0 > layer_y0) ? y0 : layer_y0;
-        uint16_t ix1 = (x1 < layer_x1) ? x1 : layer_x1;
-        uint16_t iy1 = (y1 < layer_y1) ? y1 : layer_y1;
-
-        if (ix1 <= ix0 || iy1 <= iy0)
-            continue;
-
-        uint32_t w = ix1 - ix0;
-        uint32_t h = iy1 - iy0;
-        uint32_t src_x = ix0 - layer_x0;
-        uint32_t src_y = iy0 - layer_y0;
-
-        vbe_blend_area_stride(vbe_info.backbuffer, pitch, layer->bufptr, layer->pitch, ix0, iy0, src_x, src_y, w, h);
-    }
-
-    /* Step 3: Kernel text cursor (if visible and within dirty rect) */
     if (cursor_visible && cursor_blink_on) {
-        uint32_t cx = term_cursor_col * VBE_FONT_WIDTH;
-        uint32_t cy = term_cursor_row * VBE_FONT_HEIGHT;
-        if (cx + VBE_FONT_WIDTH <= vbe_info.width && cy + VBE_FONT_HEIGHT <= vbe_info.height) {
+        uint16_t cx0 = (uint16_t)(term_cursor_col * VBE_FONT_WIDTH);
+        uint16_t cy0 = (uint16_t)(term_cursor_row * VBE_FONT_HEIGHT);
+        uint16_t cx1 = (uint16_t)(cx0 + VBE_FONT_WIDTH);
+        uint16_t cy1 = (uint16_t)(cy0 + VBE_FONT_HEIGHT);
+        if (cx1 <= vbe_info.width && cy1 <= vbe_info.height &&
+            cx0 < x1 && cx1 > x0 && cy0 < y1 && cy1 > y0) {
             uint32_t stride_px = pitch / bpp;
-            uint32_t *bb = vbe_info.backbuffer;
-            for (uint32_t row = 0; row < VBE_FONT_HEIGHT; row++) {
-                if (cy + row >= y0 && cy + row < y1) {
-                    uint32_t *px = bb + (cy + row) * stride_px + cx;
-                    for (uint32_t col = 0; col < VBE_FONT_WIDTH; col++)
-                        px[col] ^= 0x00FFFFFF;
+            uint16_t ix0 = (cx0 > x0) ? cx0 : x0;
+            uint16_t iy0 = (cy0 > y0) ? cy0 : y0;
+            uint16_t ix1 = (cx1 < x1) ? cx1 : x1;
+            uint16_t iy1 = (cy1 < y1) ? cy1 : y1;
+            for (uint16_t row = iy0; row < iy1; row++) {
+                uint32_t *px = vbe_info.backbuffer + row * stride_px + ix0;
+                for (uint16_t col = ix0; col < ix1; col++) {
+                    *px++ ^= 0x00FFFFFFu;
                 }
             }
         }
     }
 
-    /* Step 4: Copy only the dirty columns from backbuffer to VRAM */
-    for (uint16_t y = y0; y < y1; y++) {
-        uint8_t *bb_row = (uint8_t *)vbe_info.backbuffer    + y * pitch + x0 * bpp;
-        uint8_t *fb_row = (uint8_t *)vbe_info.framebuffer   + y * pitch + x0 * bpp;
-        memcpy_nt(fb_row, bb_row, dirty_row_bytes);
+    for (uint8_t pass = 0; pass < 2; pass++) {
+        for (uint8_t z = 1; z < init_z; z++) {
+            vbe_z_layer_t *layer = (vbe_z_layer_t*)vbe_z_layers[z];
+            if (!layer || !layer->active)
+                continue;
+            int is_cursor_sprite = (layer->hints & FB_LAYER_HINT_CURSOR_SPRITE) != 0;
+            if ((pass == 0 && is_cursor_sprite) || (pass == 1 && !is_cursor_sprite))
+                continue;
+
+            uint16_t layer_x0 = layer->x0;
+            uint16_t layer_y0 = layer->y0;
+            uint16_t layer_x1 = (uint16_t)(layer_x0 + layer->width);
+            uint16_t layer_y1 = (uint16_t)(layer_y0 + layer->height);
+
+            uint16_t ix0 = (x0 > layer_x0) ? x0 : layer_x0;
+            uint16_t iy0 = (y0 > layer_y0) ? y0 : layer_y0;
+            uint16_t ix1 = (x1 < layer_x1) ? x1 : layer_x1;
+            uint16_t iy1 = (y1 < layer_y1) ? y1 : layer_y1;
+            if (ix1 <= ix0 || iy1 <= iy0)
+                continue;
+
+            uint32_t w = (uint32_t)(ix1 - ix0);
+            uint32_t h = (uint32_t)(iy1 - iy0);
+            uint32_t src_x = (uint32_t)(ix0 - layer_x0);
+            uint32_t src_y = (uint32_t)(iy0 - layer_y0);
+
+            if (layer->alpha == 0) {
+                for (uint32_t row = 0; row < h; row++) {
+                    uint8_t *dst_row = (uint8_t *)vbe_info.backbuffer + (iy0 + row) * pitch + ix0 * bpp;
+                    uint8_t *src_row = (uint8_t *)layer->bufptr + (src_y + row) * layer->pitch + src_x * bpp;
+                    memcpy(dst_row, src_row, w * bpp);
+                }
+            } else {
+                vbe_blend_area_stride(vbe_info.backbuffer, pitch, layer->bufptr, layer->pitch, ix0, iy0, src_x, src_y, w, h);
+            }
+        }
     }
 
-reset:
+    for (uint16_t y = y0; y < y1; y++) {
+        uint8_t *bb_row = (uint8_t *)vbe_info.backbuffer + y * pitch + x0 * bpp;
+        uint8_t *fb_row = (uint8_t *)vbe_info.framebuffer + y * pitch + x0 * bpp;
+        if (dirty_row_bytes >= VBE_NT_COPY_THRESHOLD)
+            memcpy_nt(fb_row, bb_row, dirty_row_bytes);
+        else
+            memcpy(fb_row, bb_row, dirty_row_bytes);
+    }
+}
+
+/**
+ * @brief Copy the backbuffer contents to the framebuffer.
+ */
+void vbe_flip(void) {
+    uint16_t x0, x1, y0, y1;
+    uint16_t tx0, tx1, ty0, ty1;
+    int managed_irq = (irq_disabled == 0);
+
+    if (managed_irq)
+        clear_interrupts();
+    if (dbb->x0 == (uint16_t)-1 || dbb->y0 == (uint16_t)-1) {
+        if (managed_irq)
+            enable_interrupts();
+        return;
+    }
+
+    x0 = dbb->x0;
+    x1 = dbb->x1;
+    y0 = dbb->y0;
+    y1 = dbb->y1;
+    if (x1 > vbe_info.width) x1 = vbe_info.width;
+    if (y1 > vbe_info.height) y1 = vbe_info.height;
+
+    memcpy(dirty_tiles_work, dirty_tiles, dirty_tiles_size);
+    memset(dirty_tiles, 0, dirty_tiles_size);
     dbb->x0 = (uint16_t)-1;
     dbb->x1 = (uint16_t)-1;
     dbb->y0 = (uint16_t)-1;
     dbb->y1 = (uint16_t)-1;
+    if (managed_irq)
+        enable_interrupts();
+
+    if (x0 >= x1 || y0 >= y1)
+        return;
+
+    tx0 = (uint16_t)(x0 / VBE_TILE_W);
+    ty0 = (uint16_t)(y0 / VBE_TILE_H);
+    tx1 = (uint16_t)((x1 - 1) / VBE_TILE_W);
+    ty1 = (uint16_t)((y1 - 1) / VBE_TILE_H);
+
+    uint32_t spans_in_chunk = 0;
+    int irq_off = 0;
+
+    for (uint16_t ty = ty0; ty <= ty1; ty++) {
+        uint16_t row_y0 = (uint16_t)(ty * VBE_TILE_H);
+        uint16_t row_y1 = (uint16_t)(row_y0 + VBE_TILE_H);
+        if (row_y1 > vbe_info.height) row_y1 = vbe_info.height;
+        if (row_y0 < y0) row_y0 = y0;
+        if (row_y1 > y1) row_y1 = y1;
+        if (row_y0 >= row_y1)
+            continue;
+
+        uint16_t tx = tx0;
+        while (tx <= tx1) {
+            while (tx <= tx1 && !vbe_tile_is_dirty_map(dirty_tiles_work, tx, ty))
+                tx++;
+            if (tx > tx1)
+                break;
+
+            uint16_t run_start = tx;
+            while (tx <= tx1 && vbe_tile_is_dirty_map(dirty_tiles_work, tx, ty))
+                tx++;
+            uint16_t run_end = (uint16_t)(tx - 1);
+
+            uint16_t span_x0 = (uint16_t)(run_start * VBE_TILE_W);
+            uint16_t span_x1 = (uint16_t)((run_end + 1) * VBE_TILE_W);
+            if (span_x1 > vbe_info.width) span_x1 = vbe_info.width;
+            if (span_x0 < x0) span_x0 = x0;
+            if (span_x1 > x1) span_x1 = x1;
+            if (span_x0 >= span_x1)
+                continue;
+
+            if (managed_irq && !irq_off) {
+                clear_interrupts();
+                irq_off = 1;
+            }
+            vbe_compose_rect(span_x0, row_y0, span_x1, row_y1);
+            spans_in_chunk++;
+
+            if (managed_irq && spans_in_chunk >= VBE_IRQ_CHUNK_SPANS) {
+                enable_interrupts();
+                irq_off = 0;
+                spans_in_chunk = 0;
+            }
+        }
+    }
+
+    if (managed_irq && irq_off) {
+        enable_interrupts();
+    }
 }
 
 /**
@@ -742,8 +886,7 @@ reset:
  * This function copies the contents of the backbuffer to the framebuffer,
  * only for the dirty lines.
  */
-void vbe_flip_all(void)
-{
+void vbe_flip_all(void) {
     uint32_t stride = vbe_info.pitch / sizeof(uint32_t);
     uint32_t *base_buf = vbe_z_layers[0]->bufptr;
     uint32_t *dst_buf = vbe_info.framebuffer;
@@ -752,6 +895,8 @@ void vbe_flip_all(void)
     dbb->x1 = (uint16_t)-1;
     dbb->y0 = (uint16_t)-1;
     dbb->y1 = (uint16_t)-1;
+    memset(dirty_tiles, 0, dirty_tiles_size);
+    memset(dirty_tiles_work, 0, dirty_tiles_size);
 }
 
 /**
@@ -791,8 +936,7 @@ void vbe_drawglyph(FontGlyph *glyph, uint32_t x, uint32_t y, uint32_t color) {
  *
  * @param num_rows Number of rows to scroll up.
  */
-void vbe_shift_dirty_bitmap_up(uint32_t num_rows)
-{
+void vbe_shift_dirty_bitmap_up(uint32_t num_rows) {
     uint16_t y0 = dbb->y0;
     uint16_t y1 = dbb->y1;
 
@@ -863,29 +1007,22 @@ void vbe_scroll_region_down(uint32_t top, uint32_t bottom, uint32_t n) {
  *
  * @param c The character to print.
  */
-void vbe_terminal_putchar(char c)
-{
-    /* Mark old cursor cell dirty so the blink overlay gets cleared */
-    vbe_mark_region_dirty(term_cursor_col * VBE_FONT_WIDTH,
-                          term_cursor_row * VBE_FONT_HEIGHT,
-                          VBE_FONT_WIDTH, VBE_FONT_HEIGHT);
+void vbe_terminal_putchar(char c) {
 
-    if (c == '\n')
-    {
+    vbe_mark_region_dirty(term_cursor_col * VBE_FONT_WIDTH, term_cursor_row * VBE_FONT_HEIGHT, VBE_FONT_WIDTH, VBE_FONT_HEIGHT);
+
+    if (c == '\n') {
         term_cursor_col = 0;
         term_cursor_row++;
     }
-    else if (c == '\r')
-    {
+    else if (c == '\r') {
         term_cursor_col = 0;
     }
-    else if (c == '\b')
-    {
+    else if (c == '\b') {
         if (term_cursor_col > 0)
             term_cursor_col--;
     }
-    else
-    {
+    else {
         FontGlyph *glyph = ansi_bold ? find_glyph_bold((uint8_t)c) : find_glyph((uint8_t)c);
         if (!glyph && ansi_bold)
             glyph = find_glyph((uint8_t)c);
@@ -899,19 +1036,16 @@ void vbe_terminal_putchar(char c)
         term_cursor_col++;
     }
 
-    if (term_cursor_col >= term_max_cols())
-    {
+    if (term_cursor_col >= term_max_cols()) {
         term_cursor_col = 0;
         term_cursor_row++;
     }
 
-    if (term_cursor_row > scroll_bottom())
-    {
+    if (term_cursor_row > scroll_bottom()) {
         vbe_scroll_region_up(scroll_region_top, scroll_bottom(), 1);
         term_cursor_row = scroll_bottom();
     }
-    else if (term_cursor_row >= term_max_rows())
-    {
+    else if (term_cursor_row >= term_max_rows()) {
         vbe_scroll_region_up(0, term_max_rows() - 1, 1);
         term_cursor_row = term_max_rows() - 1;
     }
@@ -998,8 +1132,7 @@ void vbe_terminal_puts(const char *str, int len) {
 /**
  * @brief Remove the last character printed to the terminal.
  */
-void vbe_terminal_back(void)
-{
+void vbe_terminal_back(void) {
     if (term_cursor_col == 0 && term_cursor_row == 0)
     {
         return;
@@ -1031,8 +1164,7 @@ void vbe_terminal_back(void)
  *
  * @param color The new foreground color.
  */
-void vbe_setcolor_fg(uint32_t color)
-{
+void vbe_setcolor_fg(uint32_t color) {
     term_fg_color = color;
 }
 
@@ -1041,16 +1173,14 @@ void vbe_setcolor_fg(uint32_t color)
  *
  * @param color The new background color.
  */
-void vbe_setcolor_bg(uint32_t color)
-{
+void vbe_setcolor_bg(uint32_t color) {
     term_bg_color = color;
 }
 
 /**
  * @brief Initialize the VBE palette with 256 colors.
  */
-void vbe_palette_init(void)
-{
+void vbe_palette_init(void) {
     for (int i = 0; i < 16; i++)
     {
         vbe_palette[i] = vbe_colors[i];
@@ -1083,8 +1213,7 @@ void vbe_palette_init(void)
  *
  * @param color Index in the palette.
  */
-void vbe_setcolor_fg_palette(vbe_color_t color)
-{
+void vbe_setcolor_fg_palette(vbe_color_t color) {
     term_fg_color = vbe_colors[color];
 }
 
@@ -1093,8 +1222,7 @@ void vbe_setcolor_fg_palette(vbe_color_t color)
  *
  * @param color Index in the palette.
  */
-void vbe_setcolor_bg_palette(vbe_color_t color)
-{
+void vbe_setcolor_bg_palette(vbe_color_t color) {
     term_bg_color = vbe_colors[color];
 }
 
@@ -1105,8 +1233,7 @@ void vbe_setcolor_bg_palette(vbe_color_t color)
  * @param y Y-coordinate.
  * @param color Pixel color.
  */
-void vbe_fast_putpixel(uint32_t x, uint32_t y, uint32_t color)
-{
+void vbe_fast_putpixel(uint32_t x, uint32_t y, uint32_t color) {
     if (x >= vbe_info.width || y >= vbe_info.height)
         return;
     fast_putpixel(vbe_z_layers[0]->bufptr,
@@ -1123,8 +1250,7 @@ void vbe_fast_putpixel(uint32_t x, uint32_t y, uint32_t color)
  * @param x X-coordinate.
  * @param y Y-coordinate.
  */
-void vbe_fast_mark_dirty(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
-{
+void vbe_fast_mark_dirty(uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
     if (w == 0 || h == 0)
         return;
 
@@ -1151,8 +1277,7 @@ void vbe_fast_mark_dirty(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
  * @param col Column position.
  * @param row Row position.
  */
-void vbe_set_cursor(uint32_t col, uint32_t row)
-{
+void vbe_set_cursor(uint32_t col, uint32_t row) {
     if (col >= term_max_cols() || row >= term_max_rows())
     {
         return;
@@ -1174,15 +1299,13 @@ void vbe_set_cursor(uint32_t col, uint32_t row)
  *
  * @param color The color to fill the screen with.
  */
-void vbe_clear_screen(uint32_t color)
-{
+void vbe_clear_screen(uint32_t color) {
     uint32_t *back_buf = vbe_z_layers[0]->bufptr;
     memset(back_buf, color, fb_size_bytes);
     vbe_mark_region_dirty(0, 0, vbe_info.width, vbe_info.height);
 }
 
-void vbe_z_putpixel(uint32_t z, uint32_t x, uint32_t y, uint32_t color)
-{
+void vbe_z_putpixel(uint32_t z, uint32_t x, uint32_t y, uint32_t color) {
     if (!vbe_z_valid(z))
         return;
     if (x >= vbe_info.width || y >= vbe_info.height)
@@ -1193,8 +1316,7 @@ void vbe_z_putpixel(uint32_t z, uint32_t x, uint32_t y, uint32_t color)
     vbe_mark_pixel_dirty(x, y);
 }
 
-void vbe_z_fillrect(uint32_t z, uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color)
-{
+void vbe_z_fillrect(uint32_t z, uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
     if (!vbe_z_valid(z))
         return;
     if (x + w > vbe_info.width)
@@ -1214,19 +1336,14 @@ void vbe_z_fillrect(uint32_t z, uint32_t x, uint32_t y, uint32_t w, uint32_t h, 
     vbe_mark_region_dirty(x,y,w,h);
 }
 
-void vbe_clear_z_layer(uint32_t z, uint32_t color)
-{
+void vbe_clear_z_layer(uint32_t z, uint32_t color) {
     if (!vbe_z_valid(z))
         return;
     memset(vbe_z_layers[z]->bufptr, color, fb_size_bytes);
-    dbb->x0 = 0;
-    dbb->x1 = vbe_info.width - 1;
-    dbb->y0 = 0;
-    dbb->y1 = vbe_info.height - 1;
+    vbe_mark_region_dirty(0, 0, vbe_info.width, vbe_info.height);
 }
 
-void vbe_clear_all_z_layers(void)
-{
+void vbe_clear_all_z_layers(void) {
     for (uint32_t z = 1; z < VBE_NUM_Z_LAYERS; z++)
     {
         if (vbe_z_layers[z])
@@ -1237,8 +1354,7 @@ void vbe_clear_all_z_layers(void)
 // Copy source z-layer to destination fading alpha by fade_amount.
 // fade_amount: amount to subtract from alpha (0-255).
 // If src_z == dst_z an in-place fade is applied.
-void vbe_z_copy_and_fade(uint32_t src_z, uint32_t dst_z, uint8_t fade_amount)
-{
+void vbe_z_copy_and_fade(uint32_t src_z, uint32_t dst_z, uint8_t fade_amount) {
     if (!(src_z > 0 && src_z < VBE_NUM_Z_LAYERS))
         return;
     if (!(dst_z > 0 && dst_z < VBE_NUM_Z_LAYERS))
@@ -1729,6 +1845,13 @@ void vbe_worker(void) {
             vbe_z_layer_t *layer = vbe_z_layers[z];
             uint16_t layer_w = layer->width;
             uint16_t layer_h = layer->height;
+            uint32_t frame_id = meta->frame_id;
+
+            if ((layer->hints & FB_LAYER_HINT_STATIC_CONTENT) &&
+                frame_id == vbe_layer_last_frame_id[z]) {
+                meta->ready = 0;
+                continue;
+            }
 
             uint16_t dx0 = meta->dx0;
             uint16_t dx1 = meta->dx1;
@@ -1748,14 +1871,23 @@ void vbe_worker(void) {
                 uint16_t w = dx1 - dx0;
                 uint16_t h = dy1 - dy0;
                 vbe_mark_region_dirty(sx0, sy0, w, h);
+                vbe_layer_last_frame_id[z] = frame_id;
             } else {
-                vbe_mark_region_dirty(layer->x0, layer->y0, layer_w, layer_h);
+                // invalid
+                meta->ready = 0;
+                continue;
             }
 
-            meta->ready = 0;
+            // frequent update layers may publish a newer frame concurrently on future SMP builds
+            if ((layer->hints & FB_LAYER_HINT_FREQUENT_UPDATES) &&
+                meta->frame_id != frame_id) {
+                meta->ready = 1;
+            } else {
+                meta->ready = 0;
+            }
         }
-        vbe_flip();
         enable_interrupts();
+        vbe_flip();
         kernel_yield();
     }
 }

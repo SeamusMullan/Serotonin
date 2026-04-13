@@ -1,11 +1,12 @@
-#include "stdio/stdio.h"
-#include "kernel.h"
-#include "stdlib/stdlib.h"
-#include "fault.h"
-#include "schedule/schedule.h"
-#include "io/io.h"
-#include "vmm/vmm.h"
-#include "vmm/paging_init.h"
+#include <kernel/stdio/stdio.h>
+#include <kernel/kernel.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/fault.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/io/io.h>
+#include <kernel/vmm/vmm.h>
+#include <kernel/vmm/paging_init.h>
+#include <kernel/pty/pty.h>
 
 extern char __kernel_virtual_base[];
 extern char __kernel_end[];
@@ -192,6 +193,72 @@ static void dump_exception_registers(const exception_frame_t *frame, int from_us
     }
 }
 
+static pty_t *task_pty(void) {
+    if (!current_task) return NULL;
+    for (int fd = 2; fd >= 1; fd--) {
+        file_handle_t *fh = current_task->fd_table[fd];
+        if (fh && fh->node) {
+            pty_t *p = pty_from_node(fh->node);
+            if (p) return p;
+        }
+    }
+    return &pty_table[active_vty];
+}
+
+static void pty_dump_frame(pty_t *pty, const exception_frame_t *frame) {
+    char buf[512];
+    int len;
+
+    len = snprintf(buf, sizeof(buf),
+        "EAX=0x%08x EBX=0x%08x ECX=0x%08x EDX=0x%08x\n"
+        "ESI=0x%08x EDI=0x%08x EBP=0x%08x ESP=0x%08x\n"
+        "EIP=0x%08x CS=0x%04x DS=0x%04x SS=0x%04x EFLAGS=0x%08x\n",
+        frame->eax, frame->ebx, frame->ecx, frame->edx,
+        frame->esi, frame->edi, frame->ebp, frame->esp_at_trap,
+        frame->eip, frame->cs, frame->ds, frame->ss, frame->eflags);
+    if (len > 0) pty_ldisc_output(pty, buf, (uint32_t)len);
+
+    if (frame->error_code) {
+        len = snprintf(buf, sizeof(buf), "Error code: 0x%08x\n", frame->error_code);
+        if (len > 0) pty_ldisc_output(pty, buf, (uint32_t)len);
+    }
+
+    if (current_task->address_space &&
+        frame->eip >= USER_SPACE_START && frame->eip < USER_SPACE_END) {
+        uint32_t phys = get_mapping(current_task->address_space, frame->eip);
+        if (phys) {
+            uint32_t offset = frame->eip & (PAGE_SIZE - 1);
+            uint8_t *page = (uint8_t*)kmap(phys);
+            uint8_t *ptr = page + offset;
+            uint32_t remaining = PAGE_SIZE - offset;
+            uint32_t count = (remaining < 8) ? remaining : 8;
+            int pos = snprintf(buf, sizeof(buf), "EIP bytes:");
+            for (uint32_t i = 0; i < count && pos < (int)sizeof(buf) - 4; i++)
+                pos += snprintf(buf + pos, sizeof(buf) - pos, " %02x", ptr[i]);
+            kunmap();
+            buf[pos++] = '\n';
+            pty_ldisc_output(pty, buf, (uint32_t)pos);
+        }
+    }
+
+    len = snprintf(buf, sizeof(buf), "-----------------------------\n");
+    if (len > 0) pty_ldisc_output(pty, buf, (uint32_t)len);
+}
+
+static void pty_exception_msg(const char *name, const exception_frame_t *frame) {
+    pty_t *pty = task_pty();
+    if (!pty) return;
+
+    char buf[256];
+    int len = snprintf(buf, sizeof(buf),
+        "\n--- Exception: %s ---\n"
+        "Process \"%s\" (pid=%d) will be terminated.\n",
+        name, current_task->name, current_task->pid);
+    if (len > 0) pty_ldisc_output(pty, buf, (uint32_t)len);
+
+    pty_dump_frame(pty, frame);
+}
+
 static void handle_user_exception(const char *name, uint8_t signal, const exception_frame_t *frame) {
     if (!current_task || !frame) return;
     printfs(PRINT_STATUS_ERROR,"Process \"%s\" (pid=%d) triggered %s and will be terminated.\n",
@@ -226,6 +293,7 @@ static void handle_exception_common(const char *name, isr_vector_t vector, uint3
     printfs(PRINT_STATUS_ERROR,"mode:%s\n", from_user ? "user" : "kernel");
 
     if (multitasking_ready == 1 && from_user && current_task) {
+        pty_exception_msg(name, &frame);
         handle_user_exception(name, user_signal, &frame);
         return;
     }
@@ -318,11 +386,28 @@ void page_fault_handler(uint32_t *stack) {
     printfs(PRINT_STATUS_ERROR,"-----------------------------\n");
 
     if (multitasking_ready == 1 && from_user && current_task) {
+        pty_t *pty = task_pty();
+        if (pty) {
+            char buf[256];
+            int len = snprintf(buf, sizeof(buf),
+                "\n--- Exception: Page Fault (#PF) ---\n"
+                "Process \"%s\" (pid=%d) will be terminated.\n"
+                "Faulting address: 0x%08x\n"
+                "Reason: %s (%s access in user mode)\n",
+                current_task->name, current_task->pid, faulting_address,
+                rsvd ? "reserved-bit violation" :
+                    (present ? "protection violation" : "page not present"),
+                write ? "write" : (ifetch ? "instruction-fetch" : "read"));
+            if (len > 0) pty_ldisc_output(pty, buf, (uint32_t)len);
+
+            pty_dump_frame(pty, &frame);
+        }
+        /* Serial debug output + task_exit */
         handle_user_exception("page fault (#PF)", EXIT_SIGSEGV, &frame);
         return;
     }
 
-    handle_kernel_exception("kernel mode exception - page fault (#PF)", &frame);
+    handle_kernel_exception("page fault (#PF)", &frame);
 }
 
 /**

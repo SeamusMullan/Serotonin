@@ -1,13 +1,13 @@
-#include "io.h"
-#include "serial.h"
-#include "../stdio/stdio.h"
-#include "../stdlib/stdlib.h"
-#include "../schedule/schedule.h"
-#include "../video/vbe/vbe.h"
-#include "../kernel.h"
-#include "../device/mouse/dev_mouse.h"
-#include "../device/serial/dev_serial.h"
-#include "../syscall/syscall.h"
+#include <kernel/io/io.h>
+#include <kernel/io/serial.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/video/vbe/vbe.h>
+#include <kernel/kernel.h>
+#include <kernel/device/mouse/dev_mouse.h>
+#include <kernel/device/serial/dev_serial.h>
+#include <kernel/syscall/syscall.h>
 
 volatile uint64_t timer_ticks = 0;
 volatile uint64_t last_quantum_tick = 0;

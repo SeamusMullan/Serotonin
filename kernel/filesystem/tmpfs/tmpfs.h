@@ -1,7 +1,7 @@
 #ifndef _FS_TMPFS
 #define _FS_TMPFS
 
-#include "../vfs.h"
+#include <kernel/filesystem/vfs.h>
 
 typedef struct tmpfs_file {
     char *data;

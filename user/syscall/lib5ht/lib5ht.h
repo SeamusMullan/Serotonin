@@ -34,6 +34,13 @@ typedef struct proc_5ht {
     int priv;           /**< Privilege level (0=kernel, 3=user) */
 } proc_5ht_t;
 
+typedef struct sysinfo_5ht {
+    uint32_t mem_free;   /**< Free memory (MB) */
+    uint32_t mem_total;  /**< Total memory (MB) */
+    uint32_t cpu_used;   /**< CPU used percent (reserved) */
+    uint32_t cpu_free;   /**< CPU free percent (reserved) */
+} sysinfo_5ht_t;
+
 /**
  * @defgroup mouse Mouse Event Interface
  * @{
@@ -107,6 +114,16 @@ typedef struct fb_info {
     uint32_t alignment;         /**< Required memory alignment */
 } fb_info_t;
 
+#define FB_LAYER_ALPHA_OPAQUE 0
+#define FB_LAYER_ALPHA_BLEND  1
+#define FB_LAYER_HINT_NONE              0x0000u
+#define FB_LAYER_HINT_OPAQUE_CONTENT    0x0001u
+#define FB_LAYER_HINT_STATIC_CONTENT    0x0002u
+#define FB_LAYER_HINT_FREQUENT_UPDATES  0x0004u
+#define FB_LAYER_HINT_CURSOR_SPRITE     0x0008u
+#define FB_LAYER_HINT_TRANSIENT         0x0010u
+#define FB_LAYER_HINT_ALL_MASK          0x001Fu
+
 /**
  * @brief Framebuffer layer configuration
  *
@@ -118,8 +135,9 @@ typedef struct fb_layer_config {
     uint16_t x1;        /**< Right edge X coordinate */
     uint16_t y0;        /**< Top edge Y coordinate */
     uint16_t y1;        /**< Bottom edge Y coordinate */
-    uint8_t  alpha;     /**< Alpha blending enable (0=opaque, 1=blend) */
+    uint8_t  alpha;     /**< Blend mode: FB_LAYER_ALPHA_OPAQUE or FB_LAYER_ALPHA_BLEND */
     uint16_t stride;    /**< Stride in bytes per row */
+    uint16_t hints;     /**< FB_LAYER_HINT_* bitmask (performance/compositor hints) */
 } fb_layer_config_t;
 
 /**
@@ -266,6 +284,7 @@ int sys_5ht_query_info(fb_info_t *out);
  * @return 0 on success, negative error code on failure
  */
 int sys_5ht_query_layer(uint16_t id, fb_layer_info_t *out);
+int sys_5ht_sysinfo(sysinfo_5ht_t *out);
 int sys_5ht_set_fid(pid_t pid);
 int sys_5ht_pty_open(int fds[2]);
 int sys_5ht_pty_setattr(int fd, const pty_attr_t *attr);

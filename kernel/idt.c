@@ -1,8 +1,8 @@
 #include <stdint.h>
-#include "idt.h"
-#include "stdio/stdio.h"
-#include "kernel.h"
-#include "syscall/syscall.h"
+#include <kernel/idt.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/kernel.h>
+#include <kernel/syscall/syscall.h>
 
 #define IDT_ENTRIES 256
 

@@ -16,11 +16,11 @@
  *   Achieved here by calling io_wait() the required number of times.
  */
 
-#include "opl2.h"
-#include "../../io/io.h"
-#include "../../stdlib/stdlib.h"
-#include "../../stdio/stdio.h"
-#include "../../kernel.h"
+#include <kernel/audio/opl2/opl2.h>
+#include <kernel/io/io.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/kernel.h>
 #include <stdint.h>
 
 static uint16_t opl2_base = 0x388;  /* default AdLib base port */

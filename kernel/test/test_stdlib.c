@@ -1,7 +1,7 @@
 // kernel/test/test_stdlib.c
-#include "ktest.h"
-#include "../stdlib/stdlib.h"
-#include "../stdio/stdio.h"
+#include <kernel/test/ktest.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/stdio/stdio.h>
 
 // Test itoa
 KTEST_DEFINE(itoa_basic) {
