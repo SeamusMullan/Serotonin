@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include "wm.h"
+#include "wm_ipc.h"
 
 /* Alt key tracking (scancode 0x38) */
 static uint8_t alt_held = 0;
@@ -13,6 +14,16 @@ void wm_handle_keyboard(wm_state_t *wm, keyboard_event_t *ev) {
     }
     if (ev->scancode == 0x2A || ev->scancode == 0x36) { /* Shift */
         shift_held = !(ev->flags & KEY_FLAG_RELEASED);
+        return;
+    }
+
+    /* Key releases: forward to focused GUI client; otherwise discard */
+    if ((ev->flags & KEY_FLAG_RELEASED) && !wm->launcher_active && !wm->settings_active &&
+        wm->focused_idx >= 0 && wm->windows[wm->focused_idx].active &&
+        wm->windows[wm->focused_idx].is_gui && wm->windows[wm->focused_idx].pty_master_fd >= 0) {
+        sg_gui_event_t ge;
+        wm_ipc_fill_keyboard(&ge, ev);
+        wm_ipc_send(wm->windows[wm->focused_idx].pty_master_fd, &ge);
         return;
     }
 
@@ -126,6 +137,13 @@ void wm_handle_keyboard(wm_state_t *wm, keyboard_event_t *ev) {
     /* Forward to focused window's PTY */
     if (wm->focused_idx >= 0 && wm->windows[wm->focused_idx].active) {
         wm_window_t *win = &wm->windows[wm->focused_idx];
+
+        if (win->is_gui && win->pty_master_fd >= 0) {
+            sg_gui_event_t ge;
+            wm_ipc_fill_keyboard(&ge, ev);
+            wm_ipc_send(win->pty_master_fd, &ge);
+            return;
+        }
 
         /* Cursor / navigation keys → ANSI escape sequences */
         {
@@ -372,6 +390,22 @@ void wm_handle_mouse(wm_state_t *wm, mouse_event_t *ev) {
                 }
                 break;
             }
+        }
+    }
+
+    /* Forward mouse to focused GUI (layer-local coordinates) */
+    if (wm->focused_idx >= 0 && wm->windows[wm->focused_idx].active) {
+        wm_window_t *gw = &wm->windows[wm->focused_idx];
+        if (gw->is_gui && gw->pty_master_fd >= 0) {
+            int lx = ev->x - gw->x;
+            int ly = ev->y - gw->y;
+            if (lx < 0) lx = 0;
+            if (ly < 0) ly = 0;
+            if (lx > gw->w) lx = gw->w;
+            if (ly > gw->h) ly = gw->h;
+            sg_gui_event_t ge;
+            wm_ipc_fill_mouse(&ge, (int16_t)lx, (int16_t)ly, ev->buttons, ev->event_type);
+            wm_ipc_send(gw->pty_master_fd, &ge);
         }
     }
 }

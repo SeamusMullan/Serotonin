@@ -1,0 +1,64 @@
+/**
+ * Minimal WM-hosted GUI using gooey + Serotonin AF_UNIX socket events.
+ * Launch from the WM program launcher (Alt+P) as "gooey_demo".
+ */
+
+#include "gui/gooey.h"
+
+#include <cstdio>
+#include <cstring>
+#include <unistd.h>
+
+extern "C" {
+#include "../syscall/sys/poll.h"
+}
+
+int main(void) {
+    gooey::Window win;
+    if (!win.attach_layer_from_wm_environment()) {
+        printf("gooey_demo: attach_layer_from_wm_environment failed\n");
+        return 1;
+    }
+
+    int evfd = gooey::Window::events_fd_from_environment();
+
+    uint32_t hue = 40; /* start mid-range so first frame is not near-black */
+    for (;;) {
+        struct pollfd pfd;
+        pfd.fd = evfd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+        (void)poll(&pfd, 1, 80);
+
+        if (pfd.revents & POLLIN) {
+            for (;;) {
+                gooey::Event ev;
+                std::memset(&ev, 0, sizeof(ev));
+                ssize_t r = gooey::read_gui_event(evfd, &ev);
+                if (r == 0)
+                    goto done;
+                if (r < 0)
+                    break;
+                if (ev.kind == gooey::Event::k_configure) {
+                    if (!win.apply_configure_event(ev))
+                        goto done;
+                }
+            }
+        }
+
+        if (!win.surface().valid())
+            continue;
+
+        /* Clearly visible ramp (was rgb(0,70,130) which reads as black). */
+        uint32_t bg = gooey::rgb(static_cast<uint8_t>(hue), 140, 220);
+        hue = (hue + 5u) & 0xFFu;
+        win.surface().fill_rect(0, 0, win.surface().width(), win.surface().height(), bg);
+        win.damage_all();
+        win.present();
+        win.wait_until_presented();
+    }
+
+done:
+    win.close();
+    return 0;
+}

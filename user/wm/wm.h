@@ -176,6 +176,7 @@ typedef enum {
 /* Window structure */
 typedef struct {
     uint8_t  active;
+    uint8_t  is_gui; /* 1: child owns compositor layer; pty_master_fd is WM end of socketpair */
     uint16_t layer_id;
     int      pty_master_fd;
     pid_t    child_pid;
@@ -294,6 +295,7 @@ void wm_handle_mouse(wm_state_t *wm, mouse_event_t *ev);
 /* --- wm.c --- */
 int  wm_create_window(wm_state_t *wm);
 int  wm_launch_window(wm_state_t *wm, const char *program);
+int  wm_launch_gui_window(wm_state_t *wm, const char *program);
 void wm_close_window(wm_state_t *wm, int idx);
 void wm_focus_window(wm_state_t *wm, int idx);
 void wm_render_window(wm_state_t *wm, int idx);

@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include "wm.h"
+#include "wm_ipc.h"
 #include "../syscall/sys/poll.h"
 
 int waitpid(pid_t pid, int *status);
@@ -552,6 +553,10 @@ static const char *launcher_filter[] = {
     "init", "getty", "seriald", "lwipd", "wm", NULL
 };
 
+static int is_gui_launch_name(const char *name) {
+    return name && strcmp(name, "gooey_demo") == 0;
+}
+
 static int is_filtered(const char *name) {
     for (int i = 0; launcher_filter[i]; i++)
         if (strcmp(name, launcher_filter[i]) == 0) return 1;
@@ -587,7 +592,7 @@ void wm_apply_theme(wm_state_t *wm, int theme_idx) {
 
     for (int i = 0; i < MAX_WINDOWS; i++) {
         wm_window_t *win = &wm->windows[i];
-        if (!win->active) continue;
+        if (!win->active || win->is_gui) continue;
         theme_remap_term_defaults(&win->term, old_theme.term_fg, old_theme.term_bg,
                                   THEME_TERM_FG, THEME_TERM_BG);
         wm_render_window(wm, i);
@@ -808,7 +813,10 @@ void launcher_key(wm_state_t *wm, keyboard_event_t *ev) {
             strncpy(name, wm->launcher_items[src], sizeof(name));
             name[31] = '\0';
             launcher_close(wm);
-            wm_launch_window(wm, name);
+            if (is_gui_launch_name(name))
+                wm_launch_gui_window(wm, name);
+            else
+                wm_launch_window(wm, name);
         }
         return;
     }
@@ -988,6 +996,8 @@ void settings_open(wm_state_t *wm) {
 /* --- inactive window alpha --- */
 
 static void wm_set_win_blend(wm_window_t *win, int blend) {
+    if (win->is_gui)
+        return;
     fb_layer_config_t cfg = {0};
     fb_layer_info_t info = {0};
     cfg.size = sizeof(cfg);
@@ -1013,7 +1023,7 @@ static void wm_set_win_blend(wm_window_t *win, int blend) {
 
 void wm_render_decorations(wm_state_t *wm, int idx) {
     wm_window_t *win = &wm->windows[idx];
-    if (!win->active || !win->fb) return;
+    if (!win->active || !win->fb || win->is_gui) return;
 
     uint32_t stride = win->fb_stride_px;
     uint32_t tb_bg = win->focused ? THEME_TITLEBAR_BG : THEME_TITLEBAR_INACTIVE;
@@ -1107,7 +1117,23 @@ void wm_submit_frame(wm_window_t *win) {
 
 void wm_render_window(wm_state_t *wm, int idx) {
     wm_window_t *win = &wm->windows[idx];
-    if (!win->active || !win->fb) return;
+    if (!win->active) return;
+
+    if (win->is_gui) {
+        win->cx = win->x;
+        win->cy = win->y;
+        win->cw = win->w;
+        win->ch = win->h;
+        if (win->pty_master_fd >= 0) {
+            sg_gui_event_t ev;
+            wm_ipc_fill_configure(&ev, win->x, win->y,
+                                  (uint16_t)(win->x + win->w), (uint16_t)(win->y + win->h));
+            wm_ipc_send(win->pty_master_fd, &ev);
+        }
+        return;
+    }
+
+    if (!win->fb) return;
 
     /* Reconfigure layer if geometry changed */
     fb_layer_config_t cfg = {0};
@@ -1327,6 +1353,126 @@ int wm_launch_window(wm_state_t *wm, const char *program) {
     return idx;
 }
 
+int wm_launch_gui_window(wm_state_t *wm, const char *program) {
+    if (!program || !program[0])
+        return -1;
+
+    int idx = -1;
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (!wm->windows[i].active) {
+            idx = i;
+            break;
+        }
+    }
+    if (idx < 0)
+        return -1;
+
+    int layer_id = -1;
+    for (int l = LAYER_WIN_BASE; l <= LAYER_WIN_MAX; l++) {
+        int used = 0;
+        for (int i = 0; i < MAX_WINDOWS; i++) {
+            if (wm->windows[i].active && wm->windows[i].layer_id == l) {
+                used = 1;
+                break;
+            }
+        }
+        if (!used) {
+            layer_id = l;
+            break;
+        }
+    }
+    if (layer_id < 0)
+        return -1;
+
+    wm_window_t *win = &wm->windows[idx];
+    memset(win, 0, sizeof(*win));
+    win->active = 1;
+    win->is_gui = 1;
+    win->layer_id = (uint16_t)layer_id;
+    win->mode = WIN_TILED;
+    snprintf(win->title, sizeof(win->title), "%s", program);
+
+    wm->num_windows++;
+    layout_compute(wm);
+
+    int sv[2] = {-1, -1};
+    if (wm_ipc_socketpair(sv) != 0) {
+        win->active = 0;
+        wm->num_windows--;
+        return -1;
+    }
+
+    uint16_t gx0 = win->x;
+    uint16_t gy0 = win->y;
+    uint16_t gx1 = (uint16_t)(win->x + win->w);
+    uint16_t gy1 = (uint16_t)(win->y + win->h);
+    uint16_t glid = (uint16_t)layer_id;
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        close(sv[0]);
+        close(sv[1]);
+        win->active = 0;
+        wm->num_windows--;
+        return -1;
+    }
+
+    if (pid == 0) {
+        char e_layer[56], e_x0[40], e_y0[40], e_x1[40], e_y1[40], e_evfd[40];
+
+        snprintf(e_layer, sizeof(e_layer), "SEROTONIN_GUI_LAYER_ID=%u", (unsigned)glid);
+        snprintf(e_x0, sizeof(e_x0), "SEROTONIN_GUI_X0=%u", (unsigned)gx0);
+        snprintf(e_y0, sizeof(e_y0), "SEROTONIN_GUI_Y0=%u", (unsigned)gy0);
+        snprintf(e_x1, sizeof(e_x1), "SEROTONIN_GUI_X1=%u", (unsigned)gx1);
+        snprintf(e_y1, sizeof(e_y1), "SEROTONIN_GUI_Y1=%u", (unsigned)gy1);
+        snprintf(e_evfd, sizeof(e_evfd), "SEROTONIN_GUI_EVENTS_FD=%d", SG_GUI_EVENTS_FD);
+
+        char *envp[] = {
+            "TERM=serotonin-gui",
+            "HOME=/root",
+            "PATH=/bin:/usr/bin",
+            e_layer,
+            e_x0,
+            e_y0,
+            e_x1,
+            e_y1,
+            e_evfd,
+            NULL,
+        };
+
+        close(sv[0]);
+        close(wm->kb_fd);
+        close(wm->mouse_fd);
+        if (dup2(sv[1], SG_GUI_EVENTS_FD) < 0)
+            _exit(124);
+        if (sv[1] != SG_GUI_EVENTS_FD)
+            close(sv[1]);
+
+        char path[64];
+        snprintf(path, sizeof(path), "/bin/%s", program);
+        char *argv[] = {path, NULL};
+        execve(path, argv, envp);
+        _exit(127);
+    }
+
+    close(sv[1]);
+    win->pty_master_fd = sv[0];
+    win->child_pid = pid;
+    win->fb = NULL;
+    win->meta = NULL;
+
+    wm_focus_window(wm, idx);
+
+    desktop_mark_dirty(wm, 0, 0, SCREEN_W, SCREEN_H - TASKBAR_H);
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (wm->windows[i].active)
+            wm_render_window(wm, i);
+    }
+
+    render_taskbar(wm);
+    return idx;
+}
+
 void wm_close_window(wm_state_t *wm, int idx) {
     wm_window_t *win = &wm->windows[idx];
     if (!win->active) return;
@@ -1335,15 +1481,17 @@ void wm_close_window(wm_state_t *wm, int idx) {
     if (win->child_pid > 0)
         kill(win->child_pid, 15); /* SIGTERM */
 
-    /* close PTY master */
+    /* close PTY master or GUI IPC socket */
     if (win->pty_master_fd >= 0)
         close(win->pty_master_fd);
 
-    /* free terminal */
-    term_free(&win->term);
+    /* free terminal (terminal windows only) */
+    if (!win->is_gui)
+        term_free(&win->term);
 
-    /* release layer */
-    sys_5ht_rel_buf(win->layer_id);
+    /* release layer (WM-owned terminal layers only; GUI child owns its layer) */
+    if (!win->is_gui)
+        sys_5ht_rel_buf(win->layer_id);
 
     win->active = 0;
     wm->num_windows--;
@@ -1408,7 +1556,10 @@ void wm_focus_window(wm_state_t *wm, int idx) {
             }
         }
 
-        if (top_idx >= 0 && top_idx != idx) {
+        int block_swap = wm->windows[idx].is_gui ||
+                         (top_idx >= 0 && wm->windows[top_idx].is_gui);
+
+        if (!block_swap && top_idx >= 0 && top_idx != idx) {
             uint16_t tmp = wm->windows[idx].layer_id;
             wm->windows[idx].layer_id = wm->windows[top_idx].layer_id;
             wm->windows[top_idx].layer_id = tmp;
@@ -1420,6 +1571,23 @@ void wm_focus_window(wm_state_t *wm, int idx) {
             if (old_idx >= 0 && wm->windows[old_idx].active &&
                 old_idx != top_idx && old_idx != idx) {
                 wm_render_decorations(wm, old_idx);
+                if (!wm->windows[old_idx].is_gui && wm->windows[old_idx].fb) {
+                    fb_set_alpha(wm->windows[old_idx].fb,
+                                 (uint32_t)wm->windows[old_idx].w * wm->windows[old_idx].h,
+                                 INACTIVE_ALPHA);
+                    wm_set_win_blend(&wm->windows[old_idx], 1);
+                    wm_dirty_expand(&wm->windows[old_idx], 0, 0,
+                                    wm->windows[old_idx].w, wm->windows[old_idx].h);
+                    wm_submit_frame(&wm->windows[old_idx]);
+                }
+            }
+        }
+    }
+
+    if (!did_swap) {
+        if (old_idx >= 0 && wm->windows[old_idx].active) {
+            wm_render_decorations(wm, old_idx);
+            if (!wm->windows[old_idx].is_gui && wm->windows[old_idx].fb) {
                 fb_set_alpha(wm->windows[old_idx].fb,
                              (uint32_t)wm->windows[old_idx].w * wm->windows[old_idx].h,
                              INACTIVE_ALPHA);
@@ -1429,29 +1597,31 @@ void wm_focus_window(wm_state_t *wm, int idx) {
                 wm_submit_frame(&wm->windows[old_idx]);
             }
         }
+        if (idx >= 0 && wm->windows[idx].active) {
+            if (!wm->windows[idx].is_gui && wm->windows[idx].fb) {
+                fb_set_alpha(wm->windows[idx].fb,
+                             (uint32_t)wm->windows[idx].w * wm->windows[idx].h,
+                             0xFF);
+                wm_set_win_blend(&wm->windows[idx], 0);
+                wm_render_decorations(wm, idx);
+                wm_dirty_expand(&wm->windows[idx], 0, 0,
+                                wm->windows[idx].w, wm->windows[idx].h);
+                wm_submit_frame(&wm->windows[idx]);
+            }
+        }
     }
 
-    if (!did_swap) {
-        if (old_idx >= 0 && wm->windows[old_idx].active) {
-            wm_render_decorations(wm, old_idx);
-            fb_set_alpha(wm->windows[old_idx].fb,
-                         (uint32_t)wm->windows[old_idx].w * wm->windows[old_idx].h,
-                         INACTIVE_ALPHA);
-            wm_set_win_blend(&wm->windows[old_idx], 1);
-            wm_dirty_expand(&wm->windows[old_idx], 0, 0,
-                            wm->windows[old_idx].w, wm->windows[old_idx].h);
-            wm_submit_frame(&wm->windows[old_idx]);
-        }
-        if (idx >= 0 && wm->windows[idx].active) {
-            fb_set_alpha(wm->windows[idx].fb,
-                         (uint32_t)wm->windows[idx].w * wm->windows[idx].h,
-                         0xFF);
-            wm_set_win_blend(&wm->windows[idx], 0);
-            wm_render_decorations(wm, idx);
-            wm_dirty_expand(&wm->windows[idx], 0, 0,
-                            wm->windows[idx].w, wm->windows[idx].h);
-            wm_submit_frame(&wm->windows[idx]);
-        }
+    if (old_idx >= 0 && wm->windows[old_idx].active && wm->windows[old_idx].is_gui &&
+        wm->windows[old_idx].pty_master_fd >= 0) {
+        sg_gui_event_t fe;
+        wm_ipc_fill_focus(&fe, 0);
+        wm_ipc_send(wm->windows[old_idx].pty_master_fd, &fe);
+    }
+    if (idx >= 0 && wm->windows[idx].active && wm->windows[idx].is_gui &&
+        wm->windows[idx].pty_master_fd >= 0) {
+        sg_gui_event_t fe;
+        wm_ipc_fill_focus(&fe, 1);
+        wm_ipc_send(wm->windows[idx].pty_master_fd, &fe);
     }
 
     render_taskbar(wm);
@@ -1563,6 +1733,19 @@ int main(void) {
 
             int win_idx = pfd_map[p];
             wm_window_t *win = &wm.windows[win_idx];
+
+            if (win->is_gui) {
+                if (pfds[p].revents & POLLIN) {
+                    char drain[256];
+                    while (read(win->pty_master_fd, drain, sizeof(drain)) > 0) { }
+                }
+                if (pfds[p].revents & POLLHUP) {
+                    pty_closed = win_idx;
+                    break;
+                }
+                continue;
+            }
+
             char buf[65536];
             int n = read(win->pty_master_fd, buf, sizeof(buf));
             if (n > 0) {
@@ -1594,7 +1777,8 @@ int main(void) {
         if (blink_counter >= BLINK_INTERVAL) {
             blink_counter = 0;
             cursor_blink_on ^= 1;
-            if (wm.focused_idx >= 0 && wm.windows[wm.focused_idx].active) {
+            if (wm.focused_idx >= 0 && wm.windows[wm.focused_idx].active &&
+                !wm.windows[wm.focused_idx].is_gui) {
                 wm_window_t *win = &wm.windows[wm.focused_idx];
                 if (win->term.cursor_visible != cursor_blink_on) {
                     win->term.cursor_visible = cursor_blink_on;

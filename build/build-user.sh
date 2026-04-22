@@ -98,11 +98,20 @@ $CC seriald.c -o seriald.elf $CFLAGS
 $CC initctl.c -o initctl.elf $CFLAGS
 $CC wavplay.c -o wavplay.elf $CFLAGS -Iinit
 
-# --- Window Manager ---
+# --- Window Manager (C sources + C++ socket IPC glue, linked with g++) ---
 echo "Building window manager..."
-$CC wm/wm.c wm/wm_terminal.c wm/wm_draw.c wm/wm_layout.c wm/wm_input.c \
-    -o wm.elf $CFLAGS
+$CXX -c wm/wm_ipc.cpp -o wm/wm_ipc.o $CXXFLAGS
+$CC -c wm/wm.c -o wm/wm.o $CFLAGS
+$CC -c wm/wm_terminal.c -o wm/wm_terminal.o $CFLAGS
+$CC -c wm/wm_draw.c -o wm/wm_draw.o $CFLAGS
+$CC -c wm/wm_layout.c -o wm/wm_layout.o $CFLAGS
+$CC -c wm/wm_input.c -o wm/wm_input.o $CFLAGS
+$CXX wm/wm.o wm/wm_terminal.o wm/wm_draw.o wm/wm_layout.o wm/wm_input.o wm/wm_ipc.o \
+    -o wm.elf $CXXFLAGS
 echo "Window manager build complete: wm.elf"
+
+$CXX gui/gooey_demo.cpp -o gooey_demo.elf $CXXFLAGS -I.
+echo "GUI demo build complete: gooey_demo.elf"
 
 # lwip client library (compiled separately, used by network tools)
 $CC -c lwip/serotonin/lwip_client.c -o lwip/serotonin/lwip_client.o $CFLAGS
