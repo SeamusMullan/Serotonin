@@ -41,3 +41,10 @@ user/lwip
 *.vrb
 user/lua/lua-5.4.8.tar.gz
 user/lua/lua-5.4.8/src/liblua.a
+binutils-user-build/
+binutils-user-stage/
+gcc-user-stage/
+gcc-user-build/
+user/binutils-user-build
+user/gcc-user-build
+user/binutils-user-stage
