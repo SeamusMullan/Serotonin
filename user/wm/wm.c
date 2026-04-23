@@ -554,7 +554,13 @@ static const char *launcher_filter[] = {
 };
 
 static int is_gui_launch_name(const char *name) {
-    return name && strcmp(name, "gooey_demo") == 0;
+    if (!name)
+        return 0;
+    if (strcmp(name, "gooey_demo") == 0)
+        return 1;
+    if (strcmp(name, "widget_demo") == 0)
+        return 1;
+    return 0;
 }
 
 static int is_filtered(const char *name) {

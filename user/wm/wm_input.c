@@ -1,3 +1,4 @@
+#include <signal.h>
 #include <unistd.h>
 #include "wm.h"
 #include "wm_ipc.h"
@@ -139,6 +140,13 @@ void wm_handle_keyboard(wm_state_t *wm, keyboard_event_t *ev) {
         wm_window_t *win = &wm->windows[wm->focused_idx];
 
         if (win->is_gui && win->pty_master_fd >= 0) {
+            /* Terminals get Ctrl+C as 0x03 on the PTY; GUI clients only have the
+             * WM socket, so deliver SIGINT here like a tty interrupt. */
+            if ((ev->flags & KEY_FLAG_CTRL) && win->child_pid > 0 &&
+                (ev->ascii == 'c' || ev->ascii == 'C')) {
+                kill(win->child_pid, 2); /* SIGINT */
+                return;
+            }
             sg_gui_event_t ge;
             wm_ipc_fill_keyboard(&ge, ev);
             wm_ipc_send(win->pty_master_fd, &ge);
