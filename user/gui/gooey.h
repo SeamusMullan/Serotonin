@@ -25,6 +25,10 @@
 
 #include <lib5ht.h>
 
+extern "C" {
+#include "../syscall/sys/poll.h"
+}
+
 #include "../wm/gui_protocol.h"
 
 namespace gooey {
@@ -147,6 +151,25 @@ inline ssize_t read_gui_event(int fd, Event *out) {
         break;
     }
     return static_cast<ssize_t>(sizeof(raw));
+}
+
+/**
+ * Non-blocking event read: poll fd first, only read if data available.
+ * @return >0 on event read, 0 if nothing available, -1 on EOF/error.
+ */
+inline ssize_t poll_gui_event(int fd, Event *out) {
+    struct pollfd pfd;
+    pfd.fd = fd;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+    int rc = poll(&pfd, 1, 0);
+    if (rc <= 0)
+        return 0;
+    if (pfd.revents & (POLLHUP | POLLERR))
+        return -1;
+    if (!(pfd.revents & POLLIN))
+        return 0;
+    return read_gui_event(fd, out);
 }
 
 /** Drawable view: ARGB8888, stride in pixels (matches WM `fb_stride_px`). */
