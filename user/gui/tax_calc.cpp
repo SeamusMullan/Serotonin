@@ -9,6 +9,7 @@
 #include "gui/gooey.h"
 #include "gui/gooey_draw.h"
 #include "gui/gooey_widgets.h"
+#include "gui/gooey_frame.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -20,6 +21,7 @@
 using namespace gooey;
 using namespace gooey::draw;
 using namespace gooey::widgets;
+using namespace gooey::frame;
 
 static bool parse_income(const char *s, double *out) {
     if (!s || !out)
@@ -80,91 +82,73 @@ int main(void) {
 
     int evfd = Window::events_fd_from_environment();
     Theme th = default_theme();
+    ChromeColors chrome = chrome_colors_wm_default();
 
     if (!win.surface().valid())
         return 1;
 
     Panel root;
-    root.bounds = Rect(0, 0, static_cast<int>(win.surface().width()), static_cast<int>(win.surface().height()));
     root.border = false;
     root.bg_color = th.bg;
 
     Label title;
-    title.bounds = Rect(12, 8, 320, 20);
     title.text = "Tax Calculator (demo)";
     title.bold = true;
 
     GroupBox gb_in;
-    gb_in.bounds = Rect(8, 28, static_cast<int>(win.surface().width()) - 16, 118);
     gb_in.text = "Inputs";
 
     Label lbl_gross;
-    lbl_gross.bounds = Rect(20, 48, 120, 16);
     lbl_gross.text = "Gross income";
 
     TextBox tb_income;
-    tb_income.bounds = Rect(140, 44, 200, 24);
     tb_income.set_text("60000");
 
     Label lbl_rate;
-    lbl_rate.bounds = Rect(20, 78, 140, 16);
     lbl_rate.text = "Marginal %";
 
     Slider sl_rate;
-    sl_rate.bounds = Rect(140, 74, 200, 22);
     sl_rate.min_value = 10;
     sl_rate.max_value = 37;
     sl_rate.value = 22;
 
     Checkbox chk_std;
-    chk_std.bounds = Rect(20, 100, 200, 20);
     chk_std.text = "Standard deduction (14.6k)";
     chk_std.checked = true;
 
     GroupBox gb_mode;
-    gb_mode.bounds = Rect(8, 152, static_cast<int>(win.surface().width()) - 16, 72);
     gb_mode.text = "Model";
 
     RadioButton rad_flat;
-    rad_flat.bounds = Rect(20, 172, 120, 20);
     rad_flat.text = "Flat rate";
     rad_flat.selected = true;
 
     RadioButton rad_prog;
-    rad_prog.bounds = Rect(150, 172, 160, 20);
     rad_prog.text = "2-bracket";
 
     RadioButton rad_w2;
-    rad_w2.bounds = Rect(20, 194, 100, 20);
     rad_w2.text = "W-2";
     rad_w2.selected = true;
 
     RadioButton rad_1099;
-    rad_1099.bounds = Rect(130, 194, 120, 20);
     rad_1099.text = "1099 (+7.65%)";
 
     Button btn_calc;
-    btn_calc.bounds = Rect(8, 232, 120, 30);
     btn_calc.text = "Compute";
 
     FlatButton btn_reset;
-    btn_reset.bounds = Rect(136, 232, 100, 30);
     btn_reset.text = "Reset";
 
     Label lbl_tax;
-    lbl_tax.bounds = Rect(8, 270, 360, 16);
     lbl_tax.text = "Tax: (press Compute)";
 
     Label lbl_net;
-    lbl_net.bounds = Rect(8, 288, 360, 16);
     lbl_net.text = "Net:";
 
     Label lbl_eff;
-    lbl_eff.bounds = Rect(8, 306, 360, 16);
     lbl_eff.text = "Effective rate:";
 
     ProgressBar pbar;
-    pbar.bounds = Rect(8, 328, static_cast<int>(win.surface().width()) - 16, 18);
     pbar.max_value = 100;
     pbar.value = 0;
 
@@ -178,6 +162,7 @@ int main(void) {
     bool prev_left = false;
     bool show_tip = false;
     int tip_mx = 0, tip_my = 0;
+    bool focused = true;
 
     for (;;) {
         struct pollfd pfd;
@@ -185,6 +170,9 @@ int main(void) {
         pfd.events = POLLIN;
         pfd.revents = 0;
         (void)poll(&pfd, 1, 40);
+
+        int sw = static_cast<int>(win.surface().width());
+        int sh = static_cast<int>(win.surface().height());
 
         MouseState ms;
         bool got_mouse = false;
@@ -201,23 +189,50 @@ int main(void) {
             if (ev.kind == Event::k_configure) {
                 if (!win.apply_configure_event(ev))
                     goto done;
-                root.bounds = Rect(0, 0, static_cast<int>(win.surface().width()),
-                                   static_cast<int>(win.surface().height()));
-                gb_in.bounds = Rect(8, 28, static_cast<int>(win.surface().width()) - 16, 118);
-                gb_mode.bounds = Rect(8, 152, static_cast<int>(win.surface().width()) - 16, 72);
-                pbar.bounds = Rect(8, 328, static_cast<int>(win.surface().width()) - 16, 18);
+            } else if (ev.kind == Event::k_focus) {
+                focused = ev.focus.focused != 0;
             } else if (ev.kind == Event::k_mouse) {
-                ms = make_mouse_state(ev, prev_left);
-                prev_left = ms.left_down;
-                got_mouse = true;
-                tip_mx = ms.x;
-                tip_my = ms.y;
+                Event evc;
+                if (peel_content_mouse(ev, &evc, sw, sh)) {
+                    ms = make_mouse_state(evc, prev_left);
+                    prev_left = ms.left_down;
+                    got_mouse = true;
+                } else {
+                    prev_left = (ev.mouse.buttons & 0x01) != 0;
+                }
             } else if (ev.kind == Event::k_keyboard) {
                 tb_income.handle_keyboard(ev.keyboard);
             }
         }
 
+        sw = static_cast<int>(win.surface().width());
+        sh = static_cast<int>(win.surface().height());
+        int ox = 0, oy = 0, cw = 0, ch = 0;
+        content_bounds(sw, sh, &ox, &oy, &cw, &ch);
+
+        root.bounds = Rect(ox, oy, cw, ch);
+        title.bounds = Rect(ox + 12, oy + 8, 320, 20);
+        gb_in.bounds = Rect(ox + 8, oy + 28, cw - 16, 118);
+        lbl_gross.bounds = Rect(ox + 20, oy + 48, 120, 16);
+        tb_income.bounds = Rect(ox + 140, oy + 44, 200, 24);
+        lbl_rate.bounds = Rect(ox + 20, oy + 78, 140, 16);
+        sl_rate.bounds = Rect(ox + 140, oy + 74, 200, 22);
+        chk_std.bounds = Rect(ox + 20, oy + 100, 200, 20);
+        gb_mode.bounds = Rect(ox + 8, oy + 152, cw - 16, 72);
+        rad_flat.bounds = Rect(ox + 20, oy + 172, 120, 20);
+        rad_prog.bounds = Rect(ox + 150, oy + 172, 160, 20);
+        rad_w2.bounds = Rect(ox + 20, oy + 194, 100, 20);
+        rad_1099.bounds = Rect(ox + 130, oy + 194, 120, 20);
+        btn_calc.bounds = Rect(ox + 8, oy + 232, 120, 30);
+        btn_reset.bounds = Rect(ox + 136, oy + 232, 100, 30);
+        lbl_tax.bounds = Rect(ox + 8, oy + 270, 360, 16);
+        lbl_net.bounds = Rect(ox + 8, oy + 288, 360, 16);
+        lbl_eff.bounds = Rect(ox + 8, oy + 306, 360, 16);
+        pbar.bounds = Rect(ox + 8, oy + 328, cw - 16, 18);
+
         if (got_mouse) {
+            tip_mx = ms.x + ox;
+            tip_my = ms.y + oy;
             tb_income.handle_mouse(ms);
             sl_rate.handle_mouse(ms);
             chk_std.handle_mouse(ms);
@@ -317,8 +332,6 @@ int main(void) {
             continue;
 
         Surface &s = win.surface();
-        root.bounds.h = static_cast<int>(s.height());
-        root.bounds.w = static_cast<int>(s.width());
 
         root.paint(s, th);
         title.paint(s, th);
@@ -341,10 +354,12 @@ int main(void) {
         pbar.paint(s, th);
 
         /* Accent line under title */
-        hline(s, 12, static_cast<int>(s.width()) - 12, 26, th.border);
+        hline(s, ox + 12, ox + cw - 12, oy + 26, th.border);
 
         tip_slider.visible = show_tip;
         tip_slider.paint(s, tip_mx, tip_my);
+
+        paint(s, sw, sh, "tax_calc", focused, chrome);
 
         win.damage_all();
         win.present();

@@ -6,6 +6,7 @@
 #include "gui/gooey.h"
 #include "gui/gooey_draw.h"
 #include "gui/gooey_widgets.h"
+#include "gui/gooey_frame.h"
 
 #include <cstdio>
 #include <cstring>
@@ -14,6 +15,7 @@
 using namespace gooey;
 using namespace gooey::draw;
 using namespace gooey::widgets;
+using namespace gooey::frame;
 
 int main(void) {
     Window win;
@@ -24,48 +26,40 @@ int main(void) {
 
     int evfd = Window::events_fd_from_environment();
     Theme th = default_theme();
+    ChromeColors chrome = chrome_colors_wm_default();
 
     if (!win.surface().valid())
         return 1;
 
-    /* -- Setup widgets ------------------------------------------------- */
+    /* -- Setup widgets (positions set each frame from content_bounds) -- */
 
     Label title_label;
-    title_label.bounds = Rect(10, 8, 200, 20);
     title_label.text = "Gooey Widget Demo";
     title_label.bold = true;
 
     Button btn_hello;
-    btn_hello.bounds = Rect(10, 36, 100, 28);
     btn_hello.text = "Click Me";
 
     FlatButton btn_flat;
-    btn_flat.bounds = Rect(120, 36, 100, 28);
     btn_flat.text = "Flat Btn";
 
     Checkbox chk_option;
-    chk_option.bounds = Rect(10, 74, 160, 20);
     chk_option.text = "Enable option";
 
     RadioButton radio_a;
-    radio_a.bounds = Rect(10, 100, 100, 20);
     radio_a.text = "Alpha";
     radio_a.selected = true;
 
     RadioButton radio_b;
-    radio_b.bounds = Rect(110, 100, 100, 20);
     radio_b.text = "Beta";
 
     TextBox input;
-    input.bounds = Rect(10, 130, 220, 24);
     input.set_text("Type here...");
 
     ProgressBar pbar;
-    pbar.bounds = Rect(10, 164, 220, 18);
     pbar.value = 65;
 
     Slider slider;
-    slider.bounds = Rect(10, 192, 220, 20);
     slider.value = 50;
 
     static const char *list_items[] = {
@@ -73,18 +67,17 @@ int main(void) {
         "Item 5", "Item 6", "Item 7", "Item 8", "Item 9"
     };
     ListBox lbox;
-    lbox.bounds = Rect(10, 222, 150, 100);
     lbox.items = list_items;
     lbox.item_count = 10;
     lbox.selected = 0;
 
     GroupBox gbox;
-    gbox.bounds = Rect(240, 36, 200, 120);
     gbox.text = "Shapes";
 
     Label status_label;
-    status_label.bounds = Rect(10, 330, 400, 16);
     status_label.text = "Ready.";
+
+    bool focused = true;
 
     char status_buf[64] = "Ready.";
     int click_count = 0;
@@ -99,6 +92,9 @@ int main(void) {
         pfd.revents = 0;
         (void)poll(&pfd, 1, 30);
 
+        int sw = static_cast<int>(win.surface().width());
+        int sh = static_cast<int>(win.surface().height());
+
         MouseState ms;
         bool got_mouse = false;
 
@@ -111,15 +107,40 @@ int main(void) {
 
             if (ev.kind == Event::k_configure) {
                 if (!win.apply_configure_event(ev)) goto done;
+            } else if (ev.kind == Event::k_focus) {
+                focused = ev.focus.focused != 0;
             } else if (ev.kind == Event::k_mouse) {
-                ms = make_mouse_state(ev, prev_left);
-                prev_left = ms.left_down;
-                got_mouse = true;
+                Event evc;
+                if (peel_content_mouse(ev, &evc, sw, sh)) {
+                    ms = make_mouse_state(evc, prev_left);
+                    prev_left = ms.left_down;
+                    got_mouse = true;
+                } else {
+                    prev_left = (ev.mouse.buttons & 0x01) != 0;
+                }
             } else if (ev.kind == Event::k_keyboard) {
                 input.handle_keyboard(ev.keyboard);
                 lbox.handle_keyboard(ev.keyboard);
             }
         }
+
+        sw = static_cast<int>(win.surface().width());
+        sh = static_cast<int>(win.surface().height());
+        int ox = 0, oy = 0, cw = 0, ch = 0;
+        content_bounds(sw, sh, &ox, &oy, &cw, &ch);
+
+        title_label.bounds = Rect(ox + 10, oy + 8, 200, 20);
+        btn_hello.bounds = Rect(ox + 10, oy + 36, 100, 28);
+        btn_flat.bounds = Rect(ox + 120, oy + 36, 100, 28);
+        chk_option.bounds = Rect(ox + 10, oy + 74, 160, 20);
+        radio_a.bounds = Rect(ox + 10, oy + 100, 100, 20);
+        radio_b.bounds = Rect(ox + 110, oy + 100, 100, 20);
+        input.bounds = Rect(ox + 10, oy + 130, 220, 24);
+        pbar.bounds = Rect(ox + 10, oy + 164, 220, 18);
+        slider.bounds = Rect(ox + 10, oy + 192, 220, 20);
+        lbox.bounds = Rect(ox + 10, oy + 222, 150, 100);
+        gbox.bounds = Rect(ox + 240, oy + 36, 200, 120);
+        status_label.bounds = Rect(ox + 10, oy + 330, 400, 16);
 
         if (got_mouse) {
             btn_hello.handle_mouse(ms);
@@ -146,9 +167,7 @@ int main(void) {
         if (!win.surface().valid()) continue;
 
         Surface &s = win.surface();
-        int sw = static_cast<int>(s.width());
-        int sh = static_cast<int>(s.height());
-        rect_filled(s, 0, 0, sw, sh, th.bg);
+        rect_filled(s, ox, oy, cw, ch, th.bg);
 
         /* Widgets */
         title_label.paint(s, th);
@@ -165,7 +184,7 @@ int main(void) {
         status_label.paint(s, th);
 
         /* Shapes in GroupBox area */
-        int sx0 = 250, sy0 = 60;
+        int sx0 = ox + 250, sy0 = oy + 60;
         line(s, sx0, sy0, sx0 + 40, sy0 + 30, rgb(255, 100, 100));
         rect(s, sx0 + 50, sy0, 30, 25, rgb(100, 255, 100));
         circle(s, sx0 + 120, sy0 + 15, 12, rgb(100, 100, 255));
@@ -175,6 +194,8 @@ int main(void) {
         circle_filled(s, sx0 + 90, sy0 + 60, 12, rgb(150, 50, 255));
         rect_rounded_filled(s, sx0 + 120, sy0 + 45, 50, 35, 6, rgb(50, 200, 150));
         ngon(s, sx0 + 30, sy0 + 60, 15, 6, rgb(200, 200, 50));
+
+        paint(s, sw, sh, "widget_demo", focused, chrome);
 
         win.damage_all();
         win.present();
