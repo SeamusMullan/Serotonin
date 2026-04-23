@@ -30,6 +30,10 @@ int sys_5ht_rcfg_layer(uint16_t id, const fb_layer_config_t *cfg, fb_layer_info_
     return do_syscall(SYSTEM_CALL_5HT_RCFG_LAYER, (uint32_t)id, (uint32_t)cfg, (uint32_t)out);
 }
 
+int sys_5ht_swap_layers(uint16_t layer_a, uint16_t layer_b) {
+    return do_syscall(SYSTEM_CALL_5HT_SWAP_LAYERS, (uint32_t)layer_a, (uint32_t)layer_b, 0);
+}
+
 /** @copydoc sys_5ht_query_info */
 int sys_5ht_query_info(fb_info_t *out) {
     return do_syscall(SYSTEM_CALL_5HT_QUERY_INFO, (uint32_t)out, 0, 0);

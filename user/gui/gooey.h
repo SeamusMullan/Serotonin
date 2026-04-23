@@ -88,7 +88,8 @@ struct Event {
         k_keyboard = SG_GUI_EV_KEYBOARD,
         k_mouse = SG_GUI_EV_MOUSE,
         k_configure = SG_GUI_EV_CONFIGURE,
-        k_focus = SG_GUI_EV_FOCUS
+        k_focus = SG_GUI_EV_FOCUS,
+        k_layer = SG_GUI_EV_LAYER
     };
 
     Kind kind;
@@ -104,6 +105,9 @@ struct Event {
     struct {
         uint8_t focused;
     } focus;
+    struct {
+        uint16_t layer_id;
+    } layer;
 };
 
 /**
@@ -145,6 +149,9 @@ inline ssize_t read_gui_event(int fd, Event *out) {
         break;
     case SG_GUI_EV_FOCUS:
         out->focus.focused = raw.u.focus.focused;
+        break;
+    case SG_GUI_EV_LAYER:
+        out->layer.layer_id = raw.u.layer.layer_id;
         break;
     default:
         out->kind = Event::k_none;
@@ -435,6 +442,14 @@ public:
         owns_layer_ = true;
         reset_dirty_tracking();
         return surface_.valid() && meta_;
+    }
+
+    /** WM changed compositor z-slot; same SHM — only update syscall layer id. */
+    bool apply_layer_event(const Event &ev) {
+        if (ev.kind != Event::k_layer || ev.layer.layer_id == 0)
+            return false;
+        layer_id_ = ev.layer.layer_id;
+        return true;
     }
 
     /**

@@ -191,6 +191,8 @@ int main(void) {
                     goto done;
             } else if (ev.kind == Event::k_focus) {
                 focused = ev.focus.focused != 0;
+            } else if (ev.kind == Event::k_layer) {
+                (void)win.apply_layer_event(ev);
             } else if (ev.kind == Event::k_mouse) {
                 Event evc;
                 if (peel_content_mouse(ev, &evc, sw, sh)) {

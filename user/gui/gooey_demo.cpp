@@ -43,6 +43,8 @@ int main(void) {
                     goto done;
             } else if (ev.kind == gooey::Event::k_focus) {
                 focused = ev.focus.focused != 0;
+            } else if (ev.kind == gooey::Event::k_layer) {
+                (void)win.apply_layer_event(ev);
             }
         }
 

@@ -17,6 +17,7 @@ void wm_ipc_fill_mouse(sg_gui_event_t *out, int16_t lx, int16_t ly,
 void wm_ipc_fill_configure(sg_gui_event_t *out, uint16_t x0, uint16_t y0,
                            uint16_t x1, uint16_t y1);
 void wm_ipc_fill_focus(sg_gui_event_t *out, uint8_t focused);
+void wm_ipc_fill_layer(sg_gui_event_t *out, uint16_t layer_id);
 
 #ifdef __cplusplus
 }

@@ -72,3 +72,14 @@ extern "C" void wm_ipc_fill_focus(sg_gui_event_t *out, uint8_t focused) {
     out->type = SG_GUI_EV_FOCUS;
     out->u.focus.focused = focused;
 }
+
+extern "C" void wm_ipc_fill_layer(sg_gui_event_t *out, uint16_t layer_id) {
+    if (!out)
+        return;
+    std::memset(out, 0, sizeof(*out));
+    out->type = SG_GUI_EV_LAYER;
+    out->u.layer.layer_id = layer_id;
+    out->u.layer.reserved[0] = 0;
+    out->u.layer.reserved[1] = 0;
+    out->u.layer.reserved[2] = 0;
+}

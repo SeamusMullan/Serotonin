@@ -38,6 +38,8 @@ enum {
     SG_GUI_EV_MOUSE = 2,
     SG_GUI_EV_CONFIGURE = 3,
     SG_GUI_EV_FOCUS = 4,
+    /** Compositor z-slot changed; client must use @c layer_id for `sys_5ht_rcfg_layer`. */
+    SG_GUI_EV_LAYER = 5,
 };
 
 typedef struct __attribute__((packed)) {
@@ -55,6 +57,10 @@ typedef struct __attribute__((packed)) {
         struct {
             uint8_t focused;
         } focus;
+        struct {
+            uint16_t layer_id;
+            uint16_t reserved[3];
+        } layer;
     } u;
 } sg_gui_event_t;
 

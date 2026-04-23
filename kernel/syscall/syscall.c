@@ -2164,6 +2164,55 @@ static void sys_5ht_rcfg_layer(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
     errno = 0;
 }
 
+/* Window layer z indices reserved for WM + GUI clients (see user/wm/wm.h). */
+#define WM_APP_LAYER_FIRST 2u
+#define WM_APP_LAYER_LAST  12u
+
+static int current_task_is_wm(void) {
+    return current_task && strcmp(current_task->name, "wm") == 0;
+}
+
+/**
+ * @brief Exchange two compositor layer slots (full `layer_state_t` swap).
+ *
+ * Only the window manager may call this: it reorders cross-process surfaces
+ * while keeping each task's SHM mappings valid.
+ */
+static void sys_5ht_swap_layers(uint32_t arg2, uint32_t arg3) {
+    uint16_t za = (uint16_t)arg2;
+    uint16_t zb = (uint16_t)arg3;
+
+    if (!current_task_is_wm()) {
+        errno = -EPERM;
+        return;
+    }
+    if (za < WM_APP_LAYER_FIRST || za > WM_APP_LAYER_LAST ||
+        zb < WM_APP_LAYER_FIRST || zb > WM_APP_LAYER_LAST || za == zb) {
+        errno = -EINVAL;
+        return;
+    }
+
+    layer_state_t *sa = &layer_states[za];
+    layer_state_t *sb = &layer_states[zb];
+    if (!sa->allocated || !sb->allocated) {
+        errno = -ENOENT;
+        return;
+    }
+
+    vbe_layer_detach((uint8_t)za);
+    vbe_layer_detach((uint8_t)zb);
+
+    layer_state_t tmp = *sa;
+    *sa = *sb;
+    *sb = tmp;
+
+    vbe_layer_attach((uint8_t)za, (uint32_t *)sa->fb_priv_va, &sa->cfg,
+                     (fb_layer_metadata_t *)sa->meta_priv_va);
+    vbe_layer_attach((uint8_t)zb, (uint32_t *)sb->fb_priv_va, &sb->cfg,
+                     (fb_layer_metadata_t *)sb->meta_priv_va);
+    errno = 0;
+}
+
 static void sys_getuid(void) {
     errno = current_task->uid;
 }
@@ -3097,6 +3146,9 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_5HT_RCFG_LAYER:
             sys_5ht_rcfg_layer(arg2, arg3, arg4);
+            break;
+        case SYSTEM_CALL_5HT_SWAP_LAYERS:
+            sys_5ht_swap_layers(arg2, arg3);
             break;
         case SYSTEM_CALL_5HT_QUERY_INFO:
             sys_5ht_query_info(arg2);

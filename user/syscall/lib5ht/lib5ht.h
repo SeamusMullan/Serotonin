@@ -269,6 +269,15 @@ int sys_5ht_rel_buf(uint16_t id);
 int sys_5ht_rcfg_layer(uint16_t id, const fb_layer_config_t *cfg, fb_layer_info_t *out);
 
 /**
+ * @brief Swap two app-layer compositor slots (WM only; see kernel).
+ *
+ * @param layer_a First layer id in 2..12
+ * @param layer_b Second layer id in 2..12
+ * @return 0 on success, -1 on failure (see errno)
+ */
+int sys_5ht_swap_layers(uint16_t layer_a, uint16_t layer_b);
+
+/**
  * @brief Query global framebuffer information
  *
  * @param out Output structure for framebuffer information

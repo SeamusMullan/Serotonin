@@ -225,27 +225,50 @@ void wm_handle_mouse(wm_state_t *wm, mouse_event_t *ev) {
             if (ny < 0) ny = 0;
             if (nx + win->w > SCREEN_W) nx = SCREEN_W - win->w;
             if (ny + win->h > SCREEN_H - TASKBAR_H) ny = SCREEN_H - TASKBAR_H - win->h;
-            win->x = (uint16_t)nx;
-            win->y = (uint16_t)ny;
-            win->cx = win->x + BORDER_W;
-            win->cy = win->y + TITLEBAR_H;
-            /* Reposition layer — same dimensions, no realloc */
-            fb_layer_config_t cfg = {0};
-            cfg.size = sizeof(cfg);
-            cfg.x0 = win->x; cfg.y0 = win->y;
-            cfg.x1 = win->x + win->w; cfg.y1 = win->y + win->h;
-            cfg.alpha = 0;
-            cfg.hints = FB_LAYER_HINT_OPAQUE_CONTENT | FB_LAYER_HINT_FREQUENT_UPDATES;
-            cfg.stride = win->w * BPP;
-            fb_layer_info_t info = {0};
-            sys_5ht_rcfg_layer(win->layer_id, &cfg, &info);
-            win->fb = (uint32_t *)(uintptr_t)info.fb_user_va;
-            win->meta = (volatile fb_layer_metadata_t *)(uintptr_t)info.metadata_user_va;
-            /* Submit full window dirty at new position */
-            win->meta->dx0 = 0; win->meta->dy0 = 0;
-            win->meta->dx1 = win->w; win->meta->dy1 = win->h;
-            win->meta->frame_id++;
-            win->meta->ready = 1;
+
+            if (win->is_gui) {
+                /* Layer owned by GUI child; WM cannot rcfg (EPERM). Push geometry like
+                   wm_render_window does so the client moves its layer. */
+                win->x = (uint16_t)nx;
+                win->y = (uint16_t)ny;
+                win->cx = win->x;
+                win->cy = win->y;
+                win->cw = win->w;
+                win->ch = win->h;
+                if (win->pty_master_fd >= 0) {
+                    sg_gui_event_t ge;
+                    wm_ipc_fill_configure(&ge, win->x, win->y,
+                        (uint16_t)(win->x + win->w), (uint16_t)(win->y + win->h));
+                    wm_ipc_send(win->pty_master_fd, &ge);
+                }
+            } else {
+                /* Reposition WM-owned layer — same dimensions, no realloc. Commit x/y
+                   only after syscall succeeds; on failure kernel leaves info untouched
+                   (zeroed here) and writing meta would fault. */
+                fb_layer_config_t cfg = {0};
+                cfg.size = sizeof(cfg);
+                cfg.x0 = (uint16_t)nx;
+                cfg.y0 = (uint16_t)ny;
+                cfg.x1 = (uint16_t)(nx + win->w);
+                cfg.y1 = (uint16_t)(ny + win->h);
+                cfg.alpha = 0;
+                cfg.hints = FB_LAYER_HINT_OPAQUE_CONTENT | FB_LAYER_HINT_FREQUENT_UPDATES;
+                cfg.stride = win->w * BPP;
+                fb_layer_info_t info = {0};
+                if (sys_5ht_rcfg_layer(win->layer_id, &cfg, &info) != 0)
+                    return;
+                win->x = (uint16_t)nx;
+                win->y = (uint16_t)ny;
+                win->cx = win->x + BORDER_W;
+                win->cy = win->y + TITLEBAR_H;
+                win->fb = (uint32_t *)(uintptr_t)info.fb_user_va;
+                win->meta = (volatile fb_layer_metadata_t *)(uintptr_t)info.metadata_user_va;
+                /* Submit full window dirty at new position */
+                win->meta->dx0 = 0; win->meta->dy0 = 0;
+                win->meta->dx1 = win->w; win->meta->dy1 = win->h;
+                win->meta->frame_id++;
+                win->meta->ready = 1;
+            }
         } else if (wm->drag.mode == DRAG_RESIZE) {
             /* Just track desired size during drag — defer the expensive
                layer reconfigure + realloc to button-up */

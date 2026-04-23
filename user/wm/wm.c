@@ -1203,7 +1203,8 @@ void wm_render_window(wm_state_t *wm, int idx) {
     cfg.stride = win->w * BPP;
 
     fb_layer_info_t info = {0};
-    sys_5ht_rcfg_layer(win->layer_id, &cfg, &info);
+    if (sys_5ht_rcfg_layer(win->layer_id, &cfg, &info) != 0)
+        return;
     win->fb = (uint32_t *)(uintptr_t)info.fb_user_va;
     win->meta = (volatile fb_layer_metadata_t *)(uintptr_t)info.metadata_user_va;
     win->fb_stride_px = win->w;
@@ -1273,9 +1274,10 @@ int wm_launch_window(wm_state_t *wm, const char *program) {
     }
     if (idx < 0) return -1;
 
-    /* find free layer */
+    /* Highest free layer: WM-owned terminals should sit above GUI layers
+     * (GUI child owns its buffer; focus swap cannot exchange z with GUI). */
     int layer_id = -1;
-    for (int l = LAYER_WIN_BASE; l <= LAYER_WIN_MAX; l++) {
+    for (int l = LAYER_WIN_MAX; l >= LAYER_WIN_BASE; l--) {
         int used = 0;
         for (int i = 0; i < MAX_WINDOWS; i++) {
             if (wm->windows[i].active && wm->windows[i].layer_id == l)
@@ -1418,6 +1420,8 @@ int wm_launch_gui_window(wm_state_t *wm, const char *program) {
     if (idx < 0)
         return -1;
 
+    /* Lowest free layer: GUI buffers are owned by the child process; the WM
+     * cannot swap z-order with them on focus, so keep GUI z below terminals. */
     int layer_id = -1;
     for (int l = LAYER_WIN_BASE; l <= LAYER_WIN_MAX; l++) {
         int used = 0;
@@ -1575,6 +1579,15 @@ void wm_close_window(wm_state_t *wm, int idx) {
     render_taskbar(wm);
 }
 
+static void wm_ipc_send_layer_id(wm_state_t *wm, int gui_idx, uint16_t new_layer_id) {
+    wm_window_t *w = &wm->windows[gui_idx];
+    if (!w->active || !w->is_gui || w->pty_master_fd < 0)
+        return;
+    sg_gui_event_t ge;
+    wm_ipc_fill_layer(&ge, new_layer_id);
+    wm_ipc_send(w->pty_master_fd, &ge);
+}
+
 void wm_focus_window(wm_state_t *wm, int idx) {
     if (idx == wm->focused_idx) return;
 
@@ -1596,10 +1609,45 @@ void wm_focus_window(wm_state_t *wm, int idx) {
      * Swap layer IDs with whoever currently holds the top layer, then
      * re-render both on their new layers.
      */
-    int did_swap = 0;
+    int did_term_swap = 0;
     if (idx >= 0 && wm->windows[idx].active && wm->num_windows > 1) {
         int top_idx = -1;
         uint16_t top_layer = 0;
+        for (int i = 0; i < MAX_WINDOWS; i++) {
+            if (wm->windows[i].active && wm->windows[i].layer_id > top_layer) {
+                top_layer = wm->windows[i].layer_id;
+                top_idx = i;
+            }
+        }
+
+        /* Cross-process: swap compositor slot contents (kernel) + WM bookkeeping. */
+        if (top_idx >= 0 && top_idx != idx) {
+            if (!wm->windows[idx].is_gui && wm->windows[top_idx].is_gui &&
+                wm->windows[top_idx].layer_id > wm->windows[idx].layer_id) {
+                uint16_t z_gui = wm->windows[top_idx].layer_id;
+                uint16_t z_term = wm->windows[idx].layer_id;
+                if (sys_5ht_swap_layers(z_gui, z_term) == 0) {
+                    wm->windows[top_idx].layer_id = z_term;
+                    wm->windows[idx].layer_id = z_gui;
+                    wm_render_window(wm, idx);
+                    wm_ipc_send_layer_id(wm, top_idx, z_term);
+                }
+            } else if (wm->windows[idx].is_gui && !wm->windows[top_idx].is_gui &&
+                       wm->windows[top_idx].layer_id > wm->windows[idx].layer_id) {
+                uint16_t z_top_term = wm->windows[top_idx].layer_id;
+                uint16_t z_gui = wm->windows[idx].layer_id;
+                if (sys_5ht_swap_layers(z_top_term, z_gui) == 0) {
+                    wm->windows[top_idx].layer_id = z_gui;
+                    wm->windows[idx].layer_id = z_top_term;
+                    wm_render_window(wm, top_idx);
+                    wm_ipc_send_layer_id(wm, idx, z_top_term);
+                }
+            }
+        }
+
+        /* Recompute top z after cross-slot swap (layer_id fields changed). */
+        top_idx = -1;
+        top_layer = 0;
         for (int i = 0; i < MAX_WINDOWS; i++) {
             if (wm->windows[i].active && wm->windows[i].layer_id > top_layer) {
                 top_layer = wm->windows[i].layer_id;
@@ -1617,7 +1665,7 @@ void wm_focus_window(wm_state_t *wm, int idx) {
 
             wm_render_window(wm, top_idx);
             wm_render_window(wm, idx);
-            did_swap = 1;
+            did_term_swap = 1;
 
             if (old_idx >= 0 && wm->windows[old_idx].active &&
                 old_idx != top_idx && old_idx != idx) {
@@ -1635,7 +1683,7 @@ void wm_focus_window(wm_state_t *wm, int idx) {
         }
     }
 
-    if (!did_swap) {
+    if (!did_term_swap) {
         if (old_idx >= 0 && wm->windows[old_idx].active) {
             wm_render_decorations(wm, old_idx);
             if (!wm->windows[old_idx].is_gui && wm->windows[old_idx].fb) {
