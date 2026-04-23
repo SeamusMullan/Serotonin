@@ -44,6 +44,9 @@ inline uint32_t rgb(uint8_t r, uint8_t g, uint8_t b) { return rgba(r, g, b, 0xFF
  * Environment variables the window manager can export for a GUI child
  * (hex or decimal uintptr_t values for addresses). Optional until the WM
  * wires GUI launch; `open_layer()` remains the fallback for standalone tests.
+ *
+ * Theme: @c SG_GUI_ENV_THEME (see `gui_protocol.h`) — 15×8 hex digit WM palette;
+ * use `gui/gooey_theme.h` to map into widget @c Theme + @c frame::ChromeColors .
  */
 namespace env_name {
 static const char k_fb_va[] = "SEROTONIN_GUI_FB_VA";
@@ -89,7 +92,8 @@ struct Event {
         k_mouse = SG_GUI_EV_MOUSE,
         k_configure = SG_GUI_EV_CONFIGURE,
         k_focus = SG_GUI_EV_FOCUS,
-        k_layer = SG_GUI_EV_LAYER
+        k_layer = SG_GUI_EV_LAYER,
+        k_theme = SG_GUI_EV_THEME
     };
 
     Kind kind;
@@ -108,6 +112,9 @@ struct Event {
     struct {
         uint16_t layer_id;
     } layer;
+    struct {
+        uint32_t wm[SG_GUI_WM_THEME_NCOLORS];
+    } theme;
 };
 
 /**
@@ -152,6 +159,9 @@ inline ssize_t read_gui_event(int fd, Event *out) {
         break;
     case SG_GUI_EV_LAYER:
         out->layer.layer_id = raw.u.layer.layer_id;
+        break;
+    case SG_GUI_EV_THEME:
+        std::memcpy(out->theme.wm, &raw.u.theme, sizeof(out->theme.wm));
         break;
     default:
         out->kind = Event::k_none;

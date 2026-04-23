@@ -21,7 +21,7 @@ static const int BORDER_W = 2;
 static const int CLOSE_BTN_W = 16;
 static const int CLOSE_BTN_H = 16;
 
-/** Decoration colors matching WM "Default" theme (`wm_themes[0]` in `wm.c`). */
+/** Fallback decoration colors (WM "Default"). Prefer `gooey_theme.h` + WM env / @c SG_GUI_EV_THEME . */
 struct ChromeColors {
     uint32_t titlebar_bg;
     uint32_t titlebar_inactive;

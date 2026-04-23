@@ -5,6 +5,8 @@
 
 #include "gui/gooey.h"
 #include "gui/gooey_frame.h"
+#include "gui/gooey_theme.h"
+#include "gui/gooey_widgets.h"
 
 #include <cstdio>
 #include <cstring>
@@ -18,9 +20,10 @@ int main(void) {
     }
 
     int evfd = gooey::Window::events_fd_from_environment();
+    gooey::widgets::Theme th = gooey::widgets::default_theme();
     gooey::frame::ChromeColors chrome = gooey::frame::chrome_colors_wm_default();
+    (void)gooey::theme::sync_from_wm_environment(&th, &chrome);
 
-    uint32_t hue = 40;
     bool focused = true;
     for (;;) {
         struct pollfd pfd;
@@ -45,6 +48,8 @@ int main(void) {
                 focused = ev.focus.focused != 0;
             } else if (ev.kind == gooey::Event::k_layer) {
                 (void)win.apply_layer_event(ev);
+            } else if (ev.kind == gooey::Event::k_theme) {
+                (void)gooey::theme::apply_gui_event(ev, &th, &chrome);
             }
         }
 
@@ -56,9 +61,7 @@ int main(void) {
         int ox = 0, oy = 0, cw = 0, ch = 0;
         gooey::frame::content_bounds(sw, sh, &ox, &oy, &cw, &ch);
 
-        uint32_t bg = gooey::rgb(static_cast<uint8_t>(hue), 140, 220);
-        hue = (hue + 5u) & 0xFFu;
-        win.surface().fill_rect(ox, oy, cw, ch, bg);
+        win.surface().fill_rect(ox, oy, cw, ch, th.bg);
         gooey::frame::paint(win.surface(), sw, sh, "gooey_demo", focused, chrome);
         win.damage_all();
         win.present();

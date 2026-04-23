@@ -18,6 +18,7 @@ void wm_ipc_fill_configure(sg_gui_event_t *out, uint16_t x0, uint16_t y0,
                            uint16_t x1, uint16_t y1);
 void wm_ipc_fill_focus(sg_gui_event_t *out, uint8_t focused);
 void wm_ipc_fill_layer(sg_gui_event_t *out, uint16_t layer_id);
+void wm_ipc_fill_theme(sg_gui_event_t *out, const sg_gui_wm_theme_colors_t *colors);
 
 #ifdef __cplusplus
 }

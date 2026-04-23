@@ -10,6 +10,7 @@
 #include "gui/gooey_draw.h"
 #include "gui/gooey_widgets.h"
 #include "gui/gooey_frame.h"
+#include "gui/gooey_theme.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -83,13 +84,14 @@ int main(void) {
     int evfd = Window::events_fd_from_environment();
     Theme th = default_theme();
     ChromeColors chrome = chrome_colors_wm_default();
+    (void)gooey::theme::sync_from_wm_environment(&th, &chrome);
 
     if (!win.surface().valid())
         return 1;
 
     Panel root;
     root.border = false;
-    root.bg_color = th.bg;
+    root.bg_color = th.bg; /* refreshed on SG_GUI_EV_THEME */
 
     Label title;
     title.text = "Tax Calculator (demo)";
@@ -193,6 +195,9 @@ int main(void) {
                 focused = ev.focus.focused != 0;
             } else if (ev.kind == Event::k_layer) {
                 (void)win.apply_layer_event(ev);
+            } else if (ev.kind == Event::k_theme) {
+                (void)gooey::theme::apply_gui_event(ev, &th, &chrome);
+                root.bg_color = th.bg;
             } else if (ev.kind == Event::k_mouse) {
                 Event evc;
                 if (peel_content_mouse(ev, &evc, sw, sh)) {

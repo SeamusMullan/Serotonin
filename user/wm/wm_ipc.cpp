@@ -83,3 +83,11 @@ extern "C" void wm_ipc_fill_layer(sg_gui_event_t *out, uint16_t layer_id) {
     out->u.layer.reserved[1] = 0;
     out->u.layer.reserved[2] = 0;
 }
+
+extern "C" void wm_ipc_fill_theme(sg_gui_event_t *out, const sg_gui_wm_theme_colors_t *colors) {
+    if (!out || !colors)
+        return;
+    std::memset(out, 0, sizeof(*out));
+    out->type = SG_GUI_EV_THEME;
+    out->u.theme = *colors;
+}

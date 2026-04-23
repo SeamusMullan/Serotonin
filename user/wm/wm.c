@@ -630,6 +630,38 @@ static void theme_remap_term_defaults(term_state_t *ts, uint32_t old_fg, uint32_
     if (ts->bg == old_bg) ts->bg = new_bg;
 }
 
+static void wm_gui_theme_pack_colors(sg_gui_wm_theme_colors_t *out) {
+    if (!out)
+        return;
+    out->bg_dark = g_wm_theme.bg_dark;
+    out->bg_medium = g_wm_theme.bg_medium;
+    out->accent = g_wm_theme.accent;
+    out->accent_dim = g_wm_theme.accent_dim;
+    out->text_primary = g_wm_theme.text_primary;
+    out->text_dim = g_wm_theme.text_dim;
+    out->border = g_wm_theme.border;
+    out->close_btn = g_wm_theme.close_btn;
+    out->titlebar_fg = g_wm_theme.titlebar_fg;
+    out->titlebar_bg = g_wm_theme.titlebar_bg;
+    out->titlebar_inactive = g_wm_theme.titlebar_inactive;
+    out->border_active = g_wm_theme.border_active;
+    out->border_inactive = g_wm_theme.border_inactive;
+    out->term_fg = g_wm_theme.term_fg;
+    out->term_bg = g_wm_theme.term_bg;
+}
+
+static int wm_format_theme_env(char *buf, size_t cap) {
+    sg_gui_wm_theme_colors_t c;
+    wm_gui_theme_pack_colors(&c);
+    return snprintf(buf, cap,
+                    SG_GUI_ENV_THEME "=%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x",
+                    (unsigned)c.bg_dark, (unsigned)c.bg_medium, (unsigned)c.accent, (unsigned)c.accent_dim,
+                    (unsigned)c.text_primary, (unsigned)c.text_dim, (unsigned)c.border, (unsigned)c.close_btn,
+                    (unsigned)c.titlebar_fg, (unsigned)c.titlebar_bg, (unsigned)c.titlebar_inactive,
+                    (unsigned)c.border_active, (unsigned)c.border_inactive, (unsigned)c.term_fg,
+                    (unsigned)c.term_bg);
+}
+
 void wm_apply_theme(wm_state_t *wm, int theme_idx) {
     if (theme_idx < 0 || theme_idx >= WM_THEME_COUNT) return;
     wm_theme_t old_theme = g_wm_theme;
@@ -652,6 +684,19 @@ void wm_apply_theme(wm_state_t *wm, int theme_idx) {
         launcher_render(wm);
     if (wm->settings_active)
         settings_render(wm);
+
+    {
+        sg_gui_wm_theme_colors_t gcols;
+        wm_gui_theme_pack_colors(&gcols);
+        for (int i = 0; i < MAX_WINDOWS; i++) {
+            wm_window_t *w = &wm->windows[i];
+            if (!w->active || !w->is_gui || w->pty_master_fd < 0)
+                continue;
+            sg_gui_event_t ge;
+            wm_ipc_fill_theme(&ge, &gcols);
+            (void)wm_ipc_send(w->pty_master_fd, &ge);
+        }
+    }
 }
 
 static void launcher_filter_update(wm_state_t *wm) {
@@ -1473,7 +1518,7 @@ int wm_launch_gui_window(wm_state_t *wm, const char *program) {
     }
 
     if (pid == 0) {
-        char e_layer[56], e_x0[40], e_y0[40], e_x1[40], e_y1[40], e_evfd[40];
+        char e_layer[56], e_x0[40], e_y0[40], e_x1[40], e_y1[40], e_evfd[40], e_theme[192];
 
         snprintf(e_layer, sizeof(e_layer), "SEROTONIN_GUI_LAYER_ID=%u", (unsigned)glid);
         snprintf(e_x0, sizeof(e_x0), "SEROTONIN_GUI_X0=%u", (unsigned)gx0);
@@ -1481,6 +1526,7 @@ int wm_launch_gui_window(wm_state_t *wm, const char *program) {
         snprintf(e_x1, sizeof(e_x1), "SEROTONIN_GUI_X1=%u", (unsigned)gx1);
         snprintf(e_y1, sizeof(e_y1), "SEROTONIN_GUI_Y1=%u", (unsigned)gy1);
         snprintf(e_evfd, sizeof(e_evfd), "SEROTONIN_GUI_EVENTS_FD=%d", SG_GUI_EVENTS_FD);
+        (void)wm_format_theme_env(e_theme, sizeof(e_theme));
 
         char *envp[] = {
             "TERM=serotonin-gui",
@@ -1492,6 +1538,7 @@ int wm_launch_gui_window(wm_state_t *wm, const char *program) {
             e_x1,
             e_y1,
             e_evfd,
+            e_theme,
             NULL,
         };
 

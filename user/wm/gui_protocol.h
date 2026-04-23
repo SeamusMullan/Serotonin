@@ -33,6 +33,33 @@
 #define SG_GUI_ENV_X1 "SEROTONIN_GUI_X1"
 #define SG_GUI_ENV_Y1 "SEROTONIN_GUI_Y1"
 
+/**
+ * WM active palette for GUI clients (ARGB). Same field order as @c wm_theme_t
+ * after @c name — see @c user/wm/wm.h .
+ */
+#define SG_GUI_WM_THEME_NCOLORS 15
+
+typedef struct __attribute__((packed)) {
+    uint32_t bg_dark;
+    uint32_t bg_medium;
+    uint32_t accent;
+    uint32_t accent_dim;
+    uint32_t text_primary;
+    uint32_t text_dim;
+    uint32_t border;
+    uint32_t close_btn;
+    uint32_t titlebar_fg;
+    uint32_t titlebar_bg;
+    uint32_t titlebar_inactive;
+    uint32_t border_active;
+    uint32_t border_inactive;
+    uint32_t term_fg;
+    uint32_t term_bg;
+} sg_gui_wm_theme_colors_t;
+
+/** Hex string: 15 × 8 lowercase hex digits (no separators), same order as @c sg_gui_wm_theme_colors_t . */
+#define SG_GUI_ENV_THEME "SEROTONIN_GUI_THEME"
+
 enum {
     SG_GUI_EV_KEYBOARD = 1,
     SG_GUI_EV_MOUSE = 2,
@@ -40,6 +67,8 @@ enum {
     SG_GUI_EV_FOCUS = 4,
     /** Compositor z-slot changed; client must use @c layer_id for `sys_5ht_rcfg_layer`. */
     SG_GUI_EV_LAYER = 5,
+    /** WM theme changed; @c u.theme matches @c g_wm_theme colors. */
+    SG_GUI_EV_THEME = 6,
 };
 
 typedef struct __attribute__((packed)) {
@@ -61,6 +90,7 @@ typedef struct __attribute__((packed)) {
             uint16_t layer_id;
             uint16_t reserved[3];
         } layer;
+        sg_gui_wm_theme_colors_t theme;
     } u;
 } sg_gui_event_t;
 
