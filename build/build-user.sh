@@ -113,6 +113,9 @@ echo "Window manager build complete: wm.elf"
 $CXX gui/gooey_demo.cpp -o gooey_demo.elf $CXXFLAGS -I.
 echo "GUI demo build complete: gooey_demo.elf"
 
+$CXX gui/widget_demo.cpp -o widget_demo.elf $CXXFLAGS -I.
+echo "Widget demo build complete: widget_demo.elf"
+
 # lwip client library (compiled separately, used by network tools)
 $CC -c lwip/serotonin/lwip_client.c -o lwip/serotonin/lwip_client.o $CFLAGS
 
