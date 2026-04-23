@@ -560,6 +560,8 @@ static int is_gui_launch_name(const char *name) {
         return 1;
     if (strcmp(name, "widget_demo") == 0)
         return 1;
+    if (strcmp(name, "tax_calc") == 0)
+        return 1;
     return 0;
 }
 
@@ -568,6 +570,46 @@ static int is_filtered(const char *name) {
         if (strcmp(name, launcher_filter[i]) == 0) return 1;
     return 0;
 }
+
+static int launcher_has_name(const wm_state_t *wm, const char *name) {
+    for (int i = 0; i < wm->launcher_count; i++) {
+        if (strcmp(wm->launcher_items[i], name) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+/** True if @p name appears as a full line in listdir @p buf (newline-separated). */
+static int launcher_name_in_listdir_buf(const char *buf, const char *name) {
+    size_t nlen = strlen(name);
+    const char *p = buf;
+    while (*p) {
+        const char *nl = strchr(p, '\n');
+        if (!nl)
+            break;
+        size_t len = (size_t)(nl - p);
+        if (len == nlen && strncmp(p, name, len) == 0)
+            return 1;
+        p = nl + 1;
+    }
+    return 0;
+}
+
+static int launcher_append_name(wm_state_t *wm, const char *name) {
+    if (!name || !name[0] || is_filtered(name))
+        return 0;
+    if (launcher_has_name(wm, name))
+        return 0;
+    if (wm->launcher_count >= LAUNCHER_MAX_ITEMS)
+        return 0;
+    strncpy(wm->launcher_items[wm->launcher_count], name, 31);
+    wm->launcher_items[wm->launcher_count][31] = '\0';
+    wm->launcher_count++;
+    return 1;
+}
+
+/* WM-hosted GUIs: add first if present in /bin listing (so 64-cap never hides them). */
+static const char *launcher_gui_pin[] = { "gooey_demo", "widget_demo", "tax_calc", NULL };
 
 static void theme_remap_term_defaults(term_state_t *ts, uint32_t old_fg, uint32_t old_bg,
                                       uint32_t new_fg, uint32_t new_bg) {
@@ -645,22 +687,25 @@ void launcher_open(wm_state_t *wm) {
     if (wm->launcher_active) return;
     if (wm->settings_active) settings_close(wm);
 
-    /* enumerate /bin */
-    char buf[2048];
+    /* enumerate /bin (large buffer: full toolchains can overflow smaller bufs) */
+    char buf[8192];
     int rc = listdir("/bin", buf, sizeof(buf));
     if (rc < 0) return;
 
     wm->launcher_count = 0;
+
+    for (int g = 0; launcher_gui_pin[g]; g++) {
+        if (launcher_name_in_listdir_buf(buf, launcher_gui_pin[g]))
+            launcher_append_name(wm, launcher_gui_pin[g]);
+    }
+
     char *p = buf;
     while (*p && wm->launcher_count < LAUNCHER_MAX_ITEMS) {
         char *nl = strchr(p, '\n');
         if (!nl) break;
         *nl = '\0';
-        if (strlen(p) > 0 && !is_filtered(p)) {
-            strncpy(wm->launcher_items[wm->launcher_count], p, 31);
-            wm->launcher_items[wm->launcher_count][31] = '\0';
-            wm->launcher_count++;
-        }
+        if (strlen(p) > 0)
+            launcher_append_name(wm, p);
         p = nl + 1;
     }
 

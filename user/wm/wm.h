@@ -32,7 +32,7 @@
 #define LAUNCHER_H       500
 #define LAUNCHER_ITEM_H  20
 #define LAUNCHER_PAD     8
-#define LAUNCHER_MAX_ITEMS 64
+#define LAUNCHER_MAX_ITEMS 256
 
 #define WM_THEME_COUNT       7
 
