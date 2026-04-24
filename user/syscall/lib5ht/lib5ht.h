@@ -28,17 +28,23 @@ extern "C" {
  * via sys_5ht_list_processes().
  */
 typedef struct proc_5ht {
-    int pid;            /**< Process ID */
-    char name[32];      /**< Process name */
-    int priority;       /**< Scheduling priority */
-    int priv;           /**< Privilege level (0=kernel, 3=user) */
+    int pid;                    /**< Process ID */
+    char name[32];              /**< Process name */
+    int priority;               /**< Scheduling priority */
+    int priv;                   /**< Privilege level (0=kernel, 3=user) */
+    uint32_t cpu_user_ticks;    /**< PIT ticks while this task ran in user mode */
+    uint32_t cpu_kernel_ticks;  /**< PIT ticks spent in kernel mode on this task's behalf (e.g. syscalls) */
+    uint32_t mem_bytes;         /**< Approximate memory usage (bytes) */
+    uint32_t disk_bytes;        /**< Bytes of disk I/O attributed to this task */
+    uint16_t uid;               /**< Real user id of the task owner */
+    uint16_t gid;               /**< Real group id of the task owner */
 } proc_5ht_t;
 
 typedef struct sysinfo_5ht {
-    uint32_t mem_free;   /**< Free memory (MB) */
-    uint32_t mem_total;  /**< Total memory (MB) */
-    uint32_t cpu_used;   /**< CPU used percent (reserved) */
-    uint32_t cpu_free;   /**< CPU free percent (reserved) */
+    uint32_t mem_free;          /**< Free memory (MB) */
+    uint32_t mem_total;         /**< Total memory (MB) */
+    uint32_t cpu_kernel_total;  /**< Accumulated PIT ticks across kernel-mode tasks */
+    uint32_t cpu_user_total;    /**< Accumulated PIT ticks across user-mode tasks */
 } sysinfo_5ht_t;
 
 /**
@@ -293,6 +299,15 @@ int sys_5ht_query_info(fb_info_t *out);
  * @return 0 on success, negative error code on failure
  */
 int sys_5ht_query_layer(uint16_t id, fb_layer_info_t *out);
+/**
+ * @brief Query system-wide information (memory + aggregate CPU ticks).
+ *
+ * Per-process CPU, memory, and disk I/O counters live on @c proc_5ht_t and
+ * are returned by @c sys_5ht_list_processes .
+ *
+ * @param out Output sysinfo struct to populate.
+ * @return 0 on success, negative error code on failure.
+ */
 int sys_5ht_sysinfo(sysinfo_5ht_t *out);
 int sys_5ht_set_fid(pid_t pid);
 int sys_5ht_pty_open(int fds[2]);

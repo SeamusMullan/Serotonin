@@ -83,20 +83,16 @@ int main(int argc, char **argv, char **envp) {
             pfds[1].events = POLLIN;
             pfds[1].revents = 0;
 
-            int ret = poll(pfds, 2, 5000);
+            // Block indefinitely. A previous 5s timeout branch called
+            // waitpid(-1, ...) here, but the kernel's waitpid has no WNOHANG
+            // and blocks the bridge forever the first time the user pauses,
+            // which wedges both RX and TX. POLLHUP on the master already
+            // detects a dead login child.
+            int ret = poll(pfds, 2, -1);
             if (ret < 0)
                 break;
-
-            if (ret == 0) {
-                // wait
-                int status;
-                pid_t w = waitpid(-1, &status);
-                if (w > 0) {
-                    running = 0;
-                    break;
-                }
+            if (ret == 0)
                 continue;
-            }
 
             // serial to PTY master
             if (pfds[0].revents & POLLIN) {

@@ -551,6 +551,7 @@ static int is_gui_launch_name(const char *name) {
         return 1;
     if (strcmp(name, "settings") == 0)
         return 1;
+    if (strcmp(name, "taskman") == 0)
         return 1;
     return 0;
 }

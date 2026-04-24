@@ -1,3 +1,6 @@
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 SKIP_TOOLCHAIN=0
 for arg in "$@"; do
     case "$arg" in
@@ -5,8 +8,8 @@ for arg in "$@"; do
     esac
 done
 
-export DIR=$(pwd)
-export PREFIX="$DIR/../build-tools/cross"
+export DIR="$SCRIPT_DIR"
+export PREFIX="$ROOT_DIR/build-tools/cross"
 export TARGET=i686-serotonin
 export PATH="$PREFIX/bin:$PATH"
 OS_TYPE="$(uname)"
@@ -18,22 +21,22 @@ AR="$PREFIX/bin/$TARGET-ar"
 RANLIB="$PREFIX/bin/$TARGET-ranlib"
 STRIP="$PREFIX/bin/$TARGET-strip"
 
-SYSROOT="$PREFIX/$TARGET/sys-root"
+SYSROOT="$ROOT_DIR/sysroot"
 
 # compiler flags — the toolchain handles sysroot, CRT, and linking automatically.
-CFLAGS="-std=gnu99 -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse"
+CFLAGS="--sysroot=$SYSROOT -std=gnu99 -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse"
 
 # C++ flags: no exceptions, no RTTI (not supported by Serotonin).
 # Supported C++ features: classes, templates, operator overloading,
 # new/delete (via libcxxrt), global constructors/destructors (via crt0),
 # static destructors (__cxa_atexit), STL containers (via STLport).
-CXXFLAGS="-std=c++11 -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse -fno-exceptions -fno-rtti -fno-threadsafe-statics"
+CXXFLAGS="--sysroot=$SYSROOT -std=c++11 -O2 -Wall -Wextra -msse -msse2 -mfpmath=sse -fno-exceptions -fno-rtti -fno-threadsafe-statics"
 
 # STLport configuration
 STLPORT_DIR="$DIR/../user/cxx/STLport-5.2.1/stlport"
 STLPORT_FLAGS="-I$STLPORT_DIR -D__SEROTONIN__"
 
-cd ../user
+cd "$ROOT_DIR/user"
 
 # --- C programs (compile + link in one step — toolchain links automatically) ---
 
@@ -121,6 +124,7 @@ echo "Tax calculator GUI build complete: tax_calc.elf"
 
 $CXX gui/settings.cpp -o settings.elf $CXXFLAGS -I.
 echo "Settings GUI build complete: settings.elf"
+$CXX gui/taskman.cpp -o taskman.elf $CXXFLAGS -I.
 echo "Task manager GUI build complete: taskman.elf"
 
 # lwip client library (compiled separately, used by network tools)

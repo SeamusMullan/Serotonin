@@ -679,6 +679,187 @@ struct ListBox {
     }
 };
 
+/* ── Graph (rolling line / area plot) ─────────────────────── */
+
+/**
+ * Fixed-capacity rolling graph. Call push(v) (or push2(v1, v2) for a two-series
+ * graph) each sample; the graph stores the most recent @c CAPACITY samples in
+ * internal ring buffers and paints them left-to-right against a
+ * [min_value..max_value] range.
+ *
+ * Values can have whatever units the caller chooses (ticks, %, MB, bytes/sec…)
+ * so long as they lie in the configured range. Out-of-range samples are
+ * clamped. Set @c line_color / @c second_line_color to 0 to fall back to
+ * @c Theme::accent . The second series is only painted once @c push2 has been
+ * called at least once (or @c has_second is set manually).
+ */
+struct Graph {
+    Rect bounds;
+    bool visible;
+    bool filled;                /**< Area-fill under the line (first series). */
+    bool second_filled;         /**< Area-fill under the second-series line. */
+    bool show_grid;             /**< Light horizontal grid lines at 25/50/75%. */
+    int min_value;
+    int max_value;
+    uint32_t line_color;        /**< First series line color. 0 = use Theme::accent. */
+    uint32_t second_line_color; /**< Second series line color. 0 = theme-derived. */
+    const char *label;          /**< Optional top-left caption (may be null). */
+    const char *second_label;   /**< Optional caption for 2nd series, shown below label. */
+    bool has_second;            /**< True if the graph currently carries a 2nd series. */
+
+    static const int CAPACITY = 128;
+
+    Graph()
+        : visible(true), filled(true), second_filled(false), show_grid(true),
+          min_value(0), max_value(100),
+          line_color(0), second_line_color(0),
+          label(nullptr), second_label(nullptr), has_second(false),
+          head_(0), count_(0) {
+        for (int i = 0; i < CAPACITY; ++i) { data_[i] = 0; data2_[i] = 0; }
+    }
+
+    void clear() {
+        head_ = 0;
+        count_ = 0;
+        for (int i = 0; i < CAPACITY; ++i) { data_[i] = 0; data2_[i] = 0; }
+    }
+
+    void push(int value) {
+        if (value < min_value) value = min_value;
+        if (value > max_value) value = max_value;
+        data_[head_] = value;
+        data2_[head_] = 0;
+        head_ = (head_ + 1) % CAPACITY;
+        if (count_ < CAPACITY) ++count_;
+    }
+
+    void push2(int v1, int v2) {
+        if (v1 < min_value) v1 = min_value;
+        if (v1 > max_value) v1 = max_value;
+        if (v2 < min_value) v2 = min_value;
+        if (v2 > max_value) v2 = max_value;
+        data_[head_]  = v1;
+        data2_[head_] = v2;
+        has_second = true;
+        head_ = (head_ + 1) % CAPACITY;
+        if (count_ < CAPACITY) ++count_;
+    }
+
+    int sample_count() const { return count_; }
+
+    int sample_at(int i) const {
+        if (i < 0 || i >= count_) return min_value;
+        int start = (head_ - count_ + CAPACITY) % CAPACITY;
+        return data_[(start + i) % CAPACITY];
+    }
+
+    int sample2_at(int i) const {
+        if (i < 0 || i >= count_) return min_value;
+        int start = (head_ - count_ + CAPACITY) % CAPACITY;
+        return data2_[(start + i) % CAPACITY];
+    }
+
+    void paint(Surface &s, const Theme &th) const {
+        if (!visible) return;
+        draw::rect_filled(s, bounds.x, bounds.y, bounds.w, bounds.h, th.input_bg);
+        draw::rect(s, bounds.x, bounds.y, bounds.w, bounds.h, th.border);
+
+        if (bounds.w <= 2 || bounds.h <= 2)
+            return;
+
+        int inner_x = bounds.x + 1;
+        int inner_y = bounds.y + 1;
+        int inner_w = bounds.w - 2;
+        int inner_h = bounds.h - 2;
+
+        if (show_grid) {
+            for (int f = 1; f < 4; ++f) {
+                int gy = inner_y + (inner_h * f) / 4;
+                draw::hline(s, inner_x, inner_x + inner_w - 1, gy, th.scrollbar_bg);
+            }
+        }
+
+        int range = max_value - min_value;
+        if (range <= 0) range = 1;
+
+        int draw_count = count_ < inner_w ? count_ : inner_w;
+        if (draw_count < 1) {
+            if (label)
+                draw::draw_text_transparent(s, bounds.x + 4, bounds.y + 2, label, th.fg);
+            return;
+        }
+
+        int step_num = inner_w;
+        int step_den = draw_count > 1 ? draw_count - 1 : 1;
+        int baseline = inner_y + inner_h - 1;
+
+        uint32_t color1 = line_color ? line_color : th.accent;
+        uint32_t color2 = second_line_color ? second_line_color : th.accent_hover;
+
+        /* Draw second series first so the primary series renders on top. */
+        if (has_second) {
+            int prev_x = inner_x;
+            int prev_y = 0;
+            bool have_prev = false;
+            for (int i = 0; i < draw_count; ++i) {
+                int sample_idx = count_ - draw_count + i;
+                int v = sample2_at(sample_idx);
+                int rel = v - min_value;
+                int y = inner_y + inner_h - 1 - (rel * (inner_h - 1)) / range;
+                int x = inner_x + (i * step_num) / step_den;
+
+                if (second_filled)
+                    draw::vline(s, x, y, baseline, color2);
+
+                if (have_prev)
+                    draw::line(s, prev_x, prev_y, x, y, color2);
+                else
+                    s.put_pixel(x, y, color2);
+
+                prev_x = x;
+                prev_y = y;
+                have_prev = true;
+            }
+        }
+
+        {
+            int prev_x = inner_x;
+            int prev_y = 0;
+            bool have_prev = false;
+            for (int i = 0; i < draw_count; ++i) {
+                int sample_idx = count_ - draw_count + i;
+                int v = sample_at(sample_idx);
+                int rel = v - min_value;
+                int y = inner_y + inner_h - 1 - (rel * (inner_h - 1)) / range;
+                int x = inner_x + (i * step_num) / step_den;
+
+                if (filled)
+                    draw::vline(s, x, y, baseline, color1);
+
+                if (have_prev)
+                    draw::line(s, prev_x, prev_y, x, y, color1);
+                else
+                    s.put_pixel(x, y, color1);
+
+                prev_x = x;
+                prev_y = y;
+                have_prev = true;
+            }
+        }
+
+        if (label)
+            draw::draw_text_transparent(s, bounds.x + 4, bounds.y + 2, label, th.fg);
+        if (second_label && has_second)
+            draw::draw_text_transparent(s, bounds.x + 4, bounds.y + 2 + draw::FONT_H, second_label, color2);
+    }
+
+private:
+    int data_[CAPACITY];
+    int data2_[CAPACITY];
+    int head_;
+    int count_;
+};
+
 /* ── Tooltip (renders on demand at mouse position) ────────── */
 
 struct Tooltip {
