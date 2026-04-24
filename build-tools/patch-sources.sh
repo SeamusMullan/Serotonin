@@ -79,24 +79,40 @@ done
 echo ""
 echo "=== Patching binutils ==="
 
+# verify_patch — after a sed -i, check the file actually contains 'serotonin'.
+# Without this, sed silently exits 0 when the anchor pattern doesn't match.
+verify_patch() {
+    local file="$1" label="$2"
+    if grep -q 'serotonin' "$file" 2>/dev/null; then
+        echo "  [ok]   $label"
+    else
+        echo "  [FAIL] $label — sed anchor did not match; nothing was inserted"
+        echo "         Inspect $file and update patch-sources.sh anchor."
+        exit 1
+    fi
+}
+
 F="$BINUTILS_SRC/bfd/config.bfd"
 if guard "$F" "bfd/config.bfd"; then
-    sed -i '/i\[3-7\]86-\*-elf\* | i\[3-7\]86-\*-rtems/i\  i[3-7]86-*-serotonin*)\n    targ_defvec=i386_elf32_vec\n    targ_selvecs="iamcu_elf32_vec"\n    ;;' "$F"
-    echo "  [ok]   bfd/config.bfd"
+    # Anchor on `i[3-7]86-*-elf* |` — stable across binutils versions
+    # (the trailing space-pipe excludes `i[3-7]86-*-elfiamcu*)`).
+    sed -i '/i\[3-7\]86-\*-elf\* |/i\  i[3-7]86-*-serotonin*)\n    targ_defvec=i386_elf32_vec\n    targ_selvecs="iamcu_elf32_vec"\n    ;;' "$F"
+    verify_patch "$F" "bfd/config.bfd"
 fi
 
 # gas/configure.tgt
 F="$BINUTILS_SRC/gas/configure.tgt"
 if guard "$F" "gas/configure.tgt"; then
     sed -i '/i386-\*-elf\*)/i\  i386-*-serotonin*)\t\t\tfmt=elf ;;' "$F"
-    echo "  [ok]   gas/configure.tgt"
+    verify_patch "$F" "gas/configure.tgt"
 fi
 
 # ld/configure.tgt
 F="$BINUTILS_SRC/ld/configure.tgt"
 if guard "$F" "ld/configure.tgt"; then
-    sed -i '/i\[3-7\]86-\*-elf\* | i\[3-7\]86-\*-rtems/i\i[3-7]86-*-serotonin*)\n\t\t\ttarg_emul=elf_i386\n\t\t\ttarg_extra_emuls=elf_iamcu\n\t\t\t;;' "$F"
-    echo "  [ok]   ld/configure.tgt"
+    # Anchor on `i[3-7]86-*-elf* |` for the same reason as bfd/config.bfd.
+    sed -i '/i\[3-7\]86-\*-elf\* |/i\i[3-7]86-*-serotonin*)\n\t\t\ttarg_emul=elf_i386\n\t\t\ttarg_extra_emuls=elf_iamcu\n\t\t\t;;' "$F"
+    verify_patch "$F" "ld/configure.tgt"
 fi
 
 # ═══════════════════════════════════════════════════════
@@ -108,7 +124,7 @@ echo "=== Patching GCC ==="
 F="$GCC_SRC/gcc/config.gcc"
 if guard "$F" "gcc/config.gcc"; then
     sed -i '/^i\[34567\]86-\*-elf\*)/i\i[34567]86-*-serotonin*)\n\ttm_file="${tm_file} i386/unix.h i386/att.h elfos.h newlib-stdint.h i386/i386elf.h serotonin.h"\n\t;;' "$F"
-    echo "  [ok]   gcc/config.gcc"
+    verify_patch "$F" "gcc/config.gcc"
 fi
 
 # Install serotonin.h into gcc/config/
@@ -119,14 +135,14 @@ echo "  [ok]   installed gcc/config/serotonin.h"
 F="$GCC_SRC/libgcc/config.host"
 if guard "$F" "libgcc/config.host"; then
     sed -i '/^i\[34567\]86-\*-elf\*)/i\i[34567]86-*-serotonin*)\n\ttmake_file="$tmake_file i386/t-crtstuff t-crtstuff-pic t-libgcc-pic"\n\t;;' "$F"
-    echo "  [ok]   libgcc/config.host"
+    verify_patch "$F" "libgcc/config.host"
 fi
 
 # fixincludes/mkfixinc.sh
 F="$GCC_SRC/fixincludes/mkfixinc.sh"
 if guard "$F" "fixincludes/mkfixinc.sh"; then
     sed -i '/-\*-vxworks7\*/a\    *-*-serotonin* | \\' "$F"
-    echo "  [ok]   fixincludes/mkfixinc.sh"
+    verify_patch "$F" "fixincludes/mkfixinc.sh"
 fi
 
 # ═══════════════════════════════════════════════════════
