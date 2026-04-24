@@ -551,6 +551,7 @@ static int is_gui_launch_name(const char *name) {
         return 1;
     if (strcmp(name, "settings") == 0)
         return 1;
+        return 1;
     return 0;
 }
 
@@ -598,7 +599,7 @@ static int launcher_append_name(wm_state_t *wm, const char *name) {
 }
 
 /* WM-hosted GUIs: add first if present in /bin listing (so 64-cap never hides them). */
-static const char *launcher_gui_pin[] = { "gooey_demo", "widget_demo", "tax_calc", "settings", NULL };
+static const char *launcher_gui_pin[] = { "gooey_demo", "widget_demo", "tax_calc", "settings", "taskman", NULL };
 
 static void theme_remap_term_defaults(term_state_t *ts, uint32_t old_fg, uint32_t old_bg,
                                       uint32_t new_fg, uint32_t new_bg) {

@@ -121,6 +121,7 @@ echo "Tax calculator GUI build complete: tax_calc.elf"
 
 $CXX gui/settings.cpp -o settings.elf $CXXFLAGS -I.
 echo "Settings GUI build complete: settings.elf"
+echo "Task manager GUI build complete: taskman.elf"
 
 # lwip client library (compiled separately, used by network tools)
 $CC -c lwip/serotonin/lwip_client.c -o lwip/serotonin/lwip_client.o $CFLAGS
