@@ -8,6 +8,53 @@ static blkcache_entry_t *hash_table[BLKCACHE_NUM_BUCKETS];
 static blkcache_entry_t *lru_head;
 static blkcache_entry_t *lru_tail;
 static uint32_t used_count;
+typedef struct memdrive {
+    const uint8_t *base;
+    uint32_t size_bytes;
+    uint8_t valid;
+} memdrive_t;
+static memdrive_t memdrives[16];
+
+static inline int blkcache_drive_is_mem(uint8_t drive) {
+    return drive >= BLKCACHE_MEMDRIVE_BASE &&
+           drive < (uint8_t)(BLKCACHE_MEMDRIVE_BASE + 16);
+}
+
+static int memdrive_read_sector(uint8_t drive, uint32_t lba, uint8_t *buf) {
+    uint8_t slot = (uint8_t)(drive - BLKCACHE_MEMDRIVE_BASE);
+    if (!memdrives[slot].valid || !buf) return -1;
+
+    uint64_t off = (uint64_t)lba * 512u;
+    if (off + 512u > memdrives[slot].size_bytes) return -1;
+
+    memcpy(buf, memdrives[slot].base + off, 512);
+    return 0;
+}
+
+static int blkdev_read_sector(uint8_t drive, uint32_t lba, uint8_t *buf) {
+    if (blkcache_drive_is_mem(drive)) return memdrive_read_sector(drive, lba, buf);
+    return ide_read_sector(drive, lba, buf);
+}
+
+static int blkdev_read_sectors(uint8_t drive, uint32_t lba, uint8_t count, uint8_t *buf) {
+    if (count == 0) return 0;
+    if (!blkcache_drive_is_mem(drive)) return ide_read_sectors(drive, lba, count, buf);
+
+    for (uint8_t i = 0; i < count; i++) {
+        if (memdrive_read_sector(drive, lba + i, buf + (uint32_t)i * 512u) != 0) return -1;
+    }
+    return 0;
+}
+
+static int blkdev_write_sector(uint8_t drive, uint32_t lba, const uint8_t *buf) {
+    if (blkcache_drive_is_mem(drive)) return -1;
+    return ide_write_sector(drive, lba, buf);
+}
+
+static void blkdev_flush(uint8_t drive) {
+    if (blkcache_drive_is_mem(drive)) return;
+    ide_cache_flush(drive);
+}
 
 static inline uint32_t blkcache_hash(uint8_t drive, uint32_t lba) {
     return (drive * 2654435761u + lba) % BLKCACHE_NUM_BUCKETS;
@@ -85,6 +132,7 @@ static blkcache_entry_t *cache_alloc(uint8_t drive, uint32_t lba) {
 void blkcache_init(void) {
     memset(entries, 0, sizeof(entries));
     memset(hash_table, 0, sizeof(hash_table));
+    memset(memdrives, 0, sizeof(memdrives));
     lru_head = NULL;
     lru_tail = NULL;
     used_count = 0;
@@ -102,9 +150,9 @@ int blkcache_read_sector(uint8_t drive, uint32_t lba, uint8_t *buf) {
     // cache miss - read from disk
     e = cache_alloc(drive, lba);
     if (!e)
-        return ide_read_sector(drive, lba, buf);
+        return blkdev_read_sector(drive, lba, buf);
 
-    int r = ide_read_sector(drive, lba, e->data);
+    int r = blkdev_read_sector(drive, lba, e->data);
     if (r != 0) {
         // failed - invalidate entry
         e->valid = 0;
@@ -135,7 +183,7 @@ int blkcache_read_sectors(uint8_t drive, uint32_t lba, uint8_t count, uint8_t *b
     }
 
     // batch read from disk, then populate cache
-    int r = ide_read_sectors(drive, lba, count, buf);
+    int r = blkdev_read_sectors(drive, lba, count, buf);
     if (r != 0) return r;
 
     for (uint8_t i = 0; i < count; i++) {
@@ -157,7 +205,7 @@ int blkcache_read_sectors(uint8_t drive, uint32_t lba, uint8_t count, uint8_t *b
 
 int blkcache_write_sector(uint8_t drive, uint32_t lba, const uint8_t *buf) {
     // write-through: write to disk first
-    int r = ide_write_sector(drive, lba, buf);
+    int r = blkdev_write_sector(drive, lba, buf);
     if (r != 0) return r;
 
     // update cache
@@ -187,5 +235,18 @@ void blkcache_invalidate(uint8_t drive) {
 void blkcache_flush(uint8_t drive) {
     // write-through cache: nothing to flush for data
     // but issue a device cache flush
-    ide_cache_flush(drive);
+    blkdev_flush(drive);
+}
+
+int blkcache_register_memdrive(uint8_t slot, const void *base, uint32_t size_bytes) {
+    if (slot >= 16 || !base || size_bytes < 512) return -1;
+    memdrives[slot].base = (const uint8_t *)base;
+    memdrives[slot].size_bytes = size_bytes;
+    memdrives[slot].valid = 1;
+    blkcache_invalidate((uint8_t)(BLKCACHE_MEMDRIVE_BASE + slot));
+    return 0;
+}
+
+int blkcache_is_memdrive(uint8_t drive) {
+    return blkcache_drive_is_mem(drive);
 }

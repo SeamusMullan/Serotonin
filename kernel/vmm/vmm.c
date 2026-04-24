@@ -474,7 +474,7 @@ void buddy_init(multiboot_info_t *mbi, uint32_t kernel_phys_start, uint32_t kern
     memset(&g_buddy, 0, sizeof(g_buddy));
 
     // Collect exclusions
-    range64_t excl[6];
+    range64_t excl[32];
     int excl_n = 0;
 
     // exclude <1 MiB (identity map)
@@ -493,6 +493,18 @@ void buddy_init(multiboot_info_t *mbi, uint32_t kernel_phys_start, uint32_t kern
 
     // exclude kernel stack (full 4 MiB page table mapping at boot)
     excl[excl_n++] = (range64_t){ KERNEL_STACK_PHYS, (uint64_t)KERNEL_STACK_PHYS + (PAGE_ENTRIES * PAGE_SIZE) };
+
+    // exclude multiboot modules (e.g. ISO rootfs module), if any
+    if ((mbi->flags & MULTIBOOT_INFO_MODS) && mbi->mods_count && mbi->mods_addr) {
+        multiboot_module_t *mods = (multiboot_module_t *)(uintptr_t)mbi->mods_addr;
+        for (uint32_t mi = 0; mi < mbi->mods_count && excl_n < (int)(sizeof(excl) / sizeof(excl[0])); mi++) {
+            uint32_t mod_start = mods[mi].mod_start;
+            uint32_t mod_end = mods[mi].mod_end;
+            if (mod_end > mod_start) {
+                excl[excl_n++] = (range64_t){ mod_start, mod_end };
+            }
+        }
+    }
 
     uint32_t mmap_len  = mbi->mmap_length;
     uint32_t mmap_addr = mbi->mmap_addr;

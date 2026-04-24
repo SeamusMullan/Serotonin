@@ -48,6 +48,7 @@ typedef struct fat_BS
 
 typedef struct fat32_fs_info {
     uint8_t  drive;
+    uint8_t  read_only;
     uint32_t partition_start_lba;
 
     uint16_t bytes_per_sector;

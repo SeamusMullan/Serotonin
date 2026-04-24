@@ -78,6 +78,16 @@ static void irq_pit_handler(int irq, processor_context_t *ctx) {
         }
     }
 
+    /* accumulate cpu usage on the currently running task, split by CPU mode
+     * at time of trap so user-mode tasks have both user and kernel tick
+     * counters (the latter covering time spent in syscalls on their behalf). */
+    if (current_task && current_task->state == PROCESS_STATE_RUNNING) {
+        if (ctx->cs == USER_MODE_CODE_SEGMENT)
+            current_task->cpu_user_ticks++;
+        else
+            current_task->cpu_kernel_ticks++;
+    }
+
     /* check blocked select()/poll() waiters */
     poll_waiter_tick();
 
@@ -107,6 +117,32 @@ static void irq_keyboard_handler(int irq, processor_context_t *ctx) {
     handle_scancode(scancode);
 }
 
+static void mouse_emit(uint8_t buttons, int emit_move) {
+    uint8_t changed = buttons ^ prev_mouse_buttons;
+    if (changed) {
+        for (int i = 0; i < 3; i++) {
+            uint8_t mask = (1 << i);
+            if (changed & mask) {
+                mouse_event_t ev;
+                ev.x = (int16_t)mouse_x;
+                ev.y = (int16_t)mouse_y;
+                ev.buttons = buttons;
+                ev.event_type = (buttons & mask) ? MOUSE_EVENT_BUTTON_DOWN : MOUSE_EVENT_BUTTON_UP;
+                dev_mouse_push_event(&ev);
+            }
+        }
+        prev_mouse_buttons = buttons;
+    }
+    if (emit_move) {
+        mouse_event_t ev;
+        ev.x = (int16_t)mouse_x;
+        ev.y = (int16_t)mouse_y;
+        ev.buttons = buttons;
+        ev.event_type = MOUSE_EVENT_MOVE;
+        dev_mouse_push_event(&ev);
+    }
+}
+
 static void irq_mouse_handler(int irq, processor_context_t *ctx) {
     (void)irq;
     (void)ctx;
@@ -129,55 +165,30 @@ static void irq_mouse_handler(int irq, processor_context_t *ctx) {
     ps2_mouse_packet[ps2_mouse_packet_index++] = mouse_data;
     ps2_mouse_last_byte_tick = timer_ticks;
 
-    if (ps2_mouse_packet_index == 3) {
-        uint8_t buttons = ps2_mouse_packet[0] & 0x07;
+    if (ps2_mouse_packet_index < 3) return;
+    ps2_mouse_packet_index = 0;
 
-        int rel_x = ps2_mouse_packet[1];
-        if (ps2_mouse_packet[0] & 0x10) { // x sign bit
-            rel_x -= 256;
-        }
+    uint8_t buttons = ps2_mouse_packet[0] & 0x07;
 
-        int rel_y = ps2_mouse_packet[2];
-        if (ps2_mouse_packet[0] & 0x20) { // y sign bit
-            rel_y -= 256;
-        }
-
-        mouse_x += rel_x;
-        mouse_y -= rel_y;  // PS/2 Y is inverted: positive = up, screen Y = down
-
-        if (mouse_x < 0) mouse_x = 0;
-        if (mouse_y < 0) mouse_y = 0;
-        if (mouse_x >= (int32_t)vbe_info.width)  mouse_x = vbe_info.width - 1;
-        if (mouse_y >= (int32_t)vbe_info.height) mouse_y = vbe_info.height - 1;
-
-        uint8_t changed = buttons ^ prev_mouse_buttons;
-        if (changed) {
-            for (int i = 0; i < 3; i++) {
-                uint8_t mask = (1 << i);
-                if (changed & mask) {
-                    mouse_event_t ev;
-                    ev.x = (int16_t)mouse_x;
-                    ev.y = (int16_t)mouse_y;
-                    ev.buttons = buttons;
-                    ev.event_type = (buttons & mask) ? MOUSE_EVENT_BUTTON_DOWN : MOUSE_EVENT_BUTTON_UP;
-                    dev_mouse_push_event(&ev);
-                }
-            }
-            prev_mouse_buttons = buttons;
-        }
-
-        // Always emit a move event so userspace can track cursor position
-        if (rel_x != 0 || rel_y != 0) {
-            mouse_event_t ev;
-            ev.x = (int16_t)mouse_x;
-            ev.y = (int16_t)mouse_y;
-            ev.buttons = buttons;
-            ev.event_type = MOUSE_EVENT_MOVE;
-            dev_mouse_push_event(&ev);
-        }
-
-        ps2_mouse_packet_index = 0;
+    int rel_x = ps2_mouse_packet[1];
+    if (ps2_mouse_packet[0] & 0x10) { // x sign bit
+        rel_x -= 256;
     }
+
+    int rel_y = ps2_mouse_packet[2];
+    if (ps2_mouse_packet[0] & 0x20) { // y sign bit
+        rel_y -= 256;
+    }
+
+    mouse_x += rel_x;
+    mouse_y -= rel_y;  // PS/2 Y is inverted: positive = up, screen Y = down
+
+    if (mouse_x < 0) mouse_x = 0;
+    if (mouse_y < 0) mouse_y = 0;
+    if (mouse_x >= (int32_t)vbe_info.width)  mouse_x = vbe_info.width - 1;
+    if (mouse_y >= (int32_t)vbe_info.height) mouse_y = vbe_info.height - 1;
+
+    mouse_emit(buttons, rel_x != 0 || rel_y != 0);
 }
 
 static void irq_rtc_handler(int irq, processor_context_t *ctx) {

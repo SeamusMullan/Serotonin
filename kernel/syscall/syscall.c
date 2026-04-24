@@ -1974,6 +1974,18 @@ static void sys_5ht_list_proc(uint32_t arg2, uint32_t arg3) {
         k_buf.priority = task->priority;
         strncpy(k_buf.name, task->name, 32);
         k_buf.name[31] = '\0';
+        k_buf.cpu_user_ticks   = task->cpu_user_ticks;
+        k_buf.cpu_kernel_ticks = task->cpu_kernel_ticks;
+        k_buf.disk_bytes       = task->disk_bytes;
+        k_buf.uid              = task->uid;
+        k_buf.gid              = task->gid;
+        if (task->priv == CPU_USER_MODE) {
+            k_buf.mem_bytes = (task->brk_end >= task->brk_start)
+                              ? (task->brk_end - task->brk_start)
+                              : 0;
+        } else {
+            k_buf.mem_bytes = KERNEL_STACK_SIZE;
+        }
 
         if (copy_to_user(current_task->address_space, (uint32_t)(&buf[count]), &k_buf, sizeof(k_buf)) != 0) {
             errno = -EFAULT;
@@ -3018,8 +3030,15 @@ static void sys_5ht_sysinfo(uint32_t arg2) {
     sysinfo_5ht_t sysinfo = {0};
     sysinfo.mem_free = (buddy_free_pages() *4000)/1000000;
     sysinfo.mem_total = (buddy_total_pages() *4000)/1000000;
-    sysinfo.cpu_free = 0;
-    sysinfo.cpu_used = 0;
+
+    uint32_t cpu_kernel = 0;
+    uint32_t cpu_user = 0;
+    for (process_control_block_t *t = task_list; t; t = t->next) {
+        cpu_user   += t->cpu_user_ticks;
+        cpu_kernel += t->cpu_kernel_ticks;
+    }
+    sysinfo.cpu_kernel_total = cpu_kernel;
+    sysinfo.cpu_user_total   = cpu_user;
 
     if (copy_to_user(current_task->address_space, (uint32_t)arg2, &sysinfo, sizeof(sysinfo)) != 0) {
         errno = -EFAULT;

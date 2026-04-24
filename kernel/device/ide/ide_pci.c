@@ -307,6 +307,14 @@ int ide_read_sectors(uint8_t drive, uint32_t lba, uint8_t count, uint8_t *buffer
     if (multitasking_ready)
         task_semaphore_release(&channel_lock[drv->channel]);
 
+    /* Non-worker kernel reads (e.g. execve, blkcache from init) — attribute to pid 0.
+     * Worker-path reads are attributed to the submitting task in ide_process_work(). */
+    if (r == 0 && current_task && current_task != ide_worker_pcb) {
+        process_control_block_t *pid0 = task_lookup_by_pid(0);
+        if (pid0)
+            pid0->disk_bytes += (uint32_t)count * 512u;
+    }
+
     return r;
 }
 
@@ -335,6 +343,12 @@ int ide_write_sectors(uint8_t drive, uint32_t lba, uint8_t count, const uint8_t 
         }
     } else {
         r = ide_pio_write_sectors(ch, drv->drive, lba, count, buffer);
+    }
+
+    if (r == 0 && current_task && current_task != ide_worker_pcb) {
+        process_control_block_t *pid0 = task_lookup_by_pid(0);
+        if (pid0)
+            pid0->disk_bytes += (uint32_t)count * 512u;
     }
 
     if (multitasking_ready)
@@ -582,6 +596,7 @@ static void ide_process_work(disk_work_t *w) {
                 return;
             }
             handle->offset += read_bytes;
+            ((process_control_block_t *)w->task)->disk_bytes += (uint32_t)read_bytes;
         }
 
         ((processor_context_t *)w->task->processor_context)->eax = (uint32_t)read_bytes;
@@ -598,6 +613,7 @@ static void ide_process_work(disk_work_t *w) {
         } else {
             handle->offset += written;
             ((processor_context_t *)w->task->processor_context)->eax = (uint32_t)written;
+            ((process_control_block_t *)w->task)->disk_bytes += (uint32_t)written;
         }
 
         kernel_free(w->kbuf);

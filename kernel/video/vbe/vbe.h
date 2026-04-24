@@ -92,6 +92,7 @@ typedef struct fb_layer_metadata fb_layer_metadata_t;
 
 extern vbe_mode_info_t vbe_info;
 extern uint32_t fb_size_bytes;
+extern uint8_t cursor_visible;
 
 void vbe_init(multiboot_info_t *mbi);
 void vbe_putpixel(uint32_t x, uint32_t y, uint32_t color);

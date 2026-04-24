@@ -17,13 +17,12 @@
 #include <kernel/video/font.h>
 #include <kernel/filesystem/vfs.h>
 #include <kernel/filesystem/ide.h>
+#include <kernel/filesystem/blkcache.h>
 #include <kernel/filesystem/tmpfs/tmpfs.h>
 #include <kernel/filesystem/devfs/devfs.h>
 #include <kernel/filesystem/fat32/fat32.h>
 #include <kernel/schedule/schedule.h>
-#include <kernel/audio/pcspeaker/pcspeaker.h>
 #include <kernel/gdt.h>
-#include <kernel/audio/startup/opl2_sound/opl2_startup.h>
 #include <kernel/io/serial.h>
 #include <kernel/device/devfs_example.h>
 #include <kernel/device/mouse/dev_mouse.h>
@@ -32,6 +31,7 @@
 #include <kernel/pty/pty.h>
 #include <kernel/io/pci/pci.h>
 #include <kernel/device/pci_drivers.h>
+#include <kernel/video/splash.h>
 
 
 #define HEAP_START  ((uint8_t*) (KERNEL_HEAP_VMA))
@@ -1015,8 +1015,10 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     strncpy(cmdline_buf, cmdline, sizeof(cmdline_buf));
     cmdline_buf[sizeof(cmdline_buf) - 1] = '\0';
 
+    const char *rootfs_device = "1";
+    int rootfs_from_iso = 0;
+
     for (char* token = strtok(cmdline_buf, " "); token != NULL; token = strtok(NULL, " ")) {
-        // yanderedev, should use a struct table in the future, but for now, we only have two args.
         if (strcmp(token, "debug") == 0) {
             printfs_set_mask(
                 (1 << PRINT_STATUS_DEBUG) |
@@ -1038,6 +1040,16 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         } else if (strcmp(token, "quiet") == 0) {
             printfs_set_mask(0);
             quiet_mode = 1;
+        } else if (strcmp(token, "rootfs=iso") == 0) {
+            rootfs_device = "mem0";
+            rootfs_from_iso = 1;
+        } else if (strncmp(token, "rootfs=", 7) == 0 && token[7] != '\0') {
+            rootfs_device = token + 7;
+            rootfs_from_iso = (strcmp(rootfs_device, "iso") == 0 ||
+                               strcmp(rootfs_device, "mem0") == 0);
+            if (strcmp(rootfs_device, "iso") == 0) {
+                rootfs_device = "mem0";
+            }
         }
     }
 
@@ -1046,61 +1058,94 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     cpu_features_t processor_features = {0};
     kernel_get_cpu_features(&processor_features);
 
+    splash_render((vbe_info.width/2)-150,(vbe_info.height/2)-100);
+    splash_progress_bar(10);
+
+    kernel_sleep(1000); // wait for devices
+
 	printfs(PRINT_STATUS_INFO,"Serotonin Kernel %d.%d.%d | Compile Time: %s %s | %d physical pages available (%d MB) | Hypervisor:%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__,buddy_total_pages(), (buddy_total_pages()*4000)/1000000, kernel_hypervisor_present());
     kernel_print_cpu_features(&processor_features);
     printfs(PRINT_STATUS_INFO,"Booted with arguments: %s\n",cmdline);
     printfs(PRINT_STATUS_INFO,"VBE graphics mode framebuffer, resolution %dx%dx%d\n",vbe_info.width,vbe_info.height,vbe_info.bpp);
 
     printfs(PRINT_STATUS_INFO,"vfs: init\n");
-    vbe_flip();
-
     vfs_init();
+    splash_progress_bar(5);
 
     printfs(PRINT_STATUS_INFO,"pci: init\n");
-    vbe_flip();
-
     pci_init();
+    splash_progress_bar(5);
 
     printfs(PRINT_STATUS_INFO,"ide: init\n");
-    vbe_flip();
-
     ide_init();
+    splash_progress_bar(5);
 
     printfs(PRINT_STATUS_INFO,"fat32: init\n");
-    vbe_flip();
-
     fat32_init();
+    splash_progress_bar(5);
 
     printfs(PRINT_STATUS_INFO,"devfs: init\n");
-    vbe_flip();
-
     devfs_init();
+    splash_progress_bar(5);
 
     printfs(PRINT_STATUS_INFO,"tmpfs: init\n");
-    vbe_flip();
-
     tmpfs_init();
+    splash_progress_bar(5);
+
+    if (rootfs_from_iso) {
+        if (!(mbi->flags & MULTIBOOT_INFO_MODS) || mbi->mods_count == 0) {
+            kernel_panic("rootfs=iso requires a multiboot module (rootfs image)");
+        }
+
+        multiboot_module_t *mods = (multiboot_module_t *)phys_to_virt((uintptr_t)mbi->mods_addr);
+        multiboot_module_t *root_mod = &mods[0];
+        for (uint32_t i = 0; i < mbi->mods_count; i++) {
+            const char *mcmd = (const char *)phys_to_virt((uintptr_t)mods[i].cmdline);
+            if (mcmd && strstr(mcmd, "rootfs")) {
+                root_mod = &mods[i];
+                break;
+            }
+        }
+
+        uint32_t mod_start = root_mod->mod_start;
+        uint32_t mod_end = root_mod->mod_end;
+        if (mod_end <= mod_start) {
+            kernel_panic("invalid rootfs module bounds");
+        }
+
+        if (blkcache_register_memdrive(0, (const void *)phys_to_virt((uintptr_t)mod_start), mod_end - mod_start) != 0) {
+            kernel_panic("failed to register rootfs module");
+        }
+    }
 
     printfs(PRINT_STATUS_INFO,"vfs: mounting root filesystem\n");
-    vbe_flip();
+    splash_progress_bar(5);
 
-    int mount_result = vfs_mount("1", "/", "fat32");
+    if (rootfs_from_iso) {
+        printfs(PRINT_STATUS_INFO,"vfs: rootfs source set to ISO module (%s, read-only)\n", rootfs_device);
+    } else {
+        printfs(PRINT_STATUS_INFO,"vfs: rootfs source set to drive %s\n", rootfs_device);
+    }
+
+    int mount_result = vfs_mount(rootfs_device, "/", "fat32");
 
     if (mount_result != 0) {
-        kernel_panic("unable to mount rootfs on drive 1");
+        printfs(PRINT_STATUS_FATAL,"vfs: unable to mount rootfs on drive %s\n", rootfs_device);
+        kernel_panic("unable to mount rootfs");
     }
     printfs(PRINT_STATUS_INFO,"vfs: root filesystem mounted\n");
-    vbe_flip();
+    splash_progress_bar(5);
 
     printfs(PRINT_STATUS_INFO,"vfs: mounting /dev\n");
-    vbe_flip();
+    splash_progress_bar(5);
 
     if (vfs_mount("devfs", "/dev", "devfs") != 0) {
         kernel_panic("unable to mount devfs on /dev");
     }
 
+
     printfs(PRINT_STATUS_INFO,"vfs: mounting /tmp\n");
-    vbe_flip();
+    splash_progress_bar(5);
 
     if (vfs_mount("tmpfs", "/tmp", "tmpfs") != 0) {
         kernel_panic("unable to mount tmpfs on /tmp");
@@ -1109,23 +1154,23 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     pci_drivers_init();
 
     printfs(PRINT_STATUS_INFO,"devices: mouse init\n");
-    vbe_flip();
     ps2_mouse_init();
     dev_mouse_init();
+    splash_progress_bar(10);
 
     printfs(PRINT_STATUS_INFO,"devices: keyboard init\n");
-    vbe_flip();
     dev_keyboard_init();
+    splash_progress_bar(5);
 
     printfs(PRINT_STATUS_INFO,"devices: serial init\n");
-    vbe_flip();
     dev_serial_init();
+    splash_progress_bar(5);
 
     multitasking_init();
 
     printfs(PRINT_STATUS_INFO,"pty: init\n");
-    vbe_flip();
     pty_init();
+    splash_progress_bar(5);
 
     char* init_loc = "/bin/init";
 
@@ -1155,11 +1200,15 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     vbe_worker_task = task_create(vbe_worker, "kernel: compositor", CPU_KERNEL_MODE, 255);
     vbe_worker_task->no_requeue = 1;
 
+    splash_progress_bar(15);
+
     enqueue(init);
 
     ide_start_worker();
 
     multitasking_make_ready();
+
+    cursor_visible = 1;
 
     #ifdef KERNEL_TEST_MODE
         extern void ktest_run_all_suites(void);

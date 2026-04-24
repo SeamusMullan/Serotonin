@@ -320,11 +320,26 @@ void fat32_init(void) {
  * @return vfs_node_t* The root directory of the mounted filesystem.
  */
 vfs_node_t *fat32_mount(const char *device) {
-    uint8_t drive = device ? (uint8_t)atoi(device) : 0;
+    uint8_t drive = 0;
+    uint8_t read_only = 0;
+
+    if (!device || !*device) {
+        drive = 0;
+    } else if (strncmp(device, "mem", 3) == 0 && device[3] >= '0' && device[3] <= '9') {
+        uint8_t slot = (uint8_t)atoi(device + 3);
+        drive = (uint8_t)(BLKCACHE_MEMDRIVE_BASE + slot);
+        read_only = 1;
+    } else {
+        drive = (uint8_t)atoi(device);
+    }
 
     // 1: Read MBR
     uint8_t *mbr = kernel_malloc(512);
-    ide_read_sector(drive, 0, mbr);
+    if (blkcache_read_sector(drive, 0, mbr) != 0) {
+        printfs(PRINT_STATUS_ERROR, "fat32_mount: unable to read MBR on drive %u\n", drive);
+        kernel_free(mbr);
+        return NULL;
+    }
     if (mbr[510] != 0x55 || mbr[511] != 0xAA) {
         printfs(PRINT_STATUS_ERROR,"fat32_mount: invalid MBR signature %02x %02x\n",
                mbr[510], mbr[511]);
@@ -337,7 +352,11 @@ vfs_node_t *fat32_mount(const char *device) {
 
     // 2: Read Boot Sector
     uint8_t *boot = kernel_malloc(512);
-    ide_read_sector(drive, part1, boot);
+    if (blkcache_read_sector(drive, part1, boot) != 0) {
+        printfs(PRINT_STATUS_ERROR, "fat32_mount: unable to read boot sector on drive %u\n", drive);
+        kernel_free(boot);
+        return NULL;
+    }
     if (boot[510] != 0x55 || boot[511] != 0xAA) {
         printfs(PRINT_STATUS_ERROR,"fat32_mount: invalid BS sig %02x %02x\n",
                boot[510], boot[511]);
@@ -348,6 +367,7 @@ vfs_node_t *fat32_mount(const char *device) {
     // 3: Parse BPB
     fat32_fs_info_t *fs_info = kernel_malloc(sizeof(*fs_info));
     fat32_parse_bpb(fs_info, drive, part1, boot);
+    fs_info->read_only = read_only;
     kernel_free(boot);
 
     // Initialize FAT entry cache (up to 64 sectors = 32KB, covers 8192 clusters)
@@ -380,8 +400,8 @@ vfs_node_t *fat32_mount(const char *device) {
     ni->cluster_number= fs_info->root_cluster;
     root->fs_data     = ni;
 
-    printfs(PRINT_STATUS_INFO,"fat32: mounted drive %u, root cluster %u\n",
-           drive, fs_info->root_cluster);
+    printfs(PRINT_STATUS_INFO,"fat32: mounted drive %u%s, root cluster %u\n",
+           drive, fs_info->read_only ? " (read-only)" : "", fs_info->root_cluster);
     return root;
 }
 
@@ -924,7 +944,7 @@ static void fat32_flush_fat_cache(fat32_fs_info_t *fs) {
         }
     }
     fs->fat_cache_dirty = 0;
-    ide_cache_flush(fs->drive);
+    blkcache_flush(fs->drive);
 }
 
 /**
@@ -997,6 +1017,7 @@ static int fat32_unlink(vfs_node_t *parent, const char *name) {
 
     fat32_node_info_t *pni = parent->fs_data;
     fat32_fs_info_t *fs = pni->fs_info;
+    if (fs->read_only) return -1;
     uint32_t cluster = pni->cluster_number;
 
     uint32_t cluster_size = fs->sectors_per_cluster * fs->bytes_per_sector;
@@ -1141,6 +1162,7 @@ static int fat32_rmdir(vfs_node_t *parent, const char *name) {
 
     fat32_node_info_t *pni = parent->fs_data;
     fat32_fs_info_t *fs = pni->fs_info;
+    if (fs->read_only) return -1;
     uint32_t cluster = pni->cluster_number;
 
     uint32_t cluster_size = fs->sectors_per_cluster * fs->bytes_per_sector;
@@ -1342,6 +1364,7 @@ static int fat32_write(vfs_node_t *node, uint32_t offset, uint32_t size, const c
 
     fat32_node_info_t *ni = node->fs_data;
     fat32_fs_info_t   *fs = ni->fs_info;
+    if (fs->read_only) return -1;
     uint32_t cluster_size = fs->bytes_per_sector * fs->sectors_per_cluster;
 
     // grow file size if needed
@@ -1407,7 +1430,7 @@ static int fat32_write(vfs_node_t *node, uint32_t offset, uint32_t size, const c
 
     kernel_free(clusbuf);
     fat32_flush_fat_cache(fs);
-    ide_cache_flush(fs->drive);
+    blkcache_flush(fs->drive);
     fat32_update_dir_entry(ni, node->name, node->size);
     return written;
 }
@@ -1417,6 +1440,7 @@ static int fat32_truncate(vfs_node_t *node, uint32_t size) {
 
     fat32_node_info_t *ni = node->fs_data;
     if (!ni) return -1;
+    if (ni->fs_info && ni->fs_info->read_only) return -1;
 
     node->size = size;
     ni->size = size;
@@ -1570,6 +1594,7 @@ static uint32_t fat32_write_dir_entries(fat32_fs_info_t *fs,
 static vfs_node_t *fat32_create(vfs_node_t *parent, const char *name) {
     fat32_node_info_t *pni = parent->fs_data;
     fat32_fs_info_t   *fs  = pni->fs_info;
+    if (fs->read_only) return NULL;
     uint32_t dir_cluster = pni->cluster_number;
 
     // Build the 8.3 short name
@@ -1628,6 +1653,7 @@ static vfs_node_t *fat32_create(vfs_node_t *parent, const char *name) {
 static vfs_node_t *fat32_mkdir(vfs_node_t *parent, const char *name) {
     fat32_node_info_t *pni = parent->fs_data;
     fat32_fs_info_t   *fs  = pni->fs_info;
+    if (fs->read_only) return NULL;
     uint32_t parent_cl = pni->cluster_number;
     uint32_t cluster_size = fs->bytes_per_sector * fs->sectors_per_cluster;
 

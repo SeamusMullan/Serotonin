@@ -9,13 +9,19 @@ typedef struct proc_5ht {
     char name[32];
     int priority;
     int priv;
+    uint32_t cpu_user_ticks;
+    uint32_t cpu_kernel_ticks;
+    uint32_t mem_bytes;
+    uint32_t disk_bytes;
+    uint16_t uid;
+    uint16_t gid;
 } proc_5ht_t;
 
 typedef struct sysinfo_5ht {
     uint32_t mem_free;
     uint32_t mem_total;
-    uint32_t cpu_used;
-    uint32_t cpu_free;
+    uint32_t cpu_kernel_total;
+    uint32_t cpu_user_total;
 } sysinfo_5ht_t;
 
 typedef struct fb_info {

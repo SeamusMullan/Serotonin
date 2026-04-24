@@ -15,6 +15,23 @@ vfs_node_t *vfs_root = NULL;
 filesystem_t *registered_filesystems = NULL;
 vfs_mount_entry_t *vfs_mounts = NULL;
 
+static vfs_node_t *vfs_create_virtual_mountpoint(vfs_node_t *parent, const char *name) {
+    if (!parent || !name || !*name) return NULL;
+    if (!(parent->flags & VFS_FLAG_DIRECTORY)) return NULL;
+
+    vfs_node_t *node = kernel_malloc(sizeof(*node));
+    if (!node) return NULL;
+    memset(node, 0, sizeof(*node));
+    strncpy(node->name, name, sizeof(node->name));
+    node->name[sizeof(node->name) - 1] = '\0';
+    node->flags = VFS_FLAG_DIRECTORY;
+    node->refcount = 1;
+    node->parent = parent;
+    node->next = parent->children;
+    parent->children = node;
+    return node;
+}
+
 /**
  * @brief Attaches a mounted filesystem root onto an existing mountpoint node.
  *
@@ -91,11 +108,14 @@ int vfs_mount(const char *device, const char *mountpoint, const char *fs_type) {
                     split_path(mountpoint, parent_path, name);
                     vfs_node_t *parent = vfs_open(parent_path);
                     if (!parent) return -1;
-                    if (!parent->ops || !parent->ops->mkdir) {
-                        vfs_close(parent);
-                        return -1;
+                    vfs_node_t *newdir = NULL;
+                    if (parent->ops && parent->ops->mkdir) {
+                        newdir = parent->ops->mkdir(parent, name);
                     }
-                    vfs_node_t *newdir = parent->ops->mkdir(parent, name);
+                    if (!newdir) {
+                        // Read-only roots (e.g. ISO module) still need mountpoints like /dev and /tmp.
+                        newdir = vfs_create_virtual_mountpoint(parent, name);
+                    }
                     vfs_close(parent);
                     if (!newdir) return -1;
                     mp = newdir;

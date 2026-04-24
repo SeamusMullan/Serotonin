@@ -5,24 +5,30 @@
 
 set -e
 
-if [ -d "newlib" ]; then
-    # Clean stale configure cache — target alias may have changed
-    rm -f newlib/config.cache newlib/etc/config.cache
-else
-    mkdir -p newlib
-fi
-cd newlib
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+NEWLIB_BUILD_DIR="$SCRIPT_DIR/newlib"
+NEWLIB_SRC_DIR="$ROOT_DIR/newlib"
 
-export DIR=$(pwd)
-export PREFIX="$DIR/../../build-tools/cross"
-export SYSROOT="$PREFIX/i686-serotonin/sys-root"
+if [ ! -d "$NEWLIB_SRC_DIR" ]; then
+    echo "Error: newlib source not found at $NEWLIB_SRC_DIR"
+    exit 1
+fi
+
+mkdir -p "$NEWLIB_BUILD_DIR"
+rm -f "$NEWLIB_BUILD_DIR/config.cache" "$NEWLIB_BUILD_DIR/etc/config.cache"
+cd "$NEWLIB_BUILD_DIR"
+
+export DIR="$NEWLIB_BUILD_DIR"
+export PREFIX="$ROOT_DIR/build-tools/cross"
+export SYSROOT="$ROOT_DIR/sysroot"
 export TARGET=i686-serotonin
 export PATH="$PREFIX/bin:$PATH"
 
 ln -sf $PREFIX/bin/i686-serotonin-gcc $PREFIX/bin/i686-serotonin-cc
 
 export CFLAGS_FOR_TARGET="-O2 -msse -msse2 -g"
-../../newlib/configure \
+"$NEWLIB_SRC_DIR/configure" \
     --target=i686-serotonin \
     --prefix="$PREFIX" \
     --disable-newlib-supplied-syscalls \

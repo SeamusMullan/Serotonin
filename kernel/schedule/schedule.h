@@ -83,6 +83,9 @@ typedef struct process_control_block {
     uint32_t current_fd_flags;
     uint32_t current_user_buf;
     uint32_t alarm_ticks;
+    uint32_t cpu_user_ticks;
+    uint32_t cpu_kernel_ticks;
+    uint32_t disk_bytes;
 } process_control_block_t;
 
 typedef struct pipe_waiter {
