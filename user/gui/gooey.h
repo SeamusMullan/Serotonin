@@ -189,6 +189,23 @@ inline ssize_t poll_gui_event(int fd, Event *out) {
     return read_gui_event(fd, out);
 }
 
+/**
+ * Send a client → WM request on the GUI events socket (see @c SG_GUI_CLI_* in
+ * @c gui_protocol.h). Same record size as inbound @c sg_gui_event_t .
+ */
+inline bool wm_send_gui_cli_index(int fd, uint8_t cli_type, int index) {
+    if (fd < 0)
+        return false;
+    if (index < -32768 || index > 32767)
+        return false;
+    sg_gui_event_t msg;
+    std::memset(&msg, 0, sizeof(msg));
+    msg.type = cli_type;
+    msg.u.cli_index.index = static_cast<int16_t>(index);
+    ssize_t w = write(fd, reinterpret_cast<const unsigned char *>(&msg), sizeof(msg));
+    return w == static_cast<ssize_t>(sizeof(msg));
+}
+
 /** Drawable view: ARGB8888, stride in pixels (matches WM `fb_stride_px`). */
 class Surface {
 public:

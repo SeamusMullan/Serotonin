@@ -8,3 +8,4 @@ devfs_example.elf /bin/devfs_example
 cat.elf /bin/cat
 kbtest.elf /bin/kbtest
 tax_calc.elf /bin/tax_calc
+settings.elf /bin/settings

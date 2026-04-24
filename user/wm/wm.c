@@ -52,11 +52,6 @@ static const wm_theme_t wm_themes[WM_THEME_COUNT] = {
     { "Rose Pine",      0xFF191724, 0xFF26233A, 0xFFC4A7E7, 0xFF6E6A86, 0xFFE0DEF4, 0xFF908CAA, 0xFF403D52, 0xFFEB6F92, 0xFF191724, 0xFFC4A7E7, 0xFF403D52, 0xFFC4A7E7, 0xFF26233A, 0xFFE0DEF4, 0xFF191724 },
 };
 
-static const char *wallpaper_names[WM_WALLPAPER_COUNT] = {
-    "Solid", "Static", "Grid", "Diamonds",
-    "Checkerboard", "Gradient", "Rings", "Plasma"
-};
-
 static const int8_t sin_lut[256] = {
     0, 3, 6, 9, 12, 16, 19, 22, 25, 28, 31, 34, 37, 40, 43, 46,
     49, 51, 54, 57, 60, 63, 65, 68, 71, 73, 76, 78, 81, 83, 85, 88,
@@ -121,18 +116,6 @@ static void overlay_reconfigure_alpha(wm_state_t *wm) {
         }
     }
 
-    if (wm->settings_active) {
-        int sx = SCREEN_W - SETTINGS_W - 8;
-        int sh = SETTINGS_POPUP_H;
-        int sy = SCREEN_H - TASKBAR_H - sh;
-        cfg.x0 = sx; cfg.y0 = sy;
-        cfg.x1 = sx + SETTINGS_W; cfg.y1 = sy + sh;
-        cfg.stride = SETTINGS_W * BPP;
-        if (sys_5ht_rcfg_layer(LAYER_LAUNCHER, &cfg, &info) == 0) {
-            wm->settings_fb = (uint32_t *)(uintptr_t)info.fb_user_va;
-            wm->settings_meta = (volatile fb_layer_metadata_t *)(uintptr_t)info.metadata_user_va;
-        }
-    }
 }
 
 /* --- palette init --- */
@@ -385,8 +368,6 @@ void wm_apply_wallpaper(wm_state_t *wm, int wp_idx) {
     if (wp_idx < 0 || wp_idx >= WM_WALLPAPER_COUNT) return;
     wm->wallpaper_current = wp_idx;
     wm_render_wallpaper(wm);
-    if (wm->settings_active)
-        settings_render(wm);
 }
 
 /* --- desktop background layer --- */
@@ -527,18 +508,24 @@ static void render_taskbar(wm_state_t *wm) {
     int brand_x = SCREEN_W - (int)strlen(brand) * FONT_W - 8;
     draw_text(wm->taskbar_fb, stride, brand_x, btn_y, brand, THEME_ACCENT, THEME_BG_MEDIUM);
 
-    /* settings button (hamburger icon) left of brand */
+    /* settings button (gear) — opens Settings GUI */
     int sbtn_x = brand_x - SETTINGS_BTN_W - 8;
     int sbtn_y = (TASKBAR_H - SETTINGS_BTN_H) / 2 + 1;
-    uint32_t sbtn_bg = wm->settings_active ? THEME_ACCENT_DIM : THEME_BG_DARK;
+    uint32_t sbtn_bg = THEME_BG_DARK;
     draw_fill_rect(wm->taskbar_fb, stride, sbtn_x, sbtn_y,
                    SETTINGS_BTN_W, SETTINGS_BTN_H, sbtn_bg);
-    uint32_t line_color = wm->settings_active ? 0xFFFFFFFF : THEME_TEXT_PRIMARY;
-    int line_w = 12;
-    int line_x = sbtn_x + (SETTINGS_BTN_W - line_w) / 2;
-    draw_fill_rect(wm->taskbar_fb, stride, line_x, sbtn_y + 3, line_w, 2, line_color);
-    draw_fill_rect(wm->taskbar_fb, stride, line_x, sbtn_y + 8, line_w, 2, line_color);
-    draw_fill_rect(wm->taskbar_fb, stride, line_x, sbtn_y + 13, line_w, 2, line_color);
+    uint32_t gear = THEME_TEXT_PRIMARY;
+    int cx = sbtn_x + SETTINGS_BTN_W / 2;
+    int cy = sbtn_y + SETTINGS_BTN_H / 2;
+    draw_fill_rect(wm->taskbar_fb, stride, cx - 2, cy - 2, 4, 4, gear);
+    draw_fill_rect(wm->taskbar_fb, stride, cx - 1, cy - 7, 2, 5, gear);
+    draw_fill_rect(wm->taskbar_fb, stride, cx - 1, cy + 2, 2, 5, gear);
+    draw_fill_rect(wm->taskbar_fb, stride, cx - 7, cy - 1, 5, 2, gear);
+    draw_fill_rect(wm->taskbar_fb, stride, cx + 2, cy - 1, 5, 2, gear);
+    draw_fill_rect(wm->taskbar_fb, stride, cx - 6, cy - 6, 2, 2, gear);
+    draw_fill_rect(wm->taskbar_fb, stride, cx + 4, cy - 6, 2, 2, gear);
+    draw_fill_rect(wm->taskbar_fb, stride, cx - 6, cy + 4, 2, 2, gear);
+    draw_fill_rect(wm->taskbar_fb, stride, cx + 4, cy + 4, 2, 2, gear);
 
     /* submit frame */
     wm->taskbar_meta->dx0 = 0; wm->taskbar_meta->dy0 = 0;
@@ -561,6 +548,8 @@ static int is_gui_launch_name(const char *name) {
     if (strcmp(name, "widget_demo") == 0)
         return 1;
     if (strcmp(name, "tax_calc") == 0)
+        return 1;
+    if (strcmp(name, "settings") == 0)
         return 1;
     return 0;
 }
@@ -609,7 +598,7 @@ static int launcher_append_name(wm_state_t *wm, const char *name) {
 }
 
 /* WM-hosted GUIs: add first if present in /bin listing (so 64-cap never hides them). */
-static const char *launcher_gui_pin[] = { "gooey_demo", "widget_demo", "tax_calc", NULL };
+static const char *launcher_gui_pin[] = { "gooey_demo", "widget_demo", "tax_calc", "settings", NULL };
 
 static void theme_remap_term_defaults(term_state_t *ts, uint32_t old_fg, uint32_t old_bg,
                                       uint32_t new_fg, uint32_t new_bg) {
@@ -682,8 +671,6 @@ void wm_apply_theme(wm_state_t *wm, int theme_idx) {
     overlay_reconfigure_alpha(wm);
     if (wm->launcher_active)
         launcher_render(wm);
-    if (wm->settings_active)
-        settings_render(wm);
 
     {
         sg_gui_wm_theme_colors_t gcols;
@@ -730,7 +717,6 @@ static void launcher_filter_update(wm_state_t *wm) {
 
 void launcher_open(wm_state_t *wm) {
     if (wm->launcher_active) return;
-    if (wm->settings_active) settings_close(wm);
 
     /* enumerate /bin (large buffer: full toolchains can overflow smaller bufs) */
     char buf[8192];
@@ -948,145 +934,6 @@ void launcher_key(wm_state_t *wm, keyboard_event_t *ev) {
         break;
     }
     launcher_render(wm);
-}
-
-/* --- settings popup --- */
-
-void settings_close(wm_state_t *wm) {
-    if (!wm->settings_active) return;
-    sys_5ht_rel_buf(LAYER_LAUNCHER);
-    wm->settings_fb = NULL;
-    wm->settings_meta = NULL;
-    wm->settings_active = 0;
-    render_taskbar(wm);
-}
-
-void settings_render(wm_state_t *wm) {
-    if (!wm->settings_fb) return;
-
-    uint32_t stride = SETTINGS_W;
-    int sh = SETTINGS_POPUP_H;
-    uint32_t bg = THEME_BG_DARK;
-
-    draw_fill_rect(wm->settings_fb, stride, 0, 0, SETTINGS_W, sh, bg);
-
-    /* border */
-    draw_fill_rect(wm->settings_fb, stride, 0, 0, SETTINGS_W, 2, THEME_ACCENT);
-    draw_fill_rect(wm->settings_fb, stride, 0, sh - 2, SETTINGS_W, 2, THEME_ACCENT);
-    draw_fill_rect(wm->settings_fb, stride, 0, 0, 2, sh, THEME_ACCENT);
-    draw_fill_rect(wm->settings_fb, stride, SETTINGS_W - 2, 0, 2, sh, THEME_ACCENT);
-
-    /* tab bar */
-    static const char *tab_labels[SETTINGS_SEC_COUNT] = {"Theme", "Wallpaper", "About"};
-    int tab_y = 2 + SETTINGS_PAD;
-    int tab_gap = 2;
-    int avail_w = SETTINGS_W - SETTINGS_PAD * 2 - tab_gap * (SETTINGS_SEC_COUNT - 1);
-    int tab_w = avail_w / SETTINGS_SEC_COUNT;
-
-    for (int t = 0; t < SETTINGS_SEC_COUNT; t++) {
-        int tx = SETTINGS_PAD + t * (tab_w + tab_gap);
-        uint32_t tbg = (t == wm->settings_section) ? THEME_ACCENT : THEME_BG_MEDIUM;
-        uint32_t tfg = (t == wm->settings_section) ? 0xFF000000 : THEME_TEXT_PRIMARY;
-        draw_fill_rect(wm->settings_fb, stride, tx, tab_y, tab_w, SETTINGS_TAB_H, tbg);
-        int lbl_len = (int)strlen(tab_labels[t]);
-        int lbl_x = tx + (tab_w - lbl_len * FONT_W) / 2;
-        int lbl_y = tab_y + (SETTINGS_TAB_H - FONT_H) / 2;
-        draw_text(wm->settings_fb, stride, lbl_x, lbl_y, tab_labels[t], tfg, tbg);
-    }
-
-    /* separator below tabs */
-    int sep_y = tab_y + SETTINGS_TAB_H + SETTINGS_PAD;
-    draw_fill_rect(wm->settings_fb, stride, SETTINGS_PAD, sep_y,
-                   SETTINGS_W - SETTINGS_PAD * 2, 1, THEME_BORDER);
-
-    int content_y = sep_y + 5;
-
-    switch (wm->settings_section) {
-    case SETTINGS_SEC_THEME:
-        for (int i = 0; i < WM_THEME_COUNT; i++) {
-            int iy = content_y + i * SETTINGS_ITEM_H;
-            int sel = (i == wm->theme_current);
-            uint32_t ibg = sel ? THEME_ACCENT : bg;
-            uint32_t ifg = sel ? 0xFF000000 : THEME_TEXT_PRIMARY;
-            draw_fill_rect(wm->settings_fb, stride, SETTINGS_PAD, iy,
-                           SETTINGS_W - SETTINGS_PAD * 2, SETTINGS_ITEM_H, ibg);
-            draw_text(wm->settings_fb, stride,
-                      SETTINGS_PAD + 8, iy + (SETTINGS_ITEM_H - FONT_H) / 2,
-                      wm_themes[i].name, ifg, ibg);
-        }
-        break;
-    case SETTINGS_SEC_WALLPAPER:
-        for (int i = 0; i < WM_WALLPAPER_COUNT; i++) {
-            int iy = content_y + i * SETTINGS_ITEM_H;
-            int sel = (i == wm->wallpaper_current);
-            uint32_t ibg = sel ? THEME_ACCENT : bg;
-            uint32_t ifg = sel ? 0xFF000000 : THEME_TEXT_PRIMARY;
-            draw_fill_rect(wm->settings_fb, stride, SETTINGS_PAD, iy,
-                           SETTINGS_W - SETTINGS_PAD * 2, SETTINGS_ITEM_H, ibg);
-            draw_text(wm->settings_fb, stride,
-                      SETTINGS_PAD + 8, iy + (SETTINGS_ITEM_H - FONT_H) / 2,
-                      wallpaper_names[i], ifg, ibg);
-        }
-        break;
-    case SETTINGS_SEC_ABOUT: {
-        int cy = content_y;
-        draw_fill_rect(wm->settings_fb, stride,
-                       SETTINGS_PAD + 8, cy, 40, 4, THEME_ACCENT);
-        cy += 12;
-        draw_text(wm->settings_fb, stride, SETTINGS_PAD + 8, cy,
-                  "Serotonin", THEME_ACCENT, bg);
-        cy += FONT_H + 8;
-        draw_text(wm->settings_fb, stride, SETTINGS_PAD + 8, cy,
-                  "Version 0.4.3", THEME_TEXT_PRIMARY, bg);
-        cy += FONT_H + 12;
-        draw_text(wm->settings_fb, stride, SETTINGS_PAD + 8, cy,
-                  "A hobby operating system", THEME_TEXT_DIM, bg);
-        cy += FONT_H + 2;
-        draw_text(wm->settings_fb, stride, SETTINGS_PAD + 8, cy,
-                  "written in C and x86 ASM", THEME_TEXT_DIM, bg);
-        cy += FONT_H + 12;
-        draw_text(wm->settings_fb, stride, SETTINGS_PAD + 8, cy,
-                  "(c) 2024-2026", THEME_TEXT_DIM, bg);
-        break;
-    }
-    }
-
-    wm->settings_meta->dx0 = 0;
-    wm->settings_meta->dy0 = 0;
-    wm->settings_meta->dx1 = SETTINGS_W;
-    wm->settings_meta->dy1 = sh;
-    wm->settings_meta->frame_id++;
-    wm->settings_meta->ready = 1;
-}
-
-void settings_open(wm_state_t *wm) {
-    if (wm->settings_active) return;
-    if (wm->launcher_active) launcher_close(wm);
-
-    int sw = SETTINGS_W;
-    int sh = SETTINGS_POPUP_H;
-    int sx = SCREEN_W - sw - 8;
-    int sy = SCREEN_H - TASKBAR_H - sh;
-
-    fb_layer_config_t cfg = {0};
-    cfg.size = sizeof(cfg);
-    cfg.x0 = sx; cfg.y0 = sy;
-    cfg.x1 = sx + sw; cfg.y1 = sy + sh;
-    cfg.alpha = 0;
-    cfg.hints = FB_LAYER_HINT_OPAQUE_CONTENT |
-                FB_LAYER_HINT_FREQUENT_UPDATES |
-                FB_LAYER_HINT_TRANSIENT;
-    cfg.stride = sw * BPP;
-
-    fb_layer_info_t info = {0};
-    if (sys_5ht_req_buf(LAYER_LAUNCHER, &cfg, &info) != 0) return;
-
-    wm->settings_fb = (uint32_t *)(uintptr_t)info.fb_user_va;
-    wm->settings_meta = (volatile fb_layer_metadata_t *)(uintptr_t)info.metadata_user_va;
-    wm->settings_active = 1;
-
-    settings_render(wm);
-    render_taskbar(wm);
 }
 
 /* --- inactive window alpha --- */
@@ -1490,7 +1337,10 @@ int wm_launch_gui_window(wm_state_t *wm, const char *program) {
     win->is_gui = 1;
     win->layer_id = (uint16_t)layer_id;
     win->mode = WIN_TILED;
-    snprintf(win->title, sizeof(win->title), "%s", program);
+    if (strcmp(program, "settings") == 0)
+        snprintf(win->title, sizeof(win->title), "Settings");
+    else
+        snprintf(win->title, sizeof(win->title), "%s", program);
 
     wm->num_windows++;
     layout_compute(wm);
@@ -1519,6 +1369,7 @@ int wm_launch_gui_window(wm_state_t *wm, const char *program) {
 
     if (pid == 0) {
         char e_layer[56], e_x0[40], e_y0[40], e_x1[40], e_y1[40], e_evfd[40], e_theme[192];
+        char e_tidx[48], e_widx[48];
 
         snprintf(e_layer, sizeof(e_layer), "SEROTONIN_GUI_LAYER_ID=%u", (unsigned)glid);
         snprintf(e_x0, sizeof(e_x0), "SEROTONIN_GUI_X0=%u", (unsigned)gx0);
@@ -1527,6 +1378,8 @@ int wm_launch_gui_window(wm_state_t *wm, const char *program) {
         snprintf(e_y1, sizeof(e_y1), "SEROTONIN_GUI_Y1=%u", (unsigned)gy1);
         snprintf(e_evfd, sizeof(e_evfd), "SEROTONIN_GUI_EVENTS_FD=%d", SG_GUI_EVENTS_FD);
         (void)wm_format_theme_env(e_theme, sizeof(e_theme));
+        snprintf(e_tidx, sizeof(e_tidx), "SEROTONIN_GUI_THEME_IDX=%d", wm->theme_current);
+        snprintf(e_widx, sizeof(e_widx), "SEROTONIN_GUI_WALLPAPER_IDX=%d", wm->wallpaper_current);
 
         char *envp[] = {
             "TERM=serotonin-gui",
@@ -1539,6 +1392,8 @@ int wm_launch_gui_window(wm_state_t *wm, const char *program) {
             e_y1,
             e_evfd,
             e_theme,
+            e_tidx,
+            e_widx,
             NULL,
         };
 
@@ -1573,6 +1428,32 @@ int wm_launch_gui_window(wm_state_t *wm, const char *program) {
 
     render_taskbar(wm);
     return idx;
+}
+
+static void wm_consume_gui_ipc(wm_state_t *wm, wm_window_t *win) {
+    unsigned char *acc = win->gui_rx_buf;
+    if (win->gui_rx_len >= sizeof(win->gui_rx_buf))
+        win->gui_rx_len = 0;
+    ssize_t n = read(win->pty_master_fd, acc + win->gui_rx_len,
+                     sizeof(win->gui_rx_buf) - win->gui_rx_len);
+    if (n <= 0)
+        return;
+    win->gui_rx_len = (uint16_t)(win->gui_rx_len + (uint16_t)n);
+    while (win->gui_rx_len >= sizeof(sg_gui_event_t)) {
+        sg_gui_event_t *msg = (sg_gui_event_t *)acc;
+        if (msg->type == SG_GUI_CLI_SET_THEME) {
+            int ti = (int)msg->u.cli_index.index;
+            if (ti >= 0 && ti < WM_THEME_COUNT)
+                wm_apply_theme(wm, ti);
+        } else if (msg->type == SG_GUI_CLI_SET_WALLPAPER) {
+            int wi = (int)msg->u.cli_index.index;
+            if (wi >= 0 && wi < WM_WALLPAPER_COUNT)
+                wm_apply_wallpaper(wm, wi);
+        }
+        win->gui_rx_len = (uint16_t)(win->gui_rx_len - (uint16_t)sizeof(sg_gui_event_t));
+        if (win->gui_rx_len > 0)
+            memmove(acc, acc + sizeof(sg_gui_event_t), win->gui_rx_len);
+    }
 }
 
 void wm_close_window(wm_state_t *wm, int idx) {
@@ -1881,10 +1762,8 @@ int main(void) {
             wm_window_t *win = &wm.windows[win_idx];
 
             if (win->is_gui) {
-                if (pfds[p].revents & POLLIN) {
-                    char drain[256];
-                    while (read(win->pty_master_fd, drain, sizeof(drain)) > 0) { }
-                }
+                if (pfds[p].revents & POLLIN)
+                    wm_consume_gui_ipc(&wm, win);
                 if (pfds[p].revents & POLLHUP) {
                     pty_closed = win_idx;
                     break;

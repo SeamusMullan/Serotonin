@@ -19,7 +19,7 @@ void wm_handle_keyboard(wm_state_t *wm, keyboard_event_t *ev) {
     }
 
     /* Key releases: forward to focused GUI client; otherwise discard */
-    if ((ev->flags & KEY_FLAG_RELEASED) && !wm->launcher_active && !wm->settings_active &&
+    if ((ev->flags & KEY_FLAG_RELEASED) && !wm->launcher_active &&
         wm->focused_idx >= 0 && wm->windows[wm->focused_idx].active &&
         wm->windows[wm->focused_idx].is_gui && wm->windows[wm->focused_idx].pty_master_fd >= 0) {
         sg_gui_event_t ge;
@@ -39,14 +39,6 @@ void wm_handle_keyboard(wm_state_t *wm, keyboard_event_t *ev) {
         }
         launcher_key(wm, ev);
         return;
-    }
-
-    /* Settings popup: Escape closes it */
-    if (wm->settings_active) {
-        if (ev->scancode == 0x01) {
-            settings_close(wm);
-            return;
-        }
     }
 
     /* WM keyboard shortcuts (Alt held) */
@@ -291,54 +283,14 @@ void wm_handle_mouse(wm_state_t *wm, mouse_event_t *ev) {
         (ev->buttons & MOUSE_BTN_LEFT)) {
         int mx = ev->x, my = ev->y;
 
-        /* Settings popup click */
-        if (wm->settings_active) {
-            int sx = SCREEN_W - SETTINGS_W - 8;
-            int sh = SETTINGS_POPUP_H;
-            int sy = SCREEN_H - TASKBAR_H - sh;
-            if (mx >= sx && mx < sx + SETTINGS_W && my >= sy && my < sy + sh) {
-                int lx = mx - sx, ly = my - sy;
-                int tab_y = 2 + SETTINGS_PAD;
-                int tab_gap = 2;
-                int avail_w = SETTINGS_W - SETTINGS_PAD * 2 - tab_gap * (SETTINGS_SEC_COUNT - 1);
-                int tab_w = avail_w / SETTINGS_SEC_COUNT;
-                if (ly >= tab_y && ly < tab_y + SETTINGS_TAB_H) {
-                    int rel = lx - SETTINGS_PAD;
-                    if (rel >= 0) {
-                        int tab = rel / (tab_w + tab_gap);
-                        if (tab >= 0 && tab < SETTINGS_SEC_COUNT) {
-                            wm->settings_section = tab;
-                            settings_render(wm);
-                        }
-                    }
-                    return;
-                }
-                if (ly >= SETTINGS_CONTENT_Y) {
-                    int idx = (ly - SETTINGS_CONTENT_Y) / SETTINGS_ITEM_H;
-                    if (wm->settings_section == SETTINGS_SEC_THEME) {
-                        if (idx >= 0 && idx < WM_THEME_COUNT)
-                            wm_apply_theme(wm, idx);
-                    } else if (wm->settings_section == SETTINGS_SEC_WALLPAPER) {
-                        if (idx >= 0 && idx < WM_WALLPAPER_COUNT)
-                            wm_apply_wallpaper(wm, idx);
-                    }
-                }
-                return;
-            }
-            settings_close(wm);
-        }
-
-        /* Taskbar settings button */
+        /* Taskbar settings button → Settings GUI */
         if (my >= SCREEN_H - TASKBAR_H && my < SCREEN_H) {
             int brand_x = SCREEN_W - 9 * FONT_W - 8;
             int sbtn_x = brand_x - SETTINGS_BTN_W - 8;
             int sbtn_y = SCREEN_H - TASKBAR_H + (TASKBAR_H - SETTINGS_BTN_H) / 2 + 1;
             if (mx >= sbtn_x && mx < sbtn_x + SETTINGS_BTN_W &&
                 my >= sbtn_y && my < sbtn_y + SETTINGS_BTN_H) {
-                if (wm->settings_active)
-                    settings_close(wm);
-                else
-                    settings_open(wm);
+                (void)wm_launch_gui_window(wm, "settings");
                 return;
             }
         }

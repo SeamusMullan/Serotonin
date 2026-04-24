@@ -64,6 +64,16 @@ inline bool mouse_in_content(int lx, int ly, int sw, int sh) {
  * If @p in is a mouse event inside the content area, copy it to @p out with
  * layer-local coordinates translated to the content origin (0,0 = top-left of
  * client area). Otherwise returns false.
+ *
+ * @p sw / @p sh must be the current drawable size (same as @c Surface width/height
+ * after any @c k_configure handled in the same event batch); using stale sizes
+ * after resize misaligns hit-testing vs painted widgets.
+ *
+ * Use this only when widget @c Rect bounds are expressed in **content-relative**
+ * coordinates (origin = top-left inside @c BORDER_W / @c TITLEBAR_H margins).
+ * If bounds use layer coordinates (e.g. @c Rect(ox + 12, oy + 8, …) from
+ * @c content_bounds), pass @c Event mouse through unchanged — peeling would
+ * double-subtract the chrome offset and shift hitboxes (often “too high”).
  */
 inline bool peel_content_mouse(const Event &in, Event *out, int sw, int sh) {
     if (in.kind != Event::k_mouse || !out)

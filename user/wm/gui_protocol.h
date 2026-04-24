@@ -7,6 +7,8 @@
  *
  * Direction: window manager writes framed records; GUI client reads the
  * same-sized `sg_gui_event_t` records (use `read(2)` until buffer full).
+ * The same socket also carries client → WM requests (@c SG_GUI_CLI_* types);
+ * the WM reads those records from its end of the socketpair.
  *
  * Default fd after WM spawn: dup2 client end to 3, or set
  * `SEROTONIN_GUI_EVENTS_FD` in the environment to the integer fd number.
@@ -69,7 +71,15 @@ enum {
     SG_GUI_EV_LAYER = 5,
     /** WM theme changed; @c u.theme matches @c g_wm_theme colors. */
     SG_GUI_EV_THEME = 6,
+    /** Client → WM: apply theme index @c u.cli_index.index (same order as WM theme list). */
+    SG_GUI_CLI_SET_THEME = 128,
+    /** Client → WM: apply desktop wallpaper index. */
+    SG_GUI_CLI_SET_WALLPAPER = 129,
 };
+
+/** WM exports current indices when spawning a GUI (decimal int). */
+#define SG_GUI_ENV_THEME_IDX      "SEROTONIN_GUI_THEME_IDX"
+#define SG_GUI_ENV_WALLPAPER_IDX  "SEROTONIN_GUI_WALLPAPER_IDX"
 
 typedef struct __attribute__((packed)) {
     uint8_t type;
@@ -91,6 +101,11 @@ typedef struct __attribute__((packed)) {
             uint16_t reserved[3];
         } layer;
         sg_gui_wm_theme_colors_t theme;
+        /** Payload for @c SG_GUI_CLI_SET_THEME / @c SG_GUI_CLI_SET_WALLPAPER (client → WM). */
+        struct {
+            int16_t index;
+            uint8_t _reserved[58];
+        } cli_index;
     } u;
 } sg_gui_event_t;
 

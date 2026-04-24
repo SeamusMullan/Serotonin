@@ -119,6 +119,9 @@ echo "Widget demo build complete: widget_demo.elf"
 $CXX gui/tax_calc.cpp -o tax_calc.elf $CXXFLAGS -I.
 echo "Tax calculator GUI build complete: tax_calc.elf"
 
+$CXX gui/settings.cpp -o settings.elf $CXXFLAGS -I.
+echo "Settings GUI build complete: settings.elf"
+
 # lwip client library (compiled separately, used by network tools)
 $CC -c lwip/serotonin/lwip_client.c -o lwip/serotonin/lwip_client.o $CFLAGS
 

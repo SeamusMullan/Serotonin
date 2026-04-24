@@ -199,14 +199,11 @@ int main(void) {
                 (void)gooey::theme::apply_gui_event(ev, &th, &chrome);
                 root.bg_color = th.bg;
             } else if (ev.kind == Event::k_mouse) {
-                Event evc;
-                if (peel_content_mouse(ev, &evc, sw, sh)) {
-                    ms = make_mouse_state(evc, prev_left);
-                    prev_left = ms.left_down;
-                    got_mouse = true;
-                } else {
-                    prev_left = (ev.mouse.buttons & 0x01) != 0;
-                }
+                /* Layer-local coords (same space as widget bounds: ox/oy are offsets on
+                   the surface, not a separate peeled space). */
+                ms = make_mouse_state(ev, prev_left);
+                prev_left = ms.left_down;
+                got_mouse = true;
             } else if (ev.kind == Event::k_keyboard) {
                 tb_income.handle_keyboard(ev.keyboard);
             }
@@ -238,8 +235,8 @@ int main(void) {
         pbar.bounds = Rect(ox + 8, oy + 328, cw - 16, 18);
 
         if (got_mouse) {
-            tip_mx = ms.x + ox;
-            tip_my = ms.y + oy;
+            tip_mx = ms.x;
+            tip_my = ms.y;
             tb_income.handle_mouse(ms);
             sl_rate.handle_mouse(ms);
             chk_std.handle_mouse(ms);
