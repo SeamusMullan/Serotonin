@@ -1063,7 +1063,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
 
     kernel_sleep(1000); // wait for devices
 
-	printfs(PRINT_STATUS_INFO,"Serotonin Kernel %d.%d.%d | Compile Time: %s %s | %d physical pages available (%d MB) | Hypervisor:%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__,buddy_total_pages(), (buddy_total_pages()*4000)/1000000, kernel_hypervisor_present());
+	printfs(PRINT_STATUS_INFO,"Serotonin Kernel %d.%d.%d (experimental) | Compile Time: %s %s | %d physical pages available (%d MB) | Hypervisor:%d\n",KERNEL_VERSION_HIGH,KERNEL_VERSION_MID,KERNEL_VERSION_LOW,__DATE__,__TIME__,buddy_total_pages(), (buddy_total_pages()*4000)/1000000, kernel_hypervisor_present());
     kernel_print_cpu_features(&processor_features);
     printfs(PRINT_STATUS_INFO,"Booted with arguments: %s\n",cmdline);
     printfs(PRINT_STATUS_INFO,"VBE graphics mode framebuffer, resolution %dx%dx%d\n",vbe_info.width,vbe_info.height,vbe_info.bpp);

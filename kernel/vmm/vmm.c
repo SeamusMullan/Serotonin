@@ -703,8 +703,7 @@ vmm_page_table_t *ensure_pt(address_space_t *as, uint32_t pde_index, uint32_t pd
  * panic. The function also handles the case where the address space is not currently
  * active by temporarily mapping the page directory to access and modify the page table.
  */
-void map_page(address_space_t *as, uint32_t vaddr, uint32_t paddr, uint32_t flags, int overwrite)
-{
+void map_page(address_space_t *as, uint32_t vaddr, uint32_t paddr, uint32_t flags, int overwrite) {
     vaddr &= PAGE_MASK;
     paddr &= PAGE_MASK;
 
@@ -713,10 +712,14 @@ void map_page(address_space_t *as, uint32_t vaddr, uint32_t paddr, uint32_t flag
 
     uint32_t pde_flags = (flags & PAGE_USER) ? (PAGE_FLAGS | PAGE_USER) : PAGE_FLAGS;
 
+    if (as == NULL)
+         goto nullas;
+
     uint32_t cur_cr3 = read_cr3() & PAGE_MASK;
     uint32_t as_cr3  = as->phys_pdir & PAGE_MASK;
 
     if (cur_cr3 == as_cr3) {
+nullas:
         uint32_t *pd = cur_pd_va();
         if (!(pd[pdi] & PAGE_PRESENT)) {
             uint32_t pt_phys = (uint32_t)alloc_frame();
