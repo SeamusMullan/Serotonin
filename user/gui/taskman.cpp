@@ -330,14 +330,10 @@ int main(void) {
             } else if (ev.kind == Event::k_theme) {
                 (void)gooey::theme::apply_gui_event(ev, &th, &chrome);
             } else if (ev.kind == Event::k_mouse) {
-                Event evc;
-                if (peel_content_mouse(ev, &evc, sw, sh)) {
-                    ms = make_mouse_state(evc, prev_left);
-                    prev_left = ms.left_down;
-                    got_mouse = true;
-                } else {
-                    prev_left = (ev.mouse.buttons & 0x01) != 0;
-                }
+                /* Layer-local coords — same space as widget bounds (ox/oy from content_bounds). */
+                ms = make_mouse_state(ev, prev_left);
+                prev_left = ms.left_down;
+                got_mouse = true;
             } else if (ev.kind == Event::k_keyboard) {
                 lbox.handle_keyboard(ev.keyboard);
             }
