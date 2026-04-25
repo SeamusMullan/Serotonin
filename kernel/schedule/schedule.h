@@ -15,6 +15,7 @@
 #define MAX_PRIORITY           256
 #define PRIORITY_DECAY_RATE    10
 #define PRIORITY_QUANTA_PUNISH 10
+#define PRIORITY_RESET_DECAY   10
 
 #define MAX_BOUND_SOCKETS 64
 
@@ -68,6 +69,7 @@ typedef struct process_control_block {
     uint8_t exit_status;
     uint32_t quanta_used;
     uint8_t original_priority;
+    uint8_t reset_count;
     uint32_t signal_handlers[16];
     uint32_t signal_bitmask;
     uint32_t blocked_signals;

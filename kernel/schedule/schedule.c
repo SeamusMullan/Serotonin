@@ -754,13 +754,18 @@ uint32_t get_task_count(void) {
 
 int task_priority_decay(process_control_block_t *task) {
     int prio = task->priority;
-    int orig_prio = task->original_priority;
     int quanta = task->quanta_used;
 
     if (quanta < PRIORITY_QUANTA_PUNISH)
         return prio;
-    if (prio == 0)
-        return orig_prio;
+    if (prio == 0) {
+        if (++task->reset_count >= PRIORITY_RESET_DECAY) {
+            task->reset_count = 0;
+            if (task->original_priority > 0)
+                task->original_priority--;
+        }
+        return task->original_priority;
+    }
 
     task->quanta_used = 0;
 
