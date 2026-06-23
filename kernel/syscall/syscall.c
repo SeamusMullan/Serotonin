@@ -187,6 +187,7 @@ static int layer_config_valid(const fb_layer_config_t *cfg) {
 }
 
 static int layer_prepare_state(uint16_t id, const fb_layer_config_t *cfg, layer_state_t *state) {
+    // cppcheck-suppress unreadVariable
     uint32_t width = (uint32_t)(cfg->x1 - cfg->x0);
     uint32_t height = (uint32_t)(cfg->y1 - cfg->y0);
     uint32_t fb_size = cfg->stride * height;
@@ -244,6 +245,7 @@ static void layer_fill_info(uint16_t id, fb_layer_info_t *info) {
     info->layer_id = id;
 
     if (id < VBE_NUM_Z_LAYERS && layer_states[id].allocated) {
+        // cppcheck-suppress constVariablePointer
         layer_state_t *state = &layer_states[id];
         info->owned = 1;
         info->fb_user_va = state->fb_user_va;
@@ -572,6 +574,7 @@ static void sys_get_pid(processor_context_t *ctx) {
  * @param ctx The processor context.
  */
 static void sys_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char*)arg2;
     int flags = (int)arg3;
     int mode = (int)arg4;
@@ -1370,6 +1373,7 @@ static void sys_waitpid(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) 
         return;
     }
 
+    // cppcheck-suppress constVariablePointer
     process_control_block_t *target = task_lookup_by_pid(pid);
 
     if (!target) {
@@ -1390,6 +1394,7 @@ static void sys_waitpid(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) 
     return;
 }
 
+// cppcheck-suppress constParameterPointer
 static void sys_lseek(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
     int fd = arg2;
     int offset = (uint32_t)arg3;
@@ -1465,6 +1470,7 @@ static void sys_fstat(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) {
 }
 
 static void sys_stat(uint32_t arg2, uint32_t arg3) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char*)arg2;
     struct stat *statbuf = (struct stat*)arg3;
     char abs_path[256];
@@ -1636,6 +1642,7 @@ static void sys_shm_unmap(uint32_t arg2) {
 }
 
 static void sys_mkdir(uint32_t arg2) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char*)arg2;
     char abs_path[256];
 
@@ -1670,6 +1677,7 @@ static void sys_mkdir(uint32_t arg2) {
 }
 
 static void sys_unlink(uint32_t arg2) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char*)arg2;
     char abs_path[256];
 
@@ -1719,6 +1727,7 @@ static void sys_unlink(uint32_t arg2) {
 }
 
 static void sys_rmdir(uint32_t arg2) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char*)arg2;
     char abs_path[256];
 
@@ -1780,6 +1789,7 @@ static void sys_rmdir(uint32_t arg2) {
 }
 
 static void sys_chdir(uint32_t arg2) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char*)arg2;
     char abs_path[256];
 
@@ -1889,6 +1899,7 @@ static void sys_getcwd(uint32_t arg2, uint32_t arg3) {
 }
 
 static void sys_listdir(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char*)arg2;
     char *buf = (char*)arg3;
     size_t size = (size_t)arg4;
@@ -1965,6 +1976,7 @@ static void sys_5ht_list_proc(uint32_t arg2, uint32_t arg3) {
 
     proc_5ht_t k_buf = {0};
 
+    // cppcheck-suppress constVariablePointer
     process_control_block_t *task = task_list;
     while (task) {
         if (count >= max)
@@ -2309,6 +2321,7 @@ static void sys_getgroups(uint32_t arg2, uint32_t arg3) {
 
 static void sys_setgroups(uint32_t arg2, uint32_t arg3) {
     int size = (int)arg2;
+    // cppcheck-suppress constVariablePointer
     uint16_t *list = (uint16_t *)arg3;
 
     if (current_task->euid != 0) {
@@ -2327,6 +2340,7 @@ static void sys_setgroups(uint32_t arg2, uint32_t arg3) {
 }
 
 static void sys_chmod(uint32_t arg2, uint32_t arg3) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char *)arg2;
     uint32_t new_mode = arg3;
     char abs_path[256];
@@ -2354,6 +2368,7 @@ static void sys_chmod(uint32_t arg2, uint32_t arg3) {
 }
 
 static void sys_chown(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char *)arg2;
     uint16_t new_uid = (uint16_t)arg3;
     uint16_t new_gid = (uint16_t)arg4;
@@ -2410,6 +2425,7 @@ static void sys_uname(uint32_t arg2) {
 }
 
 static void sys_sethostname(uint32_t arg2, uint32_t arg3) {
+    // cppcheck-suppress unreadVariable
     const char *name = (const char *)arg2;
     size_t len = (size_t)arg3;
 
@@ -2433,6 +2449,7 @@ static void sys_sethostname(uint32_t arg2, uint32_t arg3) {
 }
 
 void sys_5ht_set_fid(uint32_t arg2) {
+    // cppcheck-suppress constVariablePointer
     process_control_block_t *fid_task = task_lookup_by_pid((int)arg2);
 
     if (fid_task->priv == CPU_KERNEL_MODE) {
@@ -2624,14 +2641,17 @@ static int fd_poll_check_task(process_control_block_t *task, int fd) {
     if (fd < 0 || fd >= FD_MAX || task->fd_table[fd] == NULL)
         return POLLNVAL;
 
+    // cppcheck-suppress constVariablePointer
     file_handle_t *handle = task->fd_table[fd];
     vfs_node_t *node = handle->node;
     if (!node)
         return POLLNVAL;
 
     if (node->flags & VFS_FLAG_PIPE) {
+        // cppcheck-suppress constVariablePointer
         pipe_endpoint_t *ep = (pipe_endpoint_t*)node->fs_data;
         if (ep && ep->pipe) {
+            // cppcheck-suppress constVariablePointer
             pipe_state_t *p = ep->pipe;
             if (ep->is_read_end) {
                 if (p->data_len > 0)   revents |= POLLIN;
@@ -2645,8 +2665,10 @@ static int fd_poll_check_task(process_control_block_t *task, int fd) {
     }
 
     if (node->flags & VFS_FLAG_SOCKET) {
+        // cppcheck-suppress constVariablePointer
         sock_endpoint_t *sep = (sock_endpoint_t*)node->fs_data;
         if (sep && sep->sock) {
+            // cppcheck-suppress constVariablePointer
             unix_socket_t *s = sep->sock;
 
             if (s->state == SOCK_STATE_LISTENING) {

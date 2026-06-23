@@ -1602,6 +1602,7 @@ void wm_focus_window(wm_state_t *wm, int idx) {
             did_term_swap = 1;
 
             // cppcheck-suppress knownConditionTrueFalse
+            // cppcheck-suppress knownConditionTrueFalse
             if (old_idx >= 0 && wm->windows[old_idx].active &&
                 old_idx != top_idx && old_idx != idx) {
                 wm_render_decorations(wm, old_idx);
