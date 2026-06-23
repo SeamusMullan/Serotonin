@@ -65,8 +65,10 @@ int my_mvaddstr(int y, int x, char *str)
     return OK;
 }
 
+// cppcheck-suppress constParameterPointer
 void option(char *str)
 {
+// cppcheck-suppress shadowVariable
     extern int ACCIDENT, LOGO, FLY, C51;
 
     while (*str != '\0') {
@@ -257,8 +259,11 @@ void add_smoke(int y, int x)
     static struct smokes {
         int y, x;
         int ptrn, kind;
+// cppcheck-suppress variableScope
     } S[1000];
+// cppcheck-suppress variableScope
     static int sum = 0;
+// cppcheck-suppress variableScope
     static char *Smoke[2][SMOKEPTNS]
         = {{"(   )", "(    )", "(    )", "(   )", "(  )",
             "(  )" , "( )"   , "( )"   , "()"   , "()"  ,
@@ -268,15 +273,21 @@ void add_smoke(int y, int x)
             "(@@)" , "(@)"   , "(@)"   , "@@"   , "@@"  ,
             "@"    , "@"     , "@"     , "@"    , "@"   ,
             " "                                          }};
+// cppcheck-suppress variableScope
     static char *Eraser[SMOKEPTNS]
         =  {"     ", "      ", "      ", "     ", "    ",
             "    " , "   "   , "   "   , "  "   , "  "  ,
             " "    , " "     , " "     , " "    , " "   ,
             " "                                          };
+// cppcheck-suppress variableScope
+// cppcheck-suppress constVariable
     static int dy[SMOKEPTNS] = { 2,  1, 1, 1, 0, 0, 0, 0, 0, 0,
                                  0,  0, 0, 0, 0, 0             };
+// cppcheck-suppress variableScope
+// cppcheck-suppress constVariable
     static int dx[SMOKEPTNS] = {-2, -1, 0, 1, 1, 1, 1, 1, 2, 2,
                                  2,  2, 2, 3, 3, 3             };
+// cppcheck-suppress variableScope
     int i;
 
     if (x % 4 == 0) {

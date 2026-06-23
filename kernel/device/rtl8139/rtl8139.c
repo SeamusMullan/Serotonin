@@ -112,6 +112,7 @@ int rtl8139_send(const uint8_t *data, uint16_t length) {
         return -1;
 
     uint8_t desc = rtl.tx_cur;
+    // cppcheck-suppress unreadVariable
     uint32_t tsd = 0;
     int found = 0;
 

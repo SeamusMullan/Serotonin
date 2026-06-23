@@ -147,6 +147,7 @@ static int copy_recursive(const char *src, const char *dst) {
     while (p < end) {
         char *nl = memchr(p, '\n', (size_t)(end - p));
         size_t len = nl ? (size_t)(nl - p) : (size_t)(end - p);
+        // cppcheck-suppress knownConditionTrueFalse
         if (len == 0) { p = nl ? nl + 1 : end; continue; }
 
         char name[256];

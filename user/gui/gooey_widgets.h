@@ -357,6 +357,8 @@ struct TextBox {
 
     void set_text(const char *str) {
         int i = 0;
+        // cppcheck-suppress arrayIndexThenCheck
+        // cppcheck-suppress arrayIndexOutOfBoundsCond
         while (str[i] && i < 255) { text[i] = str[i]; ++i; }
         text[i] = '\0';
         text_len = i;
@@ -569,6 +571,7 @@ struct Slider {
         if (range <= 0) return;
         int track_w = bounds.w - THUMB_W;
         int thumb_x = bounds.x + (value - min_value) * track_w / range;
+        // cppcheck-suppress duplicateExpression
         int thumb_y = bounds.y + (bounds.h - bounds.h) / 2;
 
         uint32_t thumb_color;

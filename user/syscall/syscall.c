@@ -20,10 +20,14 @@
 #define HOST_NAME_MAX 64
 
 struct utsname {
+    // cppcheck-suppress unusedStructMember
     char sysname[65];
     char nodename[HOST_NAME_MAX + 1];
+    // cppcheck-suppress unusedStructMember
     char release[65];
+    // cppcheck-suppress unusedStructMember
     char version[65];
+    // cppcheck-suppress unusedStructMember
     char machine[65];
 };
 

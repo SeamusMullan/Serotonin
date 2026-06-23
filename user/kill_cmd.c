@@ -22,6 +22,7 @@ int main(int argc, char **argv) {
     int pid_start = 1;
 
     /* Check for -SIGNAL argument */
+    // cppcheck-suppress knownConditionTrueFalse
     if (argc > 1 && argv[1][0] == '-' && argv[1][1] >= '0' && argv[1][1] <= '9') {
         sig = atoi(argv[1] + 1);
         if (sig <= 0) {

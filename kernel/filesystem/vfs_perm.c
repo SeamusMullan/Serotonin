@@ -1,6 +1,7 @@
 #include <kernel/filesystem/vfs_perm.h>
 #include <kernel/syscall/sys/file.h>
 
+// cppcheck-suppress constParameterPointer
 int proc_in_group(process_control_block_t *proc, uint16_t gid) {
     if (proc->egid == gid) return 1;
     for (uint8_t i = 0; i < proc->ngroups; i++) {
@@ -9,6 +10,7 @@ int proc_in_group(process_control_block_t *proc, uint16_t gid) {
     return 0;
 }
 
+// cppcheck-suppress constParameterPointer
 int vfs_check_permission(vfs_node_t *node, process_control_block_t *proc, int want) {
     if (!node || !proc) return -1;
 

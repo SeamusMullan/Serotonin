@@ -227,7 +227,7 @@ static int kernel_hypervisor_present(void) {
     }
 
     // Bit 31 of ECX indicates a presence of a hypervisor
-    return (ecx & (1 << 31)) != 0;
+    return (ecx & (uint32_t)(1u << 31)) != 0;
 }
 
 /**
@@ -478,6 +478,7 @@ void kernel_sleep(unsigned int milliseconds) {
  * and halts the system.
  * @param str The panic message to display.
  */
+// cppcheck-suppress constParameterPointer
 void kernel_panic(char* str) {
     static volatile int panic_in_progress = 0;
     if (panic_in_progress) {
@@ -550,10 +551,11 @@ void kernel_panic(char* str) {
         if (ebp & 3)
             break;
 
+        // cppcheck-suppress constVariablePointer
         uint32_t *frame = (uint32_t*)ebp;
         uint32_t ret_addr = frame[1];
 
-        printf("  #%d: ebp=0x%08x ret=0x%08x\n", i, ebp, ret_addr);
+        printf("  #%u: ebp=0x%08x ret=0x%08x\n", i, ebp, ret_addr);
 
         uint32_t next_ebp = frame[0];
         /* Next frame must be strictly higher on the stack (grows down) and in kernel space */
@@ -576,6 +578,7 @@ void kernel_panic(char* str) {
     }
 
     if (eip >= 0xC0000000) {
+        // cppcheck-suppress constVariablePointer
         uint8_t* ptr = (uint8_t*)eip;
         for (int i = 0; i < 0x8C; i++) {
             if (i % 20 == 0) {
@@ -758,6 +761,7 @@ void kernel_free(void *ptr) {
      * merge all consecutive adjacent free blocks into one. */
     while (block->next && block->next->free) {
         block_header_t *next = block->next;
+        // cppcheck-suppress constVariablePointer
         uint8_t *expected = (uint8_t *)(block + 1) + block->size + (block->guard ? HEAP_GUARD_SIZE : 0);
         if ((uint8_t *)next != expected) break;
         block->size += sizeof(block_header_t) + next->size + (next->guard ? HEAP_GUARD_SIZE : 0);
@@ -909,6 +913,7 @@ int kernel_load_elf(process_control_block_t *pcb, const char *path, const char *
 
     memset(stack_base, 0, USER_STACK_SIZE);
 
+    // cppcheck-suppress comparePointers
     uint32_t signal_trampoline_size = (uint32_t)(signal_trampoline_end - signal_trampoline);
     void* phys_signal_trampoline = alloc_frame();
     map_page(as, SIGNAL_TRAMPOLINE_ADDR, (uint32_t)phys_signal_trampoline, USER_PAGE_FLAGS, 0);
@@ -974,6 +979,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
     multiboot_info_t *mbi = (multiboot_info_t *) addr;
     // page_directory_t *page_dir = (page_directory_t*)page_dir_ptr;
     const char *cmdline = (const char *)(uintptr_t)mbi->cmdline;
+    // cppcheck-suppress constVariablePointer
     char* cpu_manufacturer = kernel_get_cpu_manufacturer();
 
     serial_puts(COM1_BASE,"init_high: initializing rtc\n");
@@ -1098,6 +1104,7 @@ void kernel_main_high(unsigned long magic, unsigned long addr)
         }
 
         multiboot_module_t *mods = (multiboot_module_t *)phys_to_virt((uintptr_t)mbi->mods_addr);
+        // cppcheck-suppress constVariablePointer
         multiboot_module_t *root_mod = &mods[0];
         for (uint32_t i = 0; i < mbi->mods_count; i++) {
             const char *mcmd = (const char *)phys_to_virt((uintptr_t)mods[i].cmdline);

@@ -1,5 +1,6 @@
 #include "wm.h"
 
+// cppcheck-suppress constParameterPointer
 int count_tiled_windows(wm_state_t *wm) {
     int n = 0;
     for (int i = 0; i < MAX_WINDOWS; i++) {

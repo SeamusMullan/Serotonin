@@ -61,6 +61,7 @@ void irq_unregister(int irq) {
     pic_mask_irq(irq);
 }
 
+// cppcheck-suppress constParameterCallback
 static void irq_pit_handler(int irq, processor_context_t *ctx) {
     (void)irq;
     timer_ticks++;

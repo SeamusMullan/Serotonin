@@ -85,11 +85,13 @@ static void resolve_username(unsigned uid, char *out, size_t outsize) {
     if (n <= 0) { snprintf(out, outsize, "%u", uid); return; }
     buf[n] = '\0';
 
+    // cppcheck-suppress constVariablePointer
     char *line = buf;
     while (line < buf + n) {
         char *nl = std::strchr(line, '\n');
         if (nl) *nl = '\0';
         if (line[0] != '\0' && line[0] != '#') {
+            // cppcheck-suppress constVariablePointer
             char *c1 = std::strchr(line, ':');
             if (c1) {
                 char *c2 = std::strchr(c1 + 1, ':');

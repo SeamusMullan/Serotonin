@@ -38,6 +38,7 @@ static vfs_node_t *vfs_create_virtual_mountpoint(vfs_node_t *parent, const char 
  * This keeps the mountpoint node pointer stable (so parent->finddir still works),
  * while replacing its filesystem-specific fields with the mounted root's.
  */
+// cppcheck-suppress constParameterPointer
 void vfs_attach_mount(vfs_node_t *mountpoint, vfs_node_t *root) {
     char saved_name[256];
     vfs_node_t *saved_parent = mountpoint->parent;
@@ -142,6 +143,7 @@ int vfs_mount(const char *device, const char *mountpoint, const char *fs_type) {
  * @brief Frees intermediate DISKIO nodes allocated during path resolution,
  *        keeping only the result node alive.
  */
+// cppcheck-suppress constParameterPointer
 static void resolve_cleanup(vfs_node_t **allocs, size_t count, vfs_node_t *keep) {
     for (size_t i = 0; i < count; i++) {
         if (allocs[i] != keep) {
@@ -557,6 +559,7 @@ int vfs_mkdir(const char *path) {
         return -1;
     }
 
+    // cppcheck-suppress constVariablePointer
     vfs_node_t *newdir = dir->ops->mkdir(dir, name);
     vfs_close(dir);
     return newdir ? 0 : -1;

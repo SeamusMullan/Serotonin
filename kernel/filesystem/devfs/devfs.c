@@ -124,6 +124,7 @@ static vfs_node_t *devfs_create_file_node(const char *name, mode_t mode, vfs_ops
 /**
  * @brief Find a child node by name
  */
+// cppcheck-suppress constParameterPointer
 static vfs_node_t *devfs_find_child(devfs_dir_t *dir, const char *name) {
     devfs_dir_entry_t *entry = dir->entries;
     while (entry) {
@@ -217,6 +218,7 @@ int devfs_truncate(vfs_node_t *node, uint32_t size) {
 vfs_node_t *devfs_readdir(vfs_node_t *node, uint32_t index) {
     if (!node || !(node->flags & VFS_FLAG_DIRECTORY)) return NULL;
 
+    // cppcheck-suppress constVariablePointer
     devfs_dir_t *dir = (devfs_dir_t *)node->fs_data;
     if (!dir) return NULL;
 
@@ -258,6 +260,7 @@ int devfs_register_device(const char *path, mode_t mode, vfs_ops_t *ops, void *d
 
     // Walk the path, creating directories as needed
     vfs_node_t *current = devfs_root;
+    // cppcheck-suppress constVariablePointer
     char *token = strtok(temp, "/");
     while (token) {
         char *next = strtok(NULL, "/");

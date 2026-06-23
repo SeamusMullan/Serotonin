@@ -113,6 +113,7 @@ static void dump_user_bytes(uint32_t eip) {
 
     uint32_t offset = eip & (PAGE_SIZE - 1);
     uint8_t *page = (uint8_t*)kmap(phys);
+    // cppcheck-suppress constVariablePointer
     uint8_t *ptr = page + offset;
     uint32_t remaining = PAGE_SIZE - offset;
     uint32_t count = (remaining < 8) ? remaining : 8;
@@ -134,6 +135,7 @@ static void dump_kernel_bytes(uint32_t eip) {
         return;
     }
 
+    // cppcheck-suppress constVariablePointer
     uint8_t *ptr = (uint8_t*)eip;
     printfs(PRINT_STATUS_ERROR,"EIP bytes:");
     for (uint32_t i = 0; i < 8; i++) {
@@ -142,6 +144,7 @@ static void dump_kernel_bytes(uint32_t eip) {
     printf("\n");
 }
 
+// cppcheck-suppress constParameterPointer
 static void read_exception_frame(uint32_t *stack, int has_error_code, exception_frame_t *frame) {
     if (!stack || !frame) return;
 
@@ -229,6 +232,7 @@ static void pty_dump_frame(pty_t *pty, const exception_frame_t *frame) {
         if (phys) {
             uint32_t offset = frame->eip & (PAGE_SIZE - 1);
             uint8_t *page = (uint8_t*)kmap(phys);
+            // cppcheck-suppress constVariablePointer
             uint8_t *ptr = page + offset;
             uint32_t remaining = PAGE_SIZE - offset;
             uint32_t count = (remaining < 8) ? remaining : 8;

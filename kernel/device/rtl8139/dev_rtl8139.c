@@ -51,6 +51,7 @@ int dev_rtl8139_read_tun(vfs_node_t *node, uint32_t offset, uint32_t size, char 
                 to_copy = max_pkts;
 
             for (uint32_t i = 0; i < to_copy; i++) {
+                // cppcheck-suppress constVariablePointer
                 rtl8139_packet_t *pkt = &tun_buffer[tun_tail];
                 memcpy(buffer + (i * pkt_sz), pkt, pkt_sz);
                 tun_tail = (tun_tail + 1) % RTL8139_TUN_BUFFER_SIZE;

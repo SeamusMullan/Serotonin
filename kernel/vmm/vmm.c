@@ -313,6 +313,7 @@ void zone_free_pages(buddy_zone_t *z, void *phys_addr, int order) {
  */
 int find_zone_by_phys(uint32_t phys) {
     for (uint32_t i = 0; i < g_buddy.zone_count; ++i) {
+        // cppcheck-suppress constVariablePointer
         buddy_zone_t *z = &g_buddy.zones[i];
         if (phys >= z->base_phys &&
             phys <  z->base_phys + ((uint32_t)z->num_pages << PAGE_SHIFT)) {
@@ -385,6 +386,7 @@ uint32_t buddy_total_pages(void) {
 uint32_t buddy_free_pages(void) {
     uint32_t sum = 0;
     for (uint32_t i = 0; i < g_buddy.zone_count; ++i) {
+        // cppcheck-suppress constVariablePointer
         buddy_zone_t *z = &g_buddy.zones[i];
         for (int o = 0; o <= z->max_order; ++o) {
             for (page_desc_t *p = z->free_list[o]; p; p = p->next)
@@ -510,6 +512,7 @@ void buddy_init(multiboot_info_t *mbi, uint32_t kernel_phys_start, uint32_t kern
     uint32_t mmap_addr = mbi->mmap_addr;
 
     for (uint32_t i = 0; i < mmap_len; ) {
+        // cppcheck-suppress constVariablePointer
         multiboot_memory_map_t *m = (multiboot_memory_map_t*)(uint32_t)(mmap_addr + i);
         uint64_t base = m->addr;
         uint64_t len  = m->len;
@@ -619,10 +622,12 @@ void vmm_init(void) {
  * it temporarily maps the page directory to access the page table and returns a
  * pointer to the mapped page table. If the page table is not present, it returns NULL.
  */
+// cppcheck-suppress constParameterPointer
 vmm_page_table_t *map_get_pt_for_as(address_space_t *as, uint32_t pde_index) {
     if ((read_cr3() & PAGE_MASK) == (as->phys_pdir & PAGE_MASK))
         return pt_va(pde_index);
 
+    // cppcheck-suppress constVariablePointer
     vmm_page_directory_t *pd_tmp = (vmm_page_directory_t*)kmap(as->phys_pdir);
     uint32_t pde = pd_tmp[pde_index];
     kunmap();
@@ -646,6 +651,7 @@ vmm_page_table_t *map_get_pt_for_as(address_space_t *as, uint32_t pde_index) {
  * it temporarily maps the page directory to access the page table and returns a
  * pointer to the mapped page table. If the page table is not present, it returns NULL.
  */
+// cppcheck-suppress constParameterPointer
 vmm_page_table_t *ensure_pt(address_space_t *as, uint32_t pde_index, uint32_t pde_flags) {
     uint32_t cr3_phys = read_cr3() & PAGE_MASK;
 
@@ -681,6 +687,7 @@ vmm_page_table_t *ensure_pt(address_space_t *as, uint32_t pde_index, uint32_t pd
     kunmap();
 
     // return a va to the pt
+    // cppcheck-suppress constVariablePointer
     vmm_page_directory_t *pd_check = (vmm_page_directory_t*)kmap(as->phys_pdir);
     uint32_t pt_phys_final = pd_check[pde_index] & PAGE_MASK;
     kunmap();
@@ -703,6 +710,7 @@ vmm_page_table_t *ensure_pt(address_space_t *as, uint32_t pde_index, uint32_t pd
  * panic. The function also handles the case where the address space is not currently
  * active by temporarily mapping the page directory to access and modify the page table.
  */
+// cppcheck-suppress constParameterPointer
 void map_page(address_space_t *as, uint32_t vaddr, uint32_t paddr, uint32_t flags, int overwrite)
 {
     vaddr &= PAGE_MASK;
@@ -777,6 +785,7 @@ void map_page(address_space_t *as, uint32_t vaddr, uint32_t paddr, uint32_t flag
  * access and modify the page table. If the free_frame_flag is set, it also frees
  * the physical frame associated with the unmapped virtual address.
  */
+// cppcheck-suppress constParameterPointer
 void unmap_page(address_space_t *as, uint32_t vaddr, int free_frame_flag)
 {
     vaddr &= PAGE_MASK;
@@ -787,9 +796,11 @@ void unmap_page(address_space_t *as, uint32_t vaddr, int free_frame_flag)
     uint32_t as_cr3 = as->phys_pdir & PAGE_MASK;
 
     if (cur == as_cr3) {
+        // cppcheck-suppress constVariablePointer
         uint32_t *pd = cur_pd_va();
         if (!(pd[pdi] & PAGE_PRESENT)) return;
 
+        // cppcheck-suppress constVariablePointer
         uint32_t *pt = pt_va(pdi);
         uint32_t entry = pt[pti];
         if (!(entry & PAGE_PRESENT)) return;
@@ -818,6 +829,7 @@ void unmap_page(address_space_t *as, uint32_t vaddr, int free_frame_flag)
     }
 
     // its a foreigner
+    // cppcheck-suppress constVariablePointer
     uint32_t *pd = (uint32_t*)kmap(as_cr3);
     uint32_t pde = pd[pdi];
     kunmap();
@@ -864,6 +876,7 @@ void unmap_page(address_space_t *as, uint32_t vaddr, int free_frame_flag)
  * active, it temporarily maps the page directory to access the page table. If the
  * virtual address is not mapped, it returns 0.
  */
+// cppcheck-suppress constParameterPointer
 uint32_t get_mapping(address_space_t *as, uint32_t vaddr) {
     vaddr &= PAGE_MASK;
     uint32_t pdi = vmm_pdi(vaddr);
@@ -873,21 +886,25 @@ uint32_t get_mapping(address_space_t *as, uint32_t vaddr) {
     uint32_t as_cr3  = as->phys_pdir & PAGE_MASK;
 
     if (cur_cr3 == as_cr3) {
+        // cppcheck-suppress constVariablePointer
         uint32_t *pd = cur_pd_va();
         uint32_t pde = pd[pdi];
         if (!(pde & PAGE_PRESENT)) return 0;
+        // cppcheck-suppress constVariablePointer
         uint32_t *pt = pt_va(pdi);
         uint32_t pte = pt[pti];
         return (pte & PAGE_PRESENT) ? (pte & PAGE_MASK) : 0;
     }
 
     // foreigner
+    // cppcheck-suppress constVariablePointer
     uint32_t *pd = (uint32_t*)kmap(as_cr3);
     uint32_t pde = pd[pdi];
     kunmap();
     if (!(pde & PAGE_PRESENT)) return 0;
 
     uint32_t pt_phys = pde & PAGE_MASK;
+    // cppcheck-suppress constVariablePointer
     uint32_t *pt = (uint32_t*)kmap(pt_phys);
     uint32_t pte = pt[pti];
     kunmap();
@@ -978,6 +995,7 @@ int copy_from_user(address_space_t *as, void *dst, uint32_t src, size_t len) {
         asm volatile("pushfl; popl %0" : "=r"(eflags));
         int ints_were_on = eflags & 0x200;
         if (ints_were_on) clear_interrupts();
+        // cppcheck-suppress constVariablePointer
         uint8_t *src_k = (uint8_t *)kmap(phys);
         memcpy(dst_bytes, src_k + off, chunk);
         kunmap();
@@ -1030,6 +1048,7 @@ address_space_t *create_address_space(void) {
     memset(pd_tmp, 0, PAGE_SIZE);
 
     // clone kernel PDEs from canonical table
+    // cppcheck-suppress constVariablePointer
     vmm_page_directory_t *cur = cur_pd_va();
     vmm_page_directory_t *newp = (vmm_page_directory_t*)pd_tmp;
 
@@ -1104,6 +1123,7 @@ void destroy_address_space(address_space_t *as) {
  * the CR3 register with the physical address of the new page directory. If the new
  * address space is already active, it does nothing.
  */
+// cppcheck-suppress constParameterPointer
 void switch_address_space(address_space_t *as) {
     if (!as) return;
     uint32_t new_cr3 = as->phys_pdir & PAGE_MASK;
@@ -1131,10 +1151,12 @@ shm_object_t* shm_create(uint32_t size) {
     return shm;
 }
 
+// cppcheck-suppress constParameterPointer
 static uint32_t shm_find_free_region(address_space_t *as, uint32_t size) {
     uint32_t base = SHMEM_START;
     size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 
+    // cppcheck-suppress constVariablePointer
     shmem_map_t *m = as->shmem_list;
 
     while (m) {

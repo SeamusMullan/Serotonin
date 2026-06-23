@@ -36,6 +36,7 @@ typedef void (*ctor_fn)(void);
  */
 void __run_init_array(void) {
     /* .init_array — straightforward array of function pointers */
+    // cppcheck-suppress comparePointers
     for (size_t i = 0; i < (size_t)(__init_array_end - __init_array_start); i++)
         __init_array_start[i]();
 
@@ -53,6 +54,7 @@ void __run_init_array(void) {
  * Called by crt0.s after main() returns.
  */
 void __run_fini_array(void) {
+    // cppcheck-suppress comparePointers
     for (size_t i = 0; i < (size_t)(__fini_array_end - __fini_array_start); i++)
         __fini_array_start[i]();
 

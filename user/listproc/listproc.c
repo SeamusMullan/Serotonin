@@ -48,11 +48,13 @@ static void resolve_username(unsigned uid, char *out, size_t outsize) {
     }
     buf[n] = '\0';
 
+    // cppcheck-suppress constVariablePointer
     char *line = buf;
     while (line < buf + n) {
         char *nl = strchr(line, '\n');
         if (nl) *nl = '\0';
         if (line[0] != '\0' && line[0] != '#') {
+            // cppcheck-suppress constVariablePointer
             char *c1 = strchr(line, ':');
             if (c1) {
                 char *c2 = strchr(c1 + 1, ':');

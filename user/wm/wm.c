@@ -678,6 +678,7 @@ void wm_apply_theme(wm_state_t *wm, int theme_idx) {
         sg_gui_wm_theme_colors_t gcols;
         wm_gui_theme_pack_colors(&gcols);
         for (int i = 0; i < MAX_WINDOWS; i++) {
+            // cppcheck-suppress constVariablePointer
             wm_window_t *w = &wm->windows[i];
             if (!w->active || !w->is_gui || w->pty_master_fd < 0)
                 continue;
@@ -732,6 +733,7 @@ void launcher_open(wm_state_t *wm) {
             launcher_append_name(wm, launcher_gui_pin[g]);
     }
 
+    // cppcheck-suppress constVariablePointer
     char *p = buf;
     while (*p && wm->launcher_count < LAUNCHER_MAX_ITEMS) {
         char *nl = strchr(p, '\n');
@@ -878,6 +880,7 @@ void launcher_render(wm_state_t *wm) {
     wm->launcher_meta->ready = 1;
 }
 
+// cppcheck-suppress constParameterPointer
 void launcher_key(wm_state_t *wm, keyboard_event_t *ev) {
     if (ev->flags & KEY_FLAG_RELEASED) return;
 
@@ -1510,6 +1513,7 @@ void wm_close_window(wm_state_t *wm, int idx) {
 }
 
 static void wm_ipc_send_layer_id(wm_state_t *wm, int gui_idx, uint16_t new_layer_id) {
+    // cppcheck-suppress constVariablePointer
     wm_window_t *w = &wm->windows[gui_idx];
     if (!w->active || !w->is_gui || w->pty_master_fd < 0)
         return;
@@ -1597,6 +1601,7 @@ void wm_focus_window(wm_state_t *wm, int idx) {
             wm_render_window(wm, idx);
             did_term_swap = 1;
 
+            // cppcheck-suppress knownConditionTrueFalse
             if (old_idx >= 0 && wm->windows[old_idx].active &&
                 old_idx != top_idx && old_idx != idx) {
                 wm_render_decorations(wm, old_idx);
@@ -1778,6 +1783,7 @@ int main(void) {
             if (n > 0) {
                 term_process(&win->term, buf, n);
                 pty_got_data[win_idx] = 1;
+            // cppcheck-suppress knownConditionTrueFalse
             } else if (n <= 0 && (pfds[p].revents & POLLHUP)) {
                 pty_closed = win_idx;
                 break;

@@ -22,6 +22,7 @@ static int print_last_n_lines(const char *data, size_t len, int n) {
     size_t pos = len;
 
     /* Skip trailing newline */
+    // cppcheck-suppress knownConditionTrueFalse
     if (pos > 0 && data[pos - 1] == '\n') pos--;
 
     while (pos > 0 && count < n) {

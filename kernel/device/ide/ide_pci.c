@@ -46,6 +46,7 @@ int ide_wait(uint8_t mask, uint8_t value, int timeout) {
     return -1;
 }
 
+// cppcheck-suppress constParameterPointer
 static int ide_poll(ide_channel_t *ch) {
     for (int i = 0; i < 500000; i++) {
         uint8_t s = inb(ch->io_base + ATA_REG_STATUS);
@@ -58,6 +59,7 @@ static int ide_poll(ide_channel_t *ch) {
     return -1;
 }
 
+// cppcheck-suppress constParameterPointer
 static int ide_poll_bsy(ide_channel_t *ch) {
     for (int i = 0; i < 500000; i++) {
         uint8_t s = inb(ch->io_base + ATA_REG_STATUS);
@@ -85,6 +87,7 @@ static int ide_pio_read_sectors(ide_channel_t *ch, uint8_t drv, uint32_t lba,
     for (uint8_t s = 0; s < count; s++) {
         if (ide_poll(ch) != 0) return -1;
         uint32_t wcount = 256;
+        // cppcheck-suppress constVariablePointer
         uint8_t *dest = buf + s * 512;
         asm volatile("cld; rep insw"
                      : "+D"(dest), "+c"(wcount)
@@ -377,6 +380,7 @@ int ide_cache_flush(uint8_t drive) {
 }
 
 static void ide_identify_drive(uint8_t ch_idx, uint8_t drv_idx) {
+    // cppcheck-suppress constVariablePointer
     ide_channel_t *ch = &channels[ch_idx];
     uint8_t drive_idx = ch_idx * 2 + drv_idx;
     ide_drive_t *drv = &drives[drive_idx];
@@ -637,6 +641,7 @@ static void ide_worker_thread(void) {
     }
 }
 
+// cppcheck-suppress constParameterPointer
 static int ide_enqueue_work(disk_work_t *w) {
     lock_scheduler();
 

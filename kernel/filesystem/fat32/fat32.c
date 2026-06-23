@@ -166,8 +166,6 @@ static void fat32_generate_short_name(const char *fname, uint8_t key[11], fat32_
         // Truncate base to fit tail
         int base_max = 8 - tlen;
         if (pos < base_max) base_max = pos;
-        for (int i = 0; i < base_max; i++)
-            key[i] = key[i]; // already set
         for (int i = 0; i < tlen; i++)
             key[base_max + i] = tailstr[i];
         for (int i = base_max + tlen; i < 8; i++)
@@ -289,6 +287,7 @@ static void fat32_parse_bpb(fat32_fs_info_t *info,
                             uint8_t *boot_sector)
 {
     fat_BS_t       *bpb = (fat_BS_t *)boot_sector;
+    // cppcheck-suppress constVariablePointer
     fat_extBS_32_t *ext = (fat_extBS_32_t *)(bpb->extended_section);
 
     info->drive                 = drive;
@@ -518,6 +517,7 @@ vfs_node_t *fat32_readdir(vfs_node_t *node, uint32_t index) {
 
             // Collect LFN entries
             if ((entries[i].attr & 0x0F) == 0x0F) {
+                // cppcheck-suppress constVariablePointer
                 fat_lfn_entry_t *lfn = (fat_lfn_entry_t *)&entries[i];
                 if (lfn->order & 0x40) {
                     // First LFN entry (last in name sequence)
@@ -747,6 +747,7 @@ static int fat32_close(vfs_node_t *node) {
  * @param name The name of the directory entry to find.
  * @return vfs_node_t* The VFS node representing the directory entry, or NULL on failure.
  */
+// cppcheck-suppress constParameterCallback
 static vfs_node_t *fat32_finddir(vfs_node_t *dir, const char *name) {
     // build the 11-byte key for 8.3 comparison
     uint8_t key[11];
@@ -789,6 +790,7 @@ static vfs_node_t *fat32_finddir(vfs_node_t *dir, const char *name) {
 
             // Collect LFN entries
             if ((ents[i].attr & 0x0F) == 0x0F) {
+                // cppcheck-suppress constVariablePointer
                 fat_lfn_entry_t *lfn = (fat_lfn_entry_t *)&ents[i];
                 if (lfn->order & 0x40) {
                     lfn_frag_count = 0;
@@ -1001,6 +1003,7 @@ static void fat32_delete_lfn_chain(fat_dir_entry_t *ents, uint32_t sfn_index) {
     for (int j = (int)sfn_index - 1; j >= 0; j--) {
         if ((ents[j].attr & 0x0F) == 0x0F && (uint8_t)ents[j].name[0] != 0xE5) {
             ents[j].name[0] = 0xE5;
+            // cppcheck-suppress constVariablePointer
             fat_lfn_entry_t *lfn = (fat_lfn_entry_t *)&ents[j];
             if (lfn->order & 0x40) break; // was the last one
         } else {
@@ -1009,6 +1012,7 @@ static void fat32_delete_lfn_chain(fat_dir_entry_t *ents, uint32_t sfn_index) {
     }
 }
 
+// cppcheck-suppress constParameterCallback
 static int fat32_unlink(vfs_node_t *parent, const char *name) {
     if (!(parent->flags & VFS_FLAG_DIRECTORY)) return -1;
 
@@ -1047,6 +1051,7 @@ static int fat32_unlink(vfs_node_t *parent, const char *name) {
             }
 
             if ((ents[i].attr & 0x0F) == 0x0F) {
+                // cppcheck-suppress constVariablePointer
                 fat_lfn_entry_t *lfn = (fat_lfn_entry_t *)&ents[i];
                 if (lfn->order & 0x40) {
                     lfn_frag_count = 0;
@@ -1154,6 +1159,7 @@ static int fat32_dir_is_empty(fat32_fs_info_t *fs, uint32_t dir_cluster) {
     return 1;
 }
 
+// cppcheck-suppress constParameterCallback
 static int fat32_rmdir(vfs_node_t *parent, const char *name) {
     if (!(parent->flags & VFS_FLAG_DIRECTORY)) return -1;
 
@@ -1191,6 +1197,7 @@ static int fat32_rmdir(vfs_node_t *parent, const char *name) {
             }
 
             if ((ents[i].attr & 0x0F) == 0x0F) {
+                // cppcheck-suppress constVariablePointer
                 fat_lfn_entry_t *lfn = (fat_lfn_entry_t *)&ents[i];
                 if (lfn->order & 0x40) {
                     lfn_frag_count = 0;
@@ -1298,6 +1305,7 @@ static void fat32_update_dir_entry(fat32_node_info_t *ni, const char *name, uint
             if (first == 0xE5) { lfn_valid = 0; lfn_frag_count = 0; continue; }
 
             if ((ents[i].attr & 0x0F) == 0x0F) {
+                // cppcheck-suppress constVariablePointer
                 fat_lfn_entry_t *lfn = (fat_lfn_entry_t *)&ents[i];
                 if (lfn->order & 0x40) {
                     lfn_frag_count = 0;
@@ -1591,6 +1599,7 @@ static uint32_t fat32_write_dir_entries(fat32_fs_info_t *fs,
     return cluster; // cluster where the SFN entry lives
 }
 
+// cppcheck-suppress constParameterCallback
 static vfs_node_t *fat32_create(vfs_node_t *parent, const char *name) {
     fat32_node_info_t *pni = parent->fs_data;
     fat32_fs_info_t   *fs  = pni->fs_info;
@@ -1650,6 +1659,7 @@ static vfs_node_t *fat32_create(vfs_node_t *parent, const char *name) {
  * @param name The name of the new directory.
  * @return vfs_node_t* The VFS node representing the new directory, or NULL on failure.
  */
+// cppcheck-suppress constParameterPointer
 static vfs_node_t *fat32_mkdir(vfs_node_t *parent, const char *name) {
     fat32_node_info_t *pni = parent->fs_data;
     fat32_fs_info_t   *fs  = pni->fs_info;

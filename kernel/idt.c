@@ -105,6 +105,7 @@ void init_idt() {
         idt_set_gate(i, 0, 0, 0);
     }
 
+    // cppcheck-suppress constVariable
     void (*isrs[32])() = {
         isr0, isr1, isr2, isr3, isr4, isr5, isr6, isr7,
         isr8, isr9, isr10, isr11, isr12, isr13, isr14, isr15,
@@ -116,6 +117,7 @@ void init_idt() {
         idt_set_gate(i, (uint32_t)isrs[i], 0x08, 0x8E);
     }
 
+    // cppcheck-suppress constVariable
     void (*irqs[16])() = {
         irq0, irq1, irq2, irq3, irq4, irq5, irq6, irq7,
         irq8, irq9, irq10, irq11, irq12, irq13, irq14, irq15

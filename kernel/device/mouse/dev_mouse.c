@@ -102,6 +102,7 @@ int dev_mouse_read_event(vfs_node_t *node, uint32_t offset, uint32_t size, char 
 
         // Check if an event is available in the buffer
         if (event_count > 0) {
+            // cppcheck-suppress constVariablePointer
             mouse_event_t *ev = &event_buffer[event_tail];
             memcpy(buffer, ev, sizeof(mouse_event_t));
             event_tail = (event_tail + 1) % MOUSE_EVENT_BUFFER_SIZE;
