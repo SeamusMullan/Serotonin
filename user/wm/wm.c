@@ -1602,9 +1602,7 @@ void wm_focus_window(wm_state_t *wm, int idx) {
             did_term_swap = 1;
 
             // cppcheck-suppress knownConditionTrueFalse
-            // cppcheck-suppress knownConditionTrueFalse
-            if (old_idx >= 0 && wm->windows[old_idx].active &&
-                old_idx != top_idx && old_idx != idx) {
+            if (old_idx >= 0 && wm->windows[old_idx].active && old_idx != top_idx && old_idx != idx) {
                 wm_render_decorations(wm, old_idx);
                 if (!wm->windows[old_idx].is_gui && wm->windows[old_idx].fb) {
                     fb_set_alpha(wm->windows[old_idx].fb,
