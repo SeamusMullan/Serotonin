@@ -25,43 +25,40 @@ img: $(SEROTONIN_IMG)
 
 $(SEROTONIN_IMG): user
 	@echo "[img] Creating $(IMG_SIZE_MB)MB FAT32 image..."
-	dd if=/dev/zero of=$@ bs=1M count=$(IMG_SIZE_MB) status=progress
-	parted -s $@ mklabel msdos
-	parted -s $@ mkpart primary fat32 1MiB 100%
-	$(eval LOOPDEV := $(shell sudo losetup --show -Pf $@))
-	sudo partprobe $(LOOPDEV)
-	sleep 2
-	sudo mkfs.vfat -F 32 $(LOOPDEV)p1
-	sudo mkdir -p $(MOUNT_POINT)
-	sudo mount $(LOOPDEV)p1 $(MOUNT_POINT)
-	# /bin
-	sudo mkdir -p $(MOUNT_POINT)/bin
-	@for elf in $(USER_ELFS); do \
+	@set -e; \
+	dd if=/dev/zero of=$@ bs=1M count=$(IMG_SIZE_MB) status=progress; \
+	parted -s $@ mklabel msdos; \
+	parted -s $@ mkpart primary fat32 1MiB 100%; \
+	LOOPDEV=$$(sudo losetup --show -Pf $@); \
+	echo "[img] Loop device: $$LOOPDEV"; \
+	sudo partprobe $$LOOPDEV; \
+	sleep 2; \
+	sudo mkfs.vfat -F 32 $${LOOPDEV}p1; \
+	sudo mkdir -p $(MOUNT_POINT); \
+	sudo mount $${LOOPDEV}p1 $(MOUNT_POINT); \
+	sudo mkdir -p $(MOUNT_POINT)/bin; \
+	for elf in $(USER_ELFS); do \
 	  base=$$(basename $$elf .elf); \
 	  echo "  -> /bin/$$base"; \
 	  sudo cp $$elf $(MOUNT_POINT)/bin/$$base; \
-	done
-	# /etc
-	sudo mkdir -p $(MOUNT_POINT)/etc
-	echo "nameserver 1.1.1.1" | sudo tee $(MOUNT_POINT)/etc/resolv.conf > /dev/null
-	echo "serotonin"          | sudo tee $(MOUNT_POINT)/etc/hostname     > /dev/null
-	printf 'root:x:0:0:root:/root:/bin/sh\n' | sudo tee $(MOUNT_POINT)/etc/passwd > /dev/null
-	# /etc/init jobs
-	sudo mkdir -p $(MOUNT_POINT)/etc/init
-	@if [ -d $(USER_DIR)/init/jobs ]; then \
+	done; \
+	sudo mkdir -p $(MOUNT_POINT)/etc; \
+	echo "nameserver 1.1.1.1" | sudo tee $(MOUNT_POINT)/etc/resolv.conf > /dev/null; \
+	echo "serotonin"          | sudo tee $(MOUNT_POINT)/etc/hostname     > /dev/null; \
+	printf 'root:x:0:0:root:/root:/bin/sh\n' | sudo tee $(MOUNT_POINT)/etc/passwd > /dev/null; \
+	sudo mkdir -p $(MOUNT_POINT)/etc/init; \
+	if [ -d $(USER_DIR)/init/jobs ]; then \
 	  for job in $(USER_DIR)/init/jobs/*; do \
 	    [ -f "$$job" ] && sudo cp "$$job" $(MOUNT_POINT)/etc/init/; \
-	  done; fi
-	# /var/log /srv
-	sudo mkdir -p $(MOUNT_POINT)/var/log $(MOUNT_POINT)/srv
+	  done; fi; \
+	sudo mkdir -p $(MOUNT_POINT)/var/log $(MOUNT_POINT)/srv; \
 	printf '<html><body><h1>Serotonin</h1></body></html>\n' | \
-	  sudo tee $(MOUNT_POINT)/srv/index.html > /dev/null
-	# sysroot
-	@if [ -d $(SYSROOT) ]; then \
+	  sudo tee $(MOUNT_POINT)/srv/index.html > /dev/null; \
+	if [ -d $(SYSROOT) ]; then \
 	  sudo mkdir -p $(MOUNT_POINT)/usr; \
 	  sudo cp -r $(SYSROOT)/usr/lib     $(MOUNT_POINT)/usr/lib; \
-	  sudo cp -r $(SYSROOT)/usr/include $(MOUNT_POINT)/usr/include; fi
-	sync
-	sudo umount $(MOUNT_POINT)
-	sudo losetup -d $(LOOPDEV)
-	@echo "[img] $(SEROTONIN_IMG)"
+	  sudo cp -r $(SYSROOT)/usr/include $(MOUNT_POINT)/usr/include; fi; \
+	sync; \
+	sudo umount $(MOUNT_POINT); \
+	sudo losetup -d $$LOOPDEV; \
+	echo "[img] $@"
