@@ -1,0 +1,17 @@
+--- a/libcody/cody.hh
++++ b/libcody/cody.hh
+@@ -55,6 +55,13 @@ constexpr char S2C (char const (&s)[I])
+   return s[0];
+ }
+
++#if defined(__cpp_char8_t)
++template<unsigned I>
++constexpr char S2C (char8_t const (&s)[I])
++{
++  static_assert (I == 2, "only single octet strings may be converted");
++  return static_cast<char>(s[0]);
++}
++#endif
++
+ /// Internal buffering class.  Used to concatenate outgoing messages
+ /// and Lex incoming ones.

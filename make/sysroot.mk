@@ -8,11 +8,13 @@ SYSROOT_STAMP := $(SYSROOT)/.built
 
 USER_CFLAGS   := -m32 -std=gnu99 -ffreestanding -O2 -Wall -Wextra \
                  -msse -msse2 -mfpmath=sse \
-                 --sysroot=$(SYSROOT)
+                 --sysroot=$(SYSROOT) \
+                 -I$(SYSROOT)/usr/include/serotonin
 USER_CXXFLAGS := -m32 -std=c++11 -ffreestanding -O2 -Wall -Wextra \
                  -msse -msse2 -mfpmath=sse \
                  -fno-exceptions -fno-rtti -fno-threadsafe-statics \
-                 --sysroot=$(SYSROOT)
+                 --sysroot=$(SYSROOT) \
+                 -I$(SYSROOT)/usr/include/serotonin
 
 .PHONY: sysroot
 sysroot: $(SYSROOT_STAMP)
@@ -39,10 +41,10 @@ $(SYSROOT_STAMP): $(TOOLCHAIN_STAMP)
 	# libsyscall.a
 	$(CC) -c $(USER_DIR)/syscall/syscall.c  -o /tmp/syscall_a.o \
 	  -m32 -std=gnu99 -ffreestanding -O2 -Wall -Wextra \
-	  -I$(USER_DIR)/syscall -I$(SYSROOT)/usr/include
+	  -I$(USER_DIR)/syscall -I$(USER_DIR)/syscall/lib5ht -I$(SYSROOT)/usr/include
 	$(CC) -c $(USER_DIR)/syscall/lib5ht/lib5ht.c -o /tmp/lib5ht_a.o \
 	  -m32 -std=gnu99 -ffreestanding -O2 -Wall -Wextra \
-	  -I$(USER_DIR)/syscall -I$(SYSROOT)/usr/include
+	  -I$(USER_DIR)/syscall -I$(USER_DIR)/syscall/lib5ht -I$(SYSROOT)/usr/include
 	$(AR) rcs $(SYSROOT)/usr/lib/libsyscall.a /tmp/syscall_a.o /tmp/lib5ht_a.o
 
 	# libcxxrt.a

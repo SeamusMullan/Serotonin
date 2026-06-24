@@ -17,8 +17,8 @@ LD            := $(TOOLS_PREFIX)/bin/$(TARGET)-ld
 OBJCOPY       := $(TOOLS_PREFIX)/bin/$(TARGET)-objcopy
 
 # Pinned stable release tarballs (mirrors, no git clone needed)
-BINUTILS_VER  := 2.42
-GCC_VER       := 13.3.0
+BINUTILS_VER  := 2.43.1
+GCC_VER       := 14.2.0
 NEWLIB_VER    := 4.4.0.20231231
 
 BINUTILS_TAR  := $(TOOLS_SRC)/binutils-$(BINUTILS_VER).tar.gz
@@ -40,7 +40,8 @@ export PATH := $(TOOLS_PREFIX)/bin:$(PATH)
 toolchain: $(TOOLCHAIN_STAMP)
 
 $(TOOLCHAIN_STAMP): $(TOOLS_SRC)/binutils-$(BINUTILS_VER) \
-                    $(TOOLS_SRC)/gcc-$(GCC_VER)
+                    $(TOOLS_SRC)/gcc-$(GCC_VER) \
+                    $(TOOLS_SRC)/newlib-$(NEWLIB_VER)
 	@echo "[toolchain] Building binutils $(BINUTILS_VER)..."
 	mkdir -p $(TOOLS_SRC)/build-binutils
 	cd $(TOOLS_SRC)/build-binutils && \
@@ -57,7 +58,9 @@ $(TOOLCHAIN_STAMP): $(TOOLS_SRC)/binutils-$(BINUTILS_VER) \
 	    --disable-nls --enable-languages=c,c++ \
 	    --without-headers --disable-hosted-libstdcxx --quiet && \
 	  $(MAKE) all-gcc -j$(shell nproc) --quiet && \
-	  $(MAKE) install-gcc --quiet
+	  $(MAKE) install-gcc --quiet && \
+	  $(MAKE) all-target-libgcc -j$(shell nproc) --quiet && \
+	  $(MAKE) install-target-libgcc --quiet
 	@echo "[toolchain] Building newlib $(NEWLIB_VER)..."
 	mkdir -p $(TOOLS_SRC)/build-newlib
 	cd $(TOOLS_SRC)/build-newlib && \
@@ -82,6 +85,12 @@ $(TOOLS_SRC)/binutils-$(BINUTILS_VER): $(BINUTILS_TAR)
 $(TOOLS_SRC)/gcc-$(GCC_VER): $(GCC_TAR)
 	@echo "[toolchain] Extracting GCC..."
 	tar -xzf $< -C $(TOOLS_SRC)
+	@echo "[toolchain] Patching libcody u8-literals for host GCC >= 10..."
+	find $(TOOLS_SRC)/gcc-$(GCC_VER)/libcody -name '*.[ch]*' \
+	  -exec sed -i 's/u8"/"/g' {} +
+	@echo "[toolchain] Patching system.h locale include order for host GCC >= 16..."
+	sed -i 's/# include <cstring>/# include <cstring>\n# include <locale>/' \
+	  $(TOOLS_SRC)/gcc-$(GCC_VER)/gcc/system.h
 	@echo "[toolchain] Downloading GCC prerequisites..."
 	cd $(TOOLS_SRC)/gcc-$(GCC_VER) && ./contrib/download_prerequisites
 

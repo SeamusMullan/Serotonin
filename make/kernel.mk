@@ -12,8 +12,9 @@ KERNEL_BIN    := $(BUILD_DIR)/serotonin.bin
 KERNEL_CFLAGS := -std=gnu99 -ffreestanding -O2 -Wall -Wextra \
                  -msse -msse2 -mfpmath=sse \
                  -fstack-protector-strong \
-                 -I$(KERNEL_DIR)
-KERNEL_CFLAGS_BASE := -std=gnu99 -ffreestanding -O2 -Wall -Wextra
+                 -I$(KERNEL_DIR) -I$(ROOT_DIR)
+KERNEL_CFLAGS_BASE := -std=gnu99 -ffreestanding -O2 -Wall -Wextra \
+                      -I$(KERNEL_DIR) -I$(ROOT_DIR)
 
 ifdef DEBUG
   KERNEL_CFLAGS += -g
@@ -54,7 +55,7 @@ $(KERNEL_BIN): $(KERNEL_OBJS) $(KERNEL_DIR)/linker.ld
 	@echo "[kernel] Linking $@"
 	$(CC) -T $(KERNEL_DIR)/linker.ld -o $@ \
 	  -ffreestanding -O2 -nostdlib \
-	  $(KERNEL_OBJS)
+	  $(KERNEL_OBJS) -lgcc
 
 # Target-specific flag overrides
 $(BUILD_DIR)/kernel/vmm/vmm.o:          KERNEL_CFLAGS := $(KERNEL_CFLAGS_BASE)
