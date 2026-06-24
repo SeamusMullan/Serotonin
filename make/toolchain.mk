@@ -56,7 +56,7 @@ $(TOOLCHAIN_STAMP): $(TOOLS_SRC)/binutils-$(BINUTILS_VER) \
 	  ../gcc-$(GCC_VER)/configure \
 	    --target=$(TARGET) --prefix=$(TOOLS_PREFIX) \
 	    --disable-nls --enable-languages=c,c++ \
-	    --without-headers --disable-hosted-libstdcxx --quiet && \
+	    --without-headers --quiet && \
 	  $(MAKE) all-gcc -j$(shell nproc) --quiet && \
 	  $(MAKE) install-gcc --quiet && \
 	  $(MAKE) all-target-libgcc -j$(shell nproc) --quiet && \

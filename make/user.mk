@@ -64,6 +64,28 @@ $(eval $(call user_prog,getty,   $(USER_BUILD)/getty/getty.o))
 $(eval $(call user_prog,cortex,  $(USER_BUILD)/cortex/cortex.o))
 
 # ---------------------------------------------------------------------------
+# Window manager (mixed C + C++)
+# ---------------------------------------------------------------------------
+WM_OBJS := $(USER_BUILD)/wm/wm.o \
+            $(USER_BUILD)/wm/wm_draw.o \
+            $(USER_BUILD)/wm/wm_input.o \
+            $(USER_BUILD)/wm/wm_layout.o \
+            $(USER_BUILD)/wm/wm_terminal.o \
+            $(USER_BUILD)/wm/wm_ipc.o
+
+$(USER_BUILD)/wm/wm_ipc.o: $(USER_DIR)/wm/wm_ipc.cpp | $(SYSROOT_STAMP)
+	@mkdir -p $(dir $@)
+	$(CXX) -c $< -o $@ $(USER_CXXFLAGS) -MMD -MP
+
+$(USER_BUILD)/wm/%.o: $(USER_DIR)/wm/%.c | $(SYSROOT_STAMP)
+	@mkdir -p $(dir $@)
+	$(CC) -c $< -o $@ $(USER_CFLAGS) -MMD -MP
+
+$(USER_BUILD)/wm.elf: $(WM_OBJS) $(CRT0) | $(SYSROOT_STAMP)
+	$(CXX) $(LDFLAGS_USER) $(CRT0) $(WM_OBJS) $(LDLIBS_USER) -o $@
+USER_ELFS += $(USER_BUILD)/wm.elf
+
+# ---------------------------------------------------------------------------
 # lwIP-linked programs — skipped until user/lwip/ port layer is added
 # ---------------------------------------------------------------------------
 # TODO: add lwIP core source + user/lwip/serotonin/ port layer to enable networking.

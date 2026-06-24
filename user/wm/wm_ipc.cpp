@@ -5,7 +5,7 @@
 
 #include "wm_ipc.h"
 
-#include <cstring>
+#include <string.h>
 #include <unistd.h>
 
 extern "C" {
@@ -36,7 +36,7 @@ extern "C" int wm_ipc_send(int fd, const sg_gui_event_t *ev) {
 extern "C" void wm_ipc_fill_keyboard(sg_gui_event_t *out, const keyboard_event_t *kb) {
     if (!out || !kb)
         return;
-    std::memset(out, 0, sizeof(*out));
+    memset(out, 0, sizeof(*out));
     out->type = SG_GUI_EV_KEYBOARD;
     out->u.kb = *kb;
 }
@@ -45,7 +45,7 @@ extern "C" void wm_ipc_fill_mouse(sg_gui_event_t *out, int16_t lx, int16_t ly,
                                   uint8_t buttons, uint8_t ev_type) {
     if (!out)
         return;
-    std::memset(out, 0, sizeof(*out));
+    memset(out, 0, sizeof(*out));
     out->type = SG_GUI_EV_MOUSE;
     out->u.mouse.lx = lx;
     out->u.mouse.ly = ly;
@@ -57,7 +57,7 @@ extern "C" void wm_ipc_fill_configure(sg_gui_event_t *out, uint16_t x0, uint16_t
                                       uint16_t x1, uint16_t y1) {
     if (!out)
         return;
-    std::memset(out, 0, sizeof(*out));
+    memset(out, 0, sizeof(*out));
     out->type = SG_GUI_EV_CONFIGURE;
     out->u.cfg.x0 = x0;
     out->u.cfg.y0 = y0;
@@ -68,7 +68,7 @@ extern "C" void wm_ipc_fill_configure(sg_gui_event_t *out, uint16_t x0, uint16_t
 extern "C" void wm_ipc_fill_focus(sg_gui_event_t *out, uint8_t focused) {
     if (!out)
         return;
-    std::memset(out, 0, sizeof(*out));
+    memset(out, 0, sizeof(*out));
     out->type = SG_GUI_EV_FOCUS;
     out->u.focus.focused = focused;
 }
@@ -76,7 +76,7 @@ extern "C" void wm_ipc_fill_focus(sg_gui_event_t *out, uint8_t focused) {
 extern "C" void wm_ipc_fill_layer(sg_gui_event_t *out, uint16_t layer_id) {
     if (!out)
         return;
-    std::memset(out, 0, sizeof(*out));
+    memset(out, 0, sizeof(*out));
     out->type = SG_GUI_EV_LAYER;
     out->u.layer.layer_id = layer_id;
     out->u.layer.reserved[0] = 0;
@@ -87,7 +87,7 @@ extern "C" void wm_ipc_fill_layer(sg_gui_event_t *out, uint16_t layer_id) {
 extern "C" void wm_ipc_fill_theme(sg_gui_event_t *out, const sg_gui_wm_theme_colors_t *colors) {
     if (!out || !colors)
         return;
-    std::memset(out, 0, sizeof(*out));
+    memset(out, 0, sizeof(*out));
     out->type = SG_GUI_EV_THEME;
     out->u.theme = *colors;
 }
