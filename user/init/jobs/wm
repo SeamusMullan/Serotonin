@@ -1,3 +1,2 @@
 exec=/bin/wm
 type=daemon
-after=lwipd

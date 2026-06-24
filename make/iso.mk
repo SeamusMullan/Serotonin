@@ -29,7 +29,8 @@ $(SEROTONIN_IMG): user
 	parted -s $@ mklabel msdos
 	parted -s $@ mkpart primary fat32 1MiB 100%
 	$(eval LOOPDEV := $(shell sudo losetup --show -Pf $@))
-	sleep 1
+	sudo partprobe $(LOOPDEV)
+	sleep 2
 	sudo mkfs.vfat -F 32 $(LOOPDEV)p1
 	sudo mkdir -p $(MOUNT_POINT)
 	sudo mount $(LOOPDEV)p1 $(MOUNT_POINT)
