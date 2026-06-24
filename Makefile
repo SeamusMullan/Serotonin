@@ -42,6 +42,14 @@ run: iso img
 	  -netdev user,id=net0 \
 	  -device rtl8139,netdev=net0
 
+# Boot from ISO only — no disk image required (no sudo needed)
+.PHONY: run-iso
+run-iso: iso
+	$(QEMU) \
+	  -m 2048 -boot d \
+	  -cdrom $(SEROTONIN_ISO) \
+	  -vga std
+
 .PHONY: run-debug
 run-debug: iso img
 	$(QEMU) \

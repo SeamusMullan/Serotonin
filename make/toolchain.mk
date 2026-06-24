@@ -80,11 +80,11 @@ $(TOOLCHAIN_STAMP): $(TOOLS_SRC)/binutils-$(BINUTILS_VER) \
 # ---------------------------------------------------------------------------
 $(TOOLS_SRC)/binutils-$(BINUTILS_VER): $(BINUTILS_TAR)
 	@echo "[toolchain] Extracting binutils..."
-	tar -xzf $< -C $(TOOLS_SRC)
+	tar -xzf $< -C $(TOOLS_SRC) --skip-old-files
 
 $(TOOLS_SRC)/gcc-$(GCC_VER): $(GCC_TAR)
 	@echo "[toolchain] Extracting GCC..."
-	tar -xzf $< -C $(TOOLS_SRC)
+	tar -xzf $< -C $(TOOLS_SRC) --skip-old-files
 	@echo "[toolchain] Patching libcody u8-literals for host GCC >= 10..."
 	find $(TOOLS_SRC)/gcc-$(GCC_VER)/libcody -name '*.[ch]*' \
 	  -exec sed -i 's/u8"/"/g' {} +
@@ -96,7 +96,7 @@ $(TOOLS_SRC)/gcc-$(GCC_VER): $(GCC_TAR)
 
 $(TOOLS_SRC)/newlib-$(NEWLIB_VER): $(NEWLIB_TAR)
 	@echo "[toolchain] Extracting newlib..."
-	tar -xzf $< -C $(TOOLS_SRC)
+	tar -xzf $< -C $(TOOLS_SRC) --skip-old-files
 
 # ---------------------------------------------------------------------------
 # Tarball downloads
