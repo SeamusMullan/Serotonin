@@ -1,8 +1,8 @@
 #ifndef _VFS_PERM_H
 #define _VFS_PERM_H
 
-#include "vfs.h"
-#include "../schedule/schedule.h"
+#include <kernel/filesystem/vfs.h>
+#include <kernel/schedule/schedule.h>
 
 #define PERM_READ  0x04
 #define PERM_WRITE 0x02

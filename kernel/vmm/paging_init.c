@@ -1,4 +1,4 @@
-#include "paging_init.h"
+#include <kernel/vmm/paging_init.h>
 #include <stdint.h>
 
 // Page structures in identity-mapped memory
@@ -12,7 +12,7 @@ __attribute__((aligned(PAGE_SIZE), section(".identity_data")))
 page_table_t kernel_page_tables[64];
 
 __attribute__((aligned(PAGE_SIZE), section(".identity_data")))
-page_table_t heap_page_tables[64];
+page_table_t heap_page_tables[KERNEL_PDE_COUNT];
 
 __attribute__((aligned(PAGE_SIZE), section(".identity_data")))
 page_table_t fb_page_tables[FB_PDE_COUNT];
@@ -29,7 +29,7 @@ uintptr_t fb_addr_ptr;
 
 /**
  * @brief Create a page table entry.
- * 
+ *
  * @param phys The physical address.
  * @param flags The flags for the entry.
  * @return uint32_t The page table entry.
@@ -83,12 +83,12 @@ void paging_init(uintptr_t fb_phys_base) {
     }
 
     // Map heap: 256 MiB via 64 page tables at PDE[832..895]
-    for (uint32_t pd_idx = 0; pd_idx < 64; ++pd_idx) {
+    for (uint32_t pd_idx = 0; pd_idx < KERNEL_PDE_COUNT; ++pd_idx) {
         for (uint32_t i = 0; i < PAGE_ENTRIES; ++i) {
             heap_page_tables[pd_idx][i] =
                 (KERNEL_HEAP_PHYS + pd_idx * 0x400000 + i * PAGE_SIZE) | PAGE_FLAGS;
         }
-        page_directory[832 + pd_idx] =
+        page_directory[KERNEL_HEAP_PDA + pd_idx] =
             ((uintptr_t)&heap_page_tables[pd_idx]) | PAGE_FLAGS;
     }
 

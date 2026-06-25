@@ -26,7 +26,7 @@
 #include <fcntl.h>
 
 // Serotonin-specific
-#include "syscall/lib5ht/lib5ht.h"
+#include <lib5ht.h>
 
 extern "C"
 {
@@ -83,7 +83,7 @@ std::string get_short_cwd()
     {
         return "~";
     }
-    if (cwd.find("/home/" + g_username + "/") == 0)
+    if (cwd.rfind("/home/" + g_username + "/", 0) == 0)
     {
         return "~" + cwd.substr(6 + g_username.length());
     }
@@ -527,6 +527,7 @@ int main(int argc, char **argv, char **envp)
         input_buf[n] = '\0';
 
         // Remove trailing newline
+        // cppcheck-suppress knownConditionTrueFalse
         if (n > 0 && input_buf[n - 1] == '\n')
         {
             input_buf[n - 1] = '\0';
@@ -583,12 +584,12 @@ int main(int argc, char **argv, char **envp)
         if (!cmd.empty() && cmd[cmd.length() - 1] == '&')
         {
             background = true;
-            cmd = cmd.substr(0, cmd.length() - 1);
+            cmd.resize(cmd.length() - 1);
             // Trim again
             end = cmd.find_last_not_of(" \t");
             if (end != std::string::npos)
             {
-                cmd = cmd.substr(0, end + 1);
+                cmd.resize(end + 1);
             }
         }
 

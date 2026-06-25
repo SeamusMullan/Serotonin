@@ -6,6 +6,7 @@
 #define MILLISECONDS_TO_TICKS(ms) (ms)
 #define STDIO_INPUT_BUFFER 1024
 #define SCHEDULE_QUANTUM MILLISECONDS_TO_TICKS(10)
+#define IRQ_CHAIN_MAX 4
 #define IRQ_MAX 16
 #define IRQ_PIT 0
 #define IRQ_KEYBOARD  1
@@ -81,6 +82,7 @@ extern volatile rtc_time_t last_rtc_time;
 extern volatile uint32_t unix_timestamp;
 extern volatile int mouse_x;
 extern volatile int mouse_y;
+extern volatile int keyboard_grab_active;
 
 /**
  * @brief Output a byte to a port.
@@ -164,6 +166,25 @@ static inline void enable_interrupts(void) {
         irq_disabled--;
         asm volatile ("sti");
     }
+}
+
+/**
+ * @brief Save interrupt state and disable interrupts.
+ *
+ * Returns the EFLAGS value before disabling, for use with irq_restore().
+ * Safe to call even if interrupts are already disabled.
+ */
+static inline uint32_t irq_save(void) {
+    uint32_t flags;
+    asm volatile ("pushf; pop %0; cli" : "=r"(flags) :: "memory");
+    return flags;
+}
+
+/**
+ * @brief Restore interrupt state saved by irq_save().
+ */
+static inline void irq_restore(uint32_t flags) {
+    asm volatile ("push %0; popf" :: "r"(flags) : "cc", "memory");
 }
 
 /**

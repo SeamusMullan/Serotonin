@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include "syscall/lib5ht/lib5ht.h"
+#include <lib5ht.h>
 
 static const char *button_name(uint8_t buttons, uint8_t event_type) {
     if (event_type == MOUSE_EVENT_BUTTON_DOWN) {

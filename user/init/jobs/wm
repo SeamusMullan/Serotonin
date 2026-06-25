@@ -1,0 +1,2 @@
+exec=/bin/wm
+type=daemon

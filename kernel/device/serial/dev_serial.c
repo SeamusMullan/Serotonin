@@ -1,16 +1,16 @@
-#include "dev_serial.h"
-#include "../../kernel.h"
-#include "../../filesystem/devfs/devfs.h"
-#include "../../filesystem/vfs.h"
-#include "../../io/io.h"
-#include "../../io/serial.h"
-#include "../../stdio/stdio.h"
-#include "../../stdlib/stdlib.h"
-#include "../../string.h"
-#include "../../syscall/sys/file.h"
-#include "../../syscall/sys/errno.h"
-#include "../../schedule/schedule.h"
-#include "../../vmm/vmm.h"
+#include <kernel/device/serial/dev_serial.h>
+#include <kernel/kernel.h>
+#include <kernel/filesystem/devfs/devfs.h>
+#include <kernel/filesystem/vfs.h>
+#include <kernel/io/io.h>
+#include <kernel/io/serial.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/string.h>
+#include <kernel/syscall/sys/file.h>
+#include <kernel/syscall/sys/errno.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/vmm/vmm.h>
 
 // recv ring buf
 static char rx_ring[SERIAL_RING_SIZE];
@@ -109,44 +109,80 @@ int dev_serial_write(vfs_node_t *node, uint32_t offset, uint32_t size, const cha
     return (int)size;
 }
 
-// this is irq4
-void dev_serial_irq_handler(void) {
-    while (serial_data_ready(COM1_BASE)) {
-        char c = serial_getchar(COM1_BASE);
+static void dev_serial_deliver_byte(char c) {
+    // direct delivery to a blocked reader if there is one
+    if (dev_serial_node) {
+        devfs_wait_queue_t *wq = devfs_get_wait_queue(dev_serial_node);
+        if (wq && wq->head) {
+            devfs_waiter_t *waiter = wq->head;
+            process_control_block_t *task = waiter->task;
 
-        // direct delivery
-        if (dev_serial_node) {
-            devfs_wait_queue_t *wq = devfs_get_wait_queue(dev_serial_node);
-            if (wq && wq->head) {
-                devfs_waiter_t *waiter = wq->head;
-                process_control_block_t *task = waiter->task;
+            wq->head = waiter->next;
+            if (!wq->head)
+                wq->tail = NULL;
 
-                wq->head = waiter->next;
-                if (!wq->head)
-                    wq->tail = NULL;
-
-                if (waiter->buffer && waiter->buffer_size >= 1) {
-                    if (copy_to_user(task->address_space, (uint32_t)waiter->buffer, &c, 1) == 0) {
-                        task->processor_context->eax = 1;
-                    } else {
-                        task->processor_context->eax = (uint32_t)-EIO;
-                    }
+            if (waiter->buffer && waiter->buffer_size >= 1) {
+                if (copy_to_user(task->address_space, (uint32_t)waiter->buffer, &c, 1) == 0) {
+                    task->processor_context->eax = 1;
+                } else {
+                    task->processor_context->eax = (uint32_t)-EIO;
                 }
-
-                kernel_free(waiter);
-                task_unblock(task);
-                continue;
             }
-        }
 
-        // no waiter
-        if (rx_count >= SERIAL_RING_SIZE) {
-            rx_tail = (rx_tail + 1) % SERIAL_RING_SIZE;
-            rx_count--;
+            kernel_free(waiter);
+            task_unblock(task);
+            return;
         }
-        rx_ring[rx_head] = c;
-        rx_head = (rx_head + 1) % SERIAL_RING_SIZE;
-        rx_count++;
+    }
+
+    // otherwise stash in the ring buffer, dropping oldest on overflow
+    if (rx_count >= SERIAL_RING_SIZE) {
+        rx_tail = (rx_tail + 1) % SERIAL_RING_SIZE;
+        rx_count--;
+    }
+    rx_ring[rx_head] = c;
+    rx_head = (rx_head + 1) % SERIAL_RING_SIZE;
+    rx_count++;
+}
+
+// this is irq4
+//
+// Drive the handler off the IIR (Interrupt Identification Register) instead
+// of just LSR.DR. A 16550 keeps its IRQ line asserted until *every* pending
+// cause is cleared; if we exit while any cause is still pending (RLS error
+// bits, THRE, modem-status, or a CTI with an empty FIFO race), the UART
+// never re-edges the PIC and RX goes permanently deaf. That manifested as
+// serial dying after a handful of seconds.
+void dev_serial_irq_handler(void) {
+    // Loop until IIR reports "no interrupt pending" (bit 0 == 1).
+    // Cap iterations so a stuck UART can't wedge the kernel here.
+    for (int i = 0; i < 64; i++) {
+        uint8_t iir = inb(COM1_BASE + SERIAL_INT_ID);
+        if (iir & 0x01)
+            break;  // no interrupt pending
+
+        switch (iir & 0x0E) {
+            case 0x06:  // Receiver Line Status - reading LSR clears it
+                (void)inb(COM1_BASE + SERIAL_LINE_STATUS);
+                break;
+            case 0x04:  // Received Data Available
+            case 0x0C:  // Character Timeout Indication
+                // Drain the RX FIFO until LSR.DR clears.
+                while (inb(COM1_BASE + SERIAL_LINE_STATUS) & 0x01) {
+                    char c = (char)inb(COM1_BASE + SERIAL_RECV_BUFFER);
+                    dev_serial_deliver_byte(c);
+                }
+                break;
+            case 0x02:  // Transmitter Holding Register Empty - reading IIR already cleared it
+                break;
+            case 0x00:  // Modem Status - reading MSR clears it
+                (void)inb(COM1_BASE + 6);
+                break;
+            default:
+                // Unknown cause; read LSR to make a best-effort clear.
+                (void)inb(COM1_BASE + SERIAL_LINE_STATUS);
+                break;
+        }
     }
 }
 

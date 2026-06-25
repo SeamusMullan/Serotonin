@@ -1,6 +1,6 @@
-#include "serial.h"
-#include "io.h"
-#include "../stdio/stdio.h"
+#include <kernel/io/serial.h>
+#include <kernel/io/io.h>
+#include <kernel/stdio/stdio.h>
 
 void serial_init(uint16_t port) {
     outb(port + SERIAL_INT_ENABLE, 0x00);    // Disable all interrupts
@@ -19,16 +19,26 @@ void serial_init(uint16_t port) {
         return;
     }
 
-    printf("its working??\n");
-
     outb(port + SERIAL_MODEM_CTRL, 0x0F);    // Set normal operation mode
+
+    // Drain any stale bytes left in the RX FIFO from the loopback test or power-on,
+    // and clear any latched line-status bits (reading LSR clears OE/PE/FE/BI).
+    (void)inb(port + SERIAL_LINE_STATUS);
+    while (inb(port + SERIAL_LINE_STATUS) & 0x01)
+        (void)inb(port + SERIAL_RECV_BUFFER);
+    (void)inb(port + SERIAL_INT_ID);          // clear any THRE pending flag
+    (void)inb(port + 6 /* MSR */);            // clear any modem-status latch
 
     // Enable receive data available interrupt
     outb(port + SERIAL_INT_ENABLE, 0x01);
 }
 
 void serial_putchar(uint16_t port, char c) {
-    io_wait();
+    // Wait for the transmitter holding register to be empty (LSR bit 5).
+    // Without this, rapid writes clobber bytes that are still being shifted
+    // out, and eventually the UART wedges / drops most of the stream.
+    while (!(inb(port + SERIAL_LINE_STATUS) & 0x20))
+        ;
     outb(port, c);
 }
 

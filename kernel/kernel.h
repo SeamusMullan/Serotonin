@@ -2,15 +2,17 @@
 #define _KERNEL
 
 #include <stdint.h>
-#include "schedule/schedule.h"
-#include "string.h"
+#include <kernel/schedule/schedule.h>
+#include <kernel/string.h>
 
 #define KERNEL_ESP 0xF0400000
 #define KERNEL_VERSION_HIGH 0
 #define KERNEL_VERSION_MID 4
-#define KERNEL_VERSION_LOW 1
+#define KERNEL_VERSION_LOW 4
 
 #define BIT(n) (1u << (n))
+
+#define ELF_CHUNK_SIZE (512u * 1024u)
 
 /* ELF identification indexes */
 #define EI_MAG0       0 // Magic number

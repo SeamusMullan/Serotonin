@@ -1,6 +1,6 @@
 #include <stdint.h>
 #include <stddef.h>
-#include "string.h"
+#include <kernel/string.h>
 
 /**
  * @brief Get the length of a string.

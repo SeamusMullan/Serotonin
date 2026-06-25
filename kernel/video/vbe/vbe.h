@@ -2,11 +2,13 @@
 #define _VBE_H
 
 #include <stdint.h>
-#include "../../multiboot.h"
-#include "../../schedule/schedule.h"
-#include "../font.h"
+#include <kernel/multiboot.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/video/font.h>
 
-#define VBE_TICKS_PER_FRAME 17
+/* Compositor wake cadence in PIT ticks.
+   With current scheduler behavior this yields roughly ~60fps at value 8. */
+#define VBE_TICKS_PER_FRAME 8
 #define VBE_CURSOR_BLINK_MS 500
 
 #define VBE_FONT_WIDTH  8
@@ -15,6 +17,11 @@
 
 #define SCREEN_WIDTH 1920
 #define SCREEN_HEIGHT 1080
+
+#define VBE_TILE_W 16
+#define VBE_TILE_H 16
+#define VBE_IRQ_CHUNK_SPANS 8
+#define VBE_NT_COPY_THRESHOLD 256
 
 extern uint32_t vbe_palette[256];
 
@@ -71,6 +78,7 @@ typedef struct {
     uint8_t z;
     uint8_t active;
     uint8_t alpha;
+    uint16_t hints;
     uint16_t width;
     uint16_t height;
     uint16_t x0;
@@ -84,6 +92,7 @@ typedef struct fb_layer_metadata fb_layer_metadata_t;
 
 extern vbe_mode_info_t vbe_info;
 extern uint32_t fb_size_bytes;
+extern uint8_t cursor_visible;
 
 void vbe_init(multiboot_info_t *mbi);
 void vbe_putpixel(uint32_t x, uint32_t y, uint32_t color);

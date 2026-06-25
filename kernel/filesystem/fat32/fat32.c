@@ -1,13 +1,44 @@
-#include "fat32.h"
+#include <kernel/filesystem/fat32/fat32.h>
 #include <stdint.h>
-#include "../../stdio/stdio.h"
-#include "../../stdlib/stdlib.h"
-#include "../../io/io.h"
-#include "../../kernel.h"
-#include "../../string.h"
-#include "../vfs.h"
-#include "../ide.h"
-#include "../../syscall/sys/file.h"
+#include <kernel/stdio/stdio.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/io/io.h>
+#include <kernel/kernel.h>
+#include <kernel/string.h>
+#include <kernel/filesystem/vfs.h>
+#include <kernel/filesystem/ide.h>
+#include <kernel/filesystem/blkcache.h>
+#include <kernel/device/ide/ide_pci.h>
+#include <kernel/syscall/sys/file.h>
+
+static void fat32_read_cluster(fat32_fs_info_t *fs_info, uint32_t cluster, uint8_t *buffer);
+static uint32_t fat32_read_fat_entry(fat32_fs_info_t *fs_info, uint32_t cluster);
+static void fat32_flush_fat_cache(fat32_fs_info_t *fs);
+
+static int fat32_read(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer);
+static int fat32_write(vfs_node_t *node, uint32_t offset, uint32_t size, const char *buffer);
+static int fat32_truncate(vfs_node_t *node, uint32_t size);
+static int fat32_unlink(vfs_node_t *parent, const char *name);
+static int fat32_rmdir(vfs_node_t *parent, const char *name);
+static int fat32_open(vfs_node_t *node);
+static int fat32_close(vfs_node_t *node);
+static vfs_node_t *fat32_finddir(vfs_node_t *dir, const char *name);
+static vfs_node_t *fat32_create(vfs_node_t *parent, const char *name);
+static vfs_node_t *fat32_mkdir(vfs_node_t *parent, const char *name);
+
+vfs_ops_t fat32_ops = {
+    .read    = fat32_read,
+    .write   = fat32_write,
+    .truncate = fat32_truncate,
+    .unlink  = fat32_unlink,
+    .rmdir   = fat32_rmdir,
+    .open    = fat32_open,
+    .close   = fat32_close,
+    .readdir = fat32_readdir,
+    .finddir = fat32_finddir,
+    .create  = fat32_create,
+    .mkdir   = fat32_mkdir
+};
 
 filesystem_t fat32_fs = {
     .name = "fat32",
@@ -135,8 +166,6 @@ static void fat32_generate_short_name(const char *fname, uint8_t key[11], fat32_
         // Truncate base to fit tail
         int base_max = 8 - tlen;
         if (pos < base_max) base_max = pos;
-        for (int i = 0; i < base_max; i++)
-            key[i] = key[i]; // already set
         for (int i = 0; i < tlen; i++)
             key[base_max + i] = tailstr[i];
         for (int i = base_max + tlen; i < 8; i++)
@@ -258,6 +287,7 @@ static void fat32_parse_bpb(fat32_fs_info_t *info,
                             uint8_t *boot_sector)
 {
     fat_BS_t       *bpb = (fat_BS_t *)boot_sector;
+    // cppcheck-suppress constVariablePointer
     fat_extBS_32_t *ext = (fat_extBS_32_t *)(bpb->extended_section);
 
     info->drive                 = drive;
@@ -289,11 +319,26 @@ void fat32_init(void) {
  * @return vfs_node_t* The root directory of the mounted filesystem.
  */
 vfs_node_t *fat32_mount(const char *device) {
-    uint8_t drive = device ? (uint8_t)atoi(device) : 0;
+    uint8_t drive = 0;
+    uint8_t read_only = 0;
+
+    if (!device || !*device) {
+        drive = 0;
+    } else if (strncmp(device, "mem", 3) == 0 && device[3] >= '0' && device[3] <= '9') {
+        uint8_t slot = (uint8_t)atoi(device + 3);
+        drive = (uint8_t)(BLKCACHE_MEMDRIVE_BASE + slot);
+        read_only = 1;
+    } else {
+        drive = (uint8_t)atoi(device);
+    }
 
     // 1: Read MBR
     uint8_t *mbr = kernel_malloc(512);
-    ide_read_sector(drive, 0, mbr);
+    if (blkcache_read_sector(drive, 0, mbr) != 0) {
+        printfs(PRINT_STATUS_ERROR, "fat32_mount: unable to read MBR on drive %u\n", drive);
+        kernel_free(mbr);
+        return NULL;
+    }
     if (mbr[510] != 0x55 || mbr[511] != 0xAA) {
         printfs(PRINT_STATUS_ERROR,"fat32_mount: invalid MBR signature %02x %02x\n",
                mbr[510], mbr[511]);
@@ -306,7 +351,11 @@ vfs_node_t *fat32_mount(const char *device) {
 
     // 2: Read Boot Sector
     uint8_t *boot = kernel_malloc(512);
-    ide_read_sector(drive, part1, boot);
+    if (blkcache_read_sector(drive, part1, boot) != 0) {
+        printfs(PRINT_STATUS_ERROR, "fat32_mount: unable to read boot sector on drive %u\n", drive);
+        kernel_free(boot);
+        return NULL;
+    }
     if (boot[510] != 0x55 || boot[511] != 0xAA) {
         printfs(PRINT_STATUS_ERROR,"fat32_mount: invalid BS sig %02x %02x\n",
                boot[510], boot[511]);
@@ -317,14 +366,27 @@ vfs_node_t *fat32_mount(const char *device) {
     // 3: Parse BPB
     fat32_fs_info_t *fs_info = kernel_malloc(sizeof(*fs_info));
     fat32_parse_bpb(fs_info, drive, part1, boot);
+    fs_info->read_only = read_only;
     kernel_free(boot);
+
+    // Initialize FAT entry cache (up to 64 sectors = 32KB, covers 8192 clusters)
+    uint32_t cache_secs = fs_info->fat_size;
+    if (cache_secs > 64) cache_secs = 64;
+    fs_info->fat_cache = kernel_malloc(cache_secs * 512);
+    fs_info->fat_cache_start = 0;
+    fs_info->fat_cache_sectors = cache_secs;
+    fs_info->fat_cache_dirty = 0;
+    if (fs_info->fat_cache) {
+        blkcache_read_sectors(fs_info->drive, fs_info->fat_start_lba,
+                              (uint8_t)cache_secs, fs_info->fat_cache);
+    }
 
     // 4: Allocate root vfs_node
     vfs_node_t *root = kernel_malloc(sizeof(*root));
     memset(root, 0, sizeof(*root));
     strcpy(root->name, "/");
     root->inode    = 0;
-    root->flags    = VFS_FLAG_DIRECTORY;
+    root->flags    = VFS_FLAG_DIRECTORY | VFS_FLAG_DISKIO;
     root->refcount = 1;
     root->ops      = &fat32_ops;
     root->uid      = 0;
@@ -337,8 +399,8 @@ vfs_node_t *fat32_mount(const char *device) {
     ni->cluster_number= fs_info->root_cluster;
     root->fs_data     = ni;
 
-    printfs(PRINT_STATUS_INFO,"fat32: mounted drive %u, root cluster %u\n",
-           drive, fs_info->root_cluster);
+    printfs(PRINT_STATUS_INFO,"fat32: mounted drive %u%s, root cluster %u\n",
+           drive, fs_info->read_only ? " (read-only)" : "", fs_info->root_cluster);
     return root;
 }
 
@@ -358,10 +420,7 @@ static void fat32_read_cluster(fat32_fs_info_t *fs_info, uint32_t cluster, uint8
         return;
     }
     uint32_t first_sector = fs_info->cluster_heap_start_lba + (cluster - 2) * fs_info->sectors_per_cluster;
-
-    for (uint8_t i = 0; i < fs_info->sectors_per_cluster; i++) {
-        ide_read_sector(fs_info->drive, first_sector + i, buffer + (i * fs_info->bytes_per_sector));
-    }
+    blkcache_read_sectors(fs_info->drive, first_sector, fs_info->sectors_per_cluster, buffer);
 }
 
 /**
@@ -373,14 +432,45 @@ static void fat32_read_cluster(fat32_fs_info_t *fs_info, uint32_t cluster, uint8
  */
 static uint32_t fat32_read_fat_entry(fat32_fs_info_t *fs_info, uint32_t cluster) {
     uint32_t fat_offset = cluster * 4;
-    uint32_t fat_sector = fs_info->fat_start_lba + (fat_offset / fs_info->bytes_per_sector);
+    uint32_t sector_in_fat = fat_offset / fs_info->bytes_per_sector;
     uint32_t offset_in_sector = fat_offset % fs_info->bytes_per_sector;
 
-    uint8_t sector[512];
-    ide_read_sector(fs_info->drive, fat_sector, sector);
+    // check FAT cache
+    if (fs_info->fat_cache &&
+        sector_in_fat >= fs_info->fat_cache_start &&
+        sector_in_fat < fs_info->fat_cache_start + fs_info->fat_cache_sectors) {
+        uint32_t cache_off = (sector_in_fat - fs_info->fat_cache_start) * fs_info->bytes_per_sector
+                           + offset_in_sector;
+        uint32_t entry = *(uint32_t *)(fs_info->fat_cache + cache_off);
+        return entry & 0x0FFFFFFF;
+    }
 
+    // cache miss - reload window centered on requested sector
+    if (fs_info->fat_cache) {
+        if (fs_info->fat_cache_dirty)
+            fat32_flush_fat_cache(fs_info);
+
+        uint32_t new_start = 0;
+        if (sector_in_fat >= fs_info->fat_cache_sectors / 2)
+            new_start = sector_in_fat - fs_info->fat_cache_sectors / 2;
+        if (new_start + fs_info->fat_cache_sectors > fs_info->fat_size)
+            new_start = fs_info->fat_size - fs_info->fat_cache_sectors;
+
+        blkcache_read_sectors(fs_info->drive, fs_info->fat_start_lba + new_start,
+                              (uint8_t)fs_info->fat_cache_sectors, fs_info->fat_cache);
+        fs_info->fat_cache_start = new_start;
+
+        uint32_t cache_off = (sector_in_fat - new_start) * fs_info->bytes_per_sector
+                           + offset_in_sector;
+        uint32_t entry = *(uint32_t *)(fs_info->fat_cache + cache_off);
+        return entry & 0x0FFFFFFF;
+    }
+
+    // no cache - fallback to direct read
+    uint8_t sector[512];
+    blkcache_read_sector(fs_info->drive, fs_info->fat_start_lba + sector_in_fat, sector);
     uint32_t entry = *(uint32_t *)(sector + offset_in_sector);
-    return entry & 0x0FFFFFFF; // mask to 28 bits
+    return entry & 0x0FFFFFFF;
 }
 
 /**
@@ -427,6 +517,7 @@ vfs_node_t *fat32_readdir(vfs_node_t *node, uint32_t index) {
 
             // Collect LFN entries
             if ((entries[i].attr & 0x0F) == 0x0F) {
+                // cppcheck-suppress constVariablePointer
                 fat_lfn_entry_t *lfn = (fat_lfn_entry_t *)&entries[i];
                 if (lfn->order & 0x40) {
                     // First LFN entry (last in name sequence)
@@ -489,16 +580,16 @@ vfs_node_t *fat32_readdir(vfs_node_t *node, uint32_t index) {
                 }
                 child->name[sizeof(child->name) - 1] = '\0';
 
-                child->inode = index;
+                child->inode = ((entries[i].first_cluster_high << 16) | entries[i].first_cluster_low);
                 if (entries[i].attr & FAT32_ATTR_DIRECTORY) {
-                    child->flags = VFS_FLAG_DIRECTORY;
+                    child->flags = VFS_FLAG_DIRECTORY | VFS_FLAG_DISKIO;
                     child->mode = S_IFDIR | 0755;
                 } else {
-                    child->flags = VFS_FLAG_FILE;
+                    child->flags = VFS_FLAG_FILE | VFS_FLAG_DISKIO;
                     child->mode = S_IFREG | ((entries[i].attr & 0x01) ? 0444 : 0644);
                 }
                 child->size = entries[i].file_size;
-                child->refcount = 1;
+                child->refcount = 0;
                 child->ops = node->ops;
                 child->uid = 0;
                 child->gid = 0;
@@ -534,6 +625,17 @@ vfs_node_t *fat32_readdir(vfs_node_t *node, uint32_t index) {
  * @param buffer The buffer to read data into.
  * @return int The number of bytes read, or -1 on failure.
  */
+static uint32_t fat32_resolve_chain(fat32_fs_info_t *fs, uint32_t start,
+                                    uint32_t *chain, uint32_t max) {
+    uint32_t count = 0;
+    uint32_t cl = start;
+    while (cl >= 2 && cl < FAT32_CLUSTER_END && count < max) {
+        chain[count++] = cl;
+        cl = fat32_read_fat_entry(fs, cl);
+    }
+    return count;
+}
+
 static int fat32_read(vfs_node_t *node,
                       uint32_t offset,
                       uint32_t size,
@@ -541,7 +643,6 @@ static int fat32_read(vfs_node_t *node,
 {
     if (!(node->flags & VFS_FLAG_FILE)) return -1;
 
-    // clamp to file size
     if (offset >= node->size) return 0;
     if (offset + size > node->size)
         size = node->size - offset;
@@ -549,42 +650,69 @@ static int fat32_read(vfs_node_t *node,
     fat32_node_info_t *ni  = (fat32_node_info_t*)node->fs_data;
     fat32_fs_info_t   *fs  = ni->fs_info;
     uint32_t cluster_size   = fs->bytes_per_sector * fs->sectors_per_cluster;
+    uint32_t spc = fs->sectors_per_cluster;
 
-    // find the first cluster of this file
-    uint32_t cluster = ni->cluster_number;
-
-    // skip clusters until we reach the one containing 'offset'
+    // walk to the cluster containing 'offset'
     uint32_t skip = offset / cluster_size;
-    uint32_t cluster_offset = offset % cluster_size;
+    uint32_t cofs = offset % cluster_size;
+    uint32_t start_cluster = ni->cluster_number;
     for (uint32_t i = 0; i < skip; i++) {
-        cluster = fat32_read_fat_entry(fs, cluster);
-        if (cluster < 2 || cluster >= FAT32_CLUSTER_END) return 0;
+        start_cluster = fat32_read_fat_entry(fs, start_cluster);
+        if (start_cluster < 2 || start_cluster >= FAT32_CLUSTER_END) return 0;
     }
 
-    // allocate a single-cluster buffer
-    uint8_t *clusbuf = kernel_malloc(cluster_size);
-    if (!clusbuf) return -1;
-    uint32_t read = 0;
+    uint32_t chain[128];
+    uint32_t read_total = 0;
+    uint32_t cur_cluster = start_cluster;
 
-    // read cluster by cluster
-    while (read < size && cluster >= 2 && cluster < FAT32_CLUSTER_END) {
-        fat32_read_cluster(fs, cluster, clusbuf);
+    while (read_total < size) {
+        // resolve up to 128 clusters from the current position
+        uint32_t chain_len = fat32_resolve_chain(fs, cur_cluster, chain, 128);
+        if (chain_len == 0) break;
 
-        // how many bytes to copy from this cluster
-        uint32_t copy = cluster_size - cluster_offset;
-        if (copy > size - read) copy = size - read;
+        uint32_t ci = 0;
+        while (read_total < size && ci < chain_len) {
+            // find contiguous run of clusters (cap so total sectors fits in uint8_t)
+            uint32_t max_run = 255 / spc;
+            if (max_run < 1) max_run = 1;
+            uint32_t run_len = 1;
+            while (ci + run_len < chain_len &&
+                   chain[ci + run_len] == chain[ci + run_len - 1] + 1 &&
+                   run_len < max_run)
+                run_len++;
 
-        memcpy(buffer + read, clusbuf + cluster_offset, copy);
-        read += copy;
-        cluster_offset = 0;
+            uint32_t run_bytes = run_len * cluster_size - cofs;
+            if (run_bytes > size - read_total) run_bytes = size - read_total;
 
-        // move to next cluster if more to read
-        if (read < size)
-            cluster = fat32_read_fat_entry(fs, cluster);
+            uint32_t first_lba = fs->cluster_heap_start_lba
+                               + (chain[ci] - 2) * spc;
+            uint32_t total_sectors = run_len * spc;
+
+            if (cofs == 0 && run_bytes == run_len * cluster_size) {
+                // aligned: read directly into output buffer
+                blkcache_read_sectors(fs->drive, first_lba,
+                                      (uint8_t)total_sectors,
+                                      (uint8_t *)(buffer + read_total));
+            } else {
+                // partial: use temp buffer
+                uint8_t *tmp = kernel_malloc(run_len * cluster_size);
+                if (!tmp) return read_total > 0 ? (int)read_total : -1;
+                blkcache_read_sectors(fs->drive, first_lba,
+                                      (uint8_t)total_sectors, tmp);
+                memcpy(buffer + read_total, tmp + cofs, run_bytes);
+                kernel_free(tmp);
+            }
+
+            read_total += run_bytes;
+            ci += run_len;
+            cofs = 0;
+        }
+
+        // advance cur_cluster past the chain we just consumed
+        cur_cluster = fat32_read_fat_entry(fs, chain[chain_len - 1]);
     }
 
-    kernel_free(clusbuf);
-    return read;
+    return read_total;
 }
 
 /**
@@ -619,6 +747,7 @@ static int fat32_close(vfs_node_t *node) {
  * @param name The name of the directory entry to find.
  * @return vfs_node_t* The VFS node representing the directory entry, or NULL on failure.
  */
+// cppcheck-suppress constParameterCallback
 static vfs_node_t *fat32_finddir(vfs_node_t *dir, const char *name) {
     // build the 11-byte key for 8.3 comparison
     uint8_t key[11];
@@ -661,6 +790,7 @@ static vfs_node_t *fat32_finddir(vfs_node_t *dir, const char *name) {
 
             // Collect LFN entries
             if ((ents[i].attr & 0x0F) == 0x0F) {
+                // cppcheck-suppress constVariablePointer
                 fat_lfn_entry_t *lfn = (fat_lfn_entry_t *)&ents[i];
                 if (lfn->order & 0x40) {
                     lfn_frag_count = 0;
@@ -719,13 +849,13 @@ static vfs_node_t *fat32_finddir(vfs_node_t *dir, const char *name) {
                 memset(child, 0, sizeof(*child));
                 strncpy(child->name, name, sizeof(child->name));
                 child->name[sizeof(child->name) - 1] = '\0';
-                child->inode    = (uint32_t)child;
+                child->inode    = ((ents[i].first_cluster_high << 16) | ents[i].first_cluster_low);
                 child->flags    = (ents[i].attr & FAT32_ATTR_DIRECTORY)
-                                  ? VFS_FLAG_DIRECTORY
-                                  : VFS_FLAG_FILE;
+                                  ? (VFS_FLAG_DIRECTORY | VFS_FLAG_DISKIO)
+                                  : (VFS_FLAG_FILE | VFS_FLAG_DISKIO);
                 child->size     = ents[i].file_size;
                 child->ops      = &fat32_ops;
-                child->refcount = 1;
+                child->refcount = 0;
                 child->uid      = 0;
                 child->gid      = 0;
                 if (ents[i].attr & FAT32_ATTR_DIRECTORY) {
@@ -765,26 +895,58 @@ static vfs_node_t *fat32_finddir(vfs_node_t *dir, const char *name) {
  */
 static int fat32_write_fat_entry(fat32_fs_info_t *fs, uint32_t cluster, uint32_t value)
 {
-    // mask to 28 bits
     value &= 0x0FFFFFFF;
 
     uint32_t off    = cluster * 4;
-    uint32_t sector = off / fs->bytes_per_sector;
+    uint32_t sector_in_fat = off / fs->bytes_per_sector;
     uint32_t idx    = off % fs->bytes_per_sector;
-    uint8_t  buf[512];
 
+    // try to write into FAT cache
+    if (fs->fat_cache &&
+        sector_in_fat >= fs->fat_cache_start &&
+        sector_in_fat < fs->fat_cache_start + fs->fat_cache_sectors) {
+        uint32_t cache_off = (sector_in_fat - fs->fat_cache_start) * fs->bytes_per_sector + idx;
+        *(uint32_t *)(fs->fat_cache + cache_off) = value;
+        fs->fat_cache_dirty = 1;
+        return 0;
+    }
+
+    // ensure sector is in cache by reading it first (forces window slide if needed)
+    if (fs->fat_cache) {
+        fat32_read_fat_entry(fs, cluster);
+        // now it should be in the cache window
+        if (sector_in_fat >= fs->fat_cache_start &&
+            sector_in_fat < fs->fat_cache_start + fs->fat_cache_sectors) {
+            uint32_t cache_off = (sector_in_fat - fs->fat_cache_start) * fs->bytes_per_sector + idx;
+            *(uint32_t *)(fs->fat_cache + cache_off) = value;
+            fs->fat_cache_dirty = 1;
+            return 0;
+        }
+    }
+
+    // fallback: direct read-modify-write through blkcache
+    uint8_t buf[512];
     for (int copy = 0; copy < fs->table_count; copy++) {
-        uint32_t lba = fs->fat_start_lba
-                     + copy * fs->fat_size
-                     + sector;
-        // 1: read
-        ide_read_sector(fs->drive, lba, buf);
-        // 2: patch
+        uint32_t lba = fs->fat_start_lba + copy * fs->fat_size + sector_in_fat;
+        blkcache_read_sector(fs->drive, lba, buf);
         *(uint32_t *)(buf + idx) = value;
-        // 3: write back
-        ide_write_sector(fs->drive, lba, buf);
+        blkcache_write_sector(fs->drive, lba, buf);
     }
     return 0;
+}
+
+static void fat32_flush_fat_cache(fat32_fs_info_t *fs) {
+    if (!fs->fat_cache || !fs->fat_cache_dirty) return;
+
+    for (uint8_t copy = 0; copy < fs->table_count; copy++) {
+        uint32_t base = fs->fat_start_lba + copy * fs->fat_size + fs->fat_cache_start;
+        for (uint32_t i = 0; i < fs->fat_cache_sectors; i++) {
+            blkcache_write_sector(fs->drive, base + i,
+                                  fs->fat_cache + i * fs->bytes_per_sector);
+        }
+    }
+    fs->fat_cache_dirty = 0;
+    blkcache_flush(fs->drive);
 }
 
 /**
@@ -821,9 +983,9 @@ static void fat32_write_cluster(fat32_fs_info_t *fs, uint32_t cluster, const uin
                           + (cluster - 2) * fs->sectors_per_cluster;
 
     for (uint8_t i = 0; i < fs->sectors_per_cluster; i++) {
-        ide_write_sector(fs->drive,
-                         first_sector + i,
-                         buffer + (i * fs->bytes_per_sector));
+        blkcache_write_sector(fs->drive,
+                              first_sector + i,
+                              buffer + (i * fs->bytes_per_sector));
     }
 }
 
@@ -841,6 +1003,7 @@ static void fat32_delete_lfn_chain(fat_dir_entry_t *ents, uint32_t sfn_index) {
     for (int j = (int)sfn_index - 1; j >= 0; j--) {
         if ((ents[j].attr & 0x0F) == 0x0F && (uint8_t)ents[j].name[0] != 0xE5) {
             ents[j].name[0] = 0xE5;
+            // cppcheck-suppress constVariablePointer
             fat_lfn_entry_t *lfn = (fat_lfn_entry_t *)&ents[j];
             if (lfn->order & 0x40) break; // was the last one
         } else {
@@ -849,6 +1012,7 @@ static void fat32_delete_lfn_chain(fat_dir_entry_t *ents, uint32_t sfn_index) {
     }
 }
 
+// cppcheck-suppress constParameterCallback
 static int fat32_unlink(vfs_node_t *parent, const char *name) {
     if (!(parent->flags & VFS_FLAG_DIRECTORY)) return -1;
 
@@ -857,6 +1021,7 @@ static int fat32_unlink(vfs_node_t *parent, const char *name) {
 
     fat32_node_info_t *pni = parent->fs_data;
     fat32_fs_info_t *fs = pni->fs_info;
+    if (fs->read_only) return -1;
     uint32_t cluster = pni->cluster_number;
 
     uint32_t cluster_size = fs->sectors_per_cluster * fs->bytes_per_sector;
@@ -886,6 +1051,7 @@ static int fat32_unlink(vfs_node_t *parent, const char *name) {
             }
 
             if ((ents[i].attr & 0x0F) == 0x0F) {
+                // cppcheck-suppress constVariablePointer
                 fat_lfn_entry_t *lfn = (fat_lfn_entry_t *)&ents[i];
                 if (lfn->order & 0x40) {
                     lfn_frag_count = 0;
@@ -993,6 +1159,7 @@ static int fat32_dir_is_empty(fat32_fs_info_t *fs, uint32_t dir_cluster) {
     return 1;
 }
 
+// cppcheck-suppress constParameterCallback
 static int fat32_rmdir(vfs_node_t *parent, const char *name) {
     if (!(parent->flags & VFS_FLAG_DIRECTORY)) return -1;
 
@@ -1001,6 +1168,7 @@ static int fat32_rmdir(vfs_node_t *parent, const char *name) {
 
     fat32_node_info_t *pni = parent->fs_data;
     fat32_fs_info_t *fs = pni->fs_info;
+    if (fs->read_only) return -1;
     uint32_t cluster = pni->cluster_number;
 
     uint32_t cluster_size = fs->sectors_per_cluster * fs->bytes_per_sector;
@@ -1029,6 +1197,7 @@ static int fat32_rmdir(vfs_node_t *parent, const char *name) {
             }
 
             if ((ents[i].attr & 0x0F) == 0x0F) {
+                // cppcheck-suppress constVariablePointer
                 fat_lfn_entry_t *lfn = (fat_lfn_entry_t *)&ents[i];
                 if (lfn->order & 0x40) {
                     lfn_frag_count = 0;
@@ -1136,6 +1305,7 @@ static void fat32_update_dir_entry(fat32_node_info_t *ni, const char *name, uint
             if (first == 0xE5) { lfn_valid = 0; lfn_frag_count = 0; continue; }
 
             if ((ents[i].attr & 0x0F) == 0x0F) {
+                // cppcheck-suppress constVariablePointer
                 fat_lfn_entry_t *lfn = (fat_lfn_entry_t *)&ents[i];
                 if (lfn->order & 0x40) {
                     lfn_frag_count = 0;
@@ -1202,6 +1372,7 @@ static int fat32_write(vfs_node_t *node, uint32_t offset, uint32_t size, const c
 
     fat32_node_info_t *ni = node->fs_data;
     fat32_fs_info_t   *fs = ni->fs_info;
+    if (fs->read_only) return -1;
     uint32_t cluster_size = fs->bytes_per_sector * fs->sectors_per_cluster;
 
     // grow file size if needed
@@ -1266,6 +1437,8 @@ static int fat32_write(vfs_node_t *node, uint32_t offset, uint32_t size, const c
     }
 
     kernel_free(clusbuf);
+    fat32_flush_fat_cache(fs);
+    blkcache_flush(fs->drive);
     fat32_update_dir_entry(ni, node->name, node->size);
     return written;
 }
@@ -1275,6 +1448,7 @@ static int fat32_truncate(vfs_node_t *node, uint32_t size) {
 
     fat32_node_info_t *ni = node->fs_data;
     if (!ni) return -1;
+    if (ni->fs_info && ni->fs_info->read_only) return -1;
 
     node->size = size;
     ni->size = size;
@@ -1425,9 +1599,11 @@ static uint32_t fat32_write_dir_entries(fat32_fs_info_t *fs,
     return cluster; // cluster where the SFN entry lives
 }
 
+// cppcheck-suppress constParameterCallback
 static vfs_node_t *fat32_create(vfs_node_t *parent, const char *name) {
     fat32_node_info_t *pni = parent->fs_data;
     fat32_fs_info_t   *fs  = pni->fs_info;
+    if (fs->read_only) return NULL;
     uint32_t dir_cluster = pni->cluster_number;
 
     // Build the 8.3 short name
@@ -1462,7 +1638,7 @@ static vfs_node_t *fat32_create(vfs_node_t *parent, const char *name) {
     memset(child, 0, sizeof(*child));
     strncpy(child->name, name, sizeof(child->name));
     child->name[sizeof(child->name) - 1] = '\0';
-    child->flags = VFS_FLAG_FILE;
+    child->flags = VFS_FLAG_FILE | VFS_FLAG_DISKIO;
     child->refcount = 1;
     child->ops  = &fat32_ops;
     child->uid  = 0;
@@ -1483,9 +1659,11 @@ static vfs_node_t *fat32_create(vfs_node_t *parent, const char *name) {
  * @param name The name of the new directory.
  * @return vfs_node_t* The VFS node representing the new directory, or NULL on failure.
  */
+// cppcheck-suppress constParameterPointer
 static vfs_node_t *fat32_mkdir(vfs_node_t *parent, const char *name) {
     fat32_node_info_t *pni = parent->fs_data;
     fat32_fs_info_t   *fs  = pni->fs_info;
+    if (fs->read_only) return NULL;
     uint32_t parent_cl = pni->cluster_number;
     uint32_t cluster_size = fs->bytes_per_sector * fs->sectors_per_cluster;
 
@@ -1540,7 +1718,7 @@ static vfs_node_t *fat32_mkdir(vfs_node_t *parent, const char *name) {
     memset(child, 0, sizeof(*child));
     strncpy(child->name, name, sizeof(child->name));
     child->name[sizeof(child->name) - 1] = '\0';
-    child->flags    = VFS_FLAG_DIRECTORY;
+    child->flags    = VFS_FLAG_DIRECTORY | VFS_FLAG_DISKIO;
     child->refcount = 1;
     child->ops      = &fat32_ops;
     child->uid      = 0;

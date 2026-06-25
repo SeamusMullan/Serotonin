@@ -9,8 +9,8 @@ IMG_NAME="${SCRIPT_DIR}/serotonin.img"
 IMG_SIZE_MB=512
 MOUNT_POINT="/mnt/img"
 SRC_DIR="${SCRIPT_DIR}/../user"
-SYSROOT_DIR="${SCRIPT_DIR}/../sysroot"
-LOOPDEV="/dev/nbd0"
+SYSROOT_DIR="${SCRIPT_DIR}/../build-tools/cross/i686-serotonin/sys-root"
+LOOPDEV=""
 
 if [ "$LOOPDEV" == "" ]; then
 
@@ -42,13 +42,20 @@ sudo mkdir -p "$MOUNT_POINT"
 sudo mount "${LOOPDEV}p1" "$MOUNT_POINT"
 
 # === COPY ALL .elf FILES TO /bin ===
+GCC_ELF_SKIP="gcc.elf g++.elf cpp.elf c++.elf gcc-ar.elf gcc-nm.elf gcc-ranlib.elf lto-dump.elf"
+GCC_ELF_SKIP="$GCC_ELF_SKIP i686-serotonin-gcc.elf i686-serotonin-g++.elf i686-serotonin-gcc-16.0.0.elf"
+GCC_ELF_SKIP="$GCC_ELF_SKIP i686-serotonin-c++.elf i686-serotonin-gcc-ar.elf i686-serotonin-gcc-nm.elf i686-serotonin-gcc-ranlib.elf"
 echo "[*] Copying all .elf files to /bin ..."
 sudo mkdir -p "${MOUNT_POINT}/bin"
 while IFS= read -r -d '' elf_file; do
     basename="${elf_file##*/}"
     dest_name="${basename%.elf}"
-    echo "   → ${elf_file} -> /bin/${dest_name}"
-    sudo cp "$elf_file" "${MOUNT_POINT}/bin/${dest_name}"
+    skip=0
+    for s in $GCC_ELF_SKIP; do [ "$basename" = "$s" ] && skip=1 && break; done
+    if [ $skip -eq 0 ]; then
+        echo "   → ${elf_file} -> /bin/${dest_name}"
+        sudo cp "$elf_file" "${MOUNT_POINT}/bin/${dest_name}"
+    fi
 done < <(find "${SRC_DIR}" -name "*.elf" -type f -print0)
 
 # === CREATE /etc ===
@@ -69,6 +76,10 @@ if [ -d "${SRC_DIR}/init/jobs" ]; then
     done
 fi
 
+# === CREATE /tmp ===
+echo "[*] Creating /tmp ..."
+sudo mkdir -p "${MOUNT_POINT}/tmp"
+
 # === CREATE /var/log ===
 echo "[*] Creating /var/log ..."
 sudo mkdir -p "${MOUNT_POINT}/var/log"
@@ -86,14 +97,60 @@ sudo tee "${MOUNT_POINT}/srv/index.html" > /dev/null <<'HTML'
 </html>
 HTML
 
+# === COPY HOME FILES ===
+if [ -d "${SRC_DIR}/home" ]; then
+    echo "[*] Copying home files to /home ..."
+    sudo mkdir -p "${MOUNT_POINT}/home"
+    sudo cp -r "${SRC_DIR}/home/." "${MOUNT_POINT}/home/"
+else
+    echo "[!] No home directory found at ${SRC_DIR}/home, skipping"
+fi
+
 # === COPY SYSROOT ===
 if [ -d "$SYSROOT_DIR" ]; then
     echo "[*] Copying sysroot to /usr ..."
     sudo mkdir -p "${MOUNT_POINT}/usr"
     sudo cp -r "${SYSROOT_DIR}/usr/lib" "${MOUNT_POINT}/usr/lib"
     sudo cp -r "${SYSROOT_DIR}/usr/include" "${MOUNT_POINT}/usr/include"
+    echo "[*] Creating sysroot at /usr/sysroot ..."
+    sudo mkdir -p "${MOUNT_POINT}/usr/sysroot/usr"
+    sudo cp -r "${SYSROOT_DIR}/usr/include" "${MOUNT_POINT}/usr/sysroot/usr/include"
+    sudo cp -r "${SYSROOT_DIR}/usr/lib" "${MOUNT_POINT}/usr/sysroot/usr/lib"
 else
     echo "[!] Sysroot not found at ${SYSROOT_DIR}, skipping"
+fi
+
+# === INSTALL GCC/BINUTILS INTO /usr (matching --prefix=/usr) ===
+GCC_STAGE="${SCRIPT_DIR}/gcc-user-stage"
+BINUTILS_STAGE="${SCRIPT_DIR}/binutils-user-stage"
+
+if [ -d "$GCC_STAGE/usr" ]; then
+    echo "[*] Installing GCC into /usr ..."
+    sudo mkdir -p "${MOUNT_POINT}/usr/bin" "${MOUNT_POINT}/usr/libexec" "${MOUNT_POINT}/usr/lib"
+    sudo cp -r "$GCC_STAGE/usr/bin/."     "${MOUNT_POINT}/usr/bin/"     2>/dev/null || true
+    sudo cp -r "$GCC_STAGE/usr/libexec/." "${MOUNT_POINT}/usr/libexec/" 2>/dev/null || true
+    sudo cp -r "$GCC_STAGE/usr/lib/."     "${MOUNT_POINT}/usr/lib/"     2>/dev/null || true
+fi
+if [ -d "$BINUTILS_STAGE/usr" ]; then
+    echo "[*] Installing binutils into /usr ..."
+    sudo cp -r "$BINUTILS_STAGE/usr/bin/." "${MOUNT_POINT}/usr/bin/" 2>/dev/null || true
+    sudo cp -r "$BINUTILS_STAGE/usr/lib/." "${MOUNT_POINT}/usr/lib/" 2>/dev/null || true
+    echo "[*] Creating /usr/i686-serotonin/bin ..."
+    sudo mkdir -p "${MOUNT_POINT}/usr/i686-serotonin/bin"
+    sudo cp "${MOUNT_POINT}/usr/bin/as" "${MOUNT_POINT}/usr/i686-serotonin/bin/as" 2>/dev/null || true
+    sudo cp "${MOUNT_POINT}/usr/bin/ld" "${MOUNT_POINT}/usr/i686-serotonin/bin/ld" 2>/dev/null || true
+fi
+
+GCC_SKIP="gcc g++ cpp c++ gcc-ar gcc-nm gcc-ranlib lto-dump"
+GCC_SKIP="$GCC_SKIP i686-serotonin-gcc i686-serotonin-g++ i686-serotonin-gcc-16.0.0"
+GCC_SKIP="$GCC_SKIP i686-serotonin-gcc-ar i686-serotonin-gcc-nm i686-serotonin-gcc-ranlib"
+if [ -d "${MOUNT_POINT}/usr/bin" ]; then
+    for f in "${MOUNT_POINT}"/usr/bin/*; do
+        name="$(basename "$f")"
+        skip=0
+        for s in $GCC_SKIP; do [ "$name" = "$s" ] && skip=1 && break; done
+        [ $skip -eq 0 ] && [ ! -e "${MOUNT_POINT}/bin/${name}" ] && sudo cp -r "$f" "${MOUNT_POINT}/bin/${name}"
+    done
 fi
 
 # === CLEAN UP ===

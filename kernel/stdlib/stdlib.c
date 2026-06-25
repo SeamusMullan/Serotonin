@@ -1,6 +1,6 @@
-#include "stdlib.h"
+#include <kernel/stdlib/stdlib.h>
 #include <stdint.h>
-#include "../stdio/stdio.h"
+#include <kernel/stdio/stdio.h>
 
 /**
  * @brief Convert an integer to a string (base 10).
@@ -244,6 +244,7 @@ void abort() {
 sys_halt:
     asm volatile("cli; hlt");
     goto sys_halt;
+    // cppcheck-suppress unreachableCode
     __builtin_unreachable();
 }
 
@@ -572,6 +573,7 @@ char* itoa_base(int value, char* str, int base) {
         return str;
     }
     
+    // cppcheck-suppress constVariablePointer
     char* digits = "0123456789abcdefghijklmnopqrstuvwxyz";
     char buffer[65];
     int i = 0;
@@ -618,10 +620,11 @@ char* utoa_base(unsigned int value, char* str, int base) {
         return str;
     }
     
+    // cppcheck-suppress constVariablePointer
     char* digits = "0123456789abcdefghijklmnopqrstuvwxyz";
     char buffer[65];
     int i = 0;
-    
+
     if (value == 0) {
         buffer[i++] = '0';
     } else {
@@ -1012,6 +1015,8 @@ void ftoa(double n, char *res, int precision) {
 }
 
 int strcasecmp(const char *s1, const char *s2) {
+    // cppcheck-suppress variableScope
+    // cppcheck-suppress variableScope
     unsigned char c1, c2;
 
     while (*s1 != '\0' && *s2 != '\0') {

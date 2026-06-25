@@ -13,17 +13,21 @@
 #include <errno.h>
 #include <string.h>
 #include "syscall_table.h"
-#include "lib5ht/lib5ht.h"
+#include <lib5ht.h>
 #include "sys/socket.h"
 #include "sys/poll.h"
 
 #define HOST_NAME_MAX 64
 
 struct utsname {
+    // cppcheck-suppress unusedStructMember
     char sysname[65];
     char nodename[HOST_NAME_MAX + 1];
+    // cppcheck-suppress unusedStructMember
     char release[65];
+    // cppcheck-suppress unusedStructMember
     char version[65];
+    // cppcheck-suppress unusedStructMember
     char machine[65];
 };
 
@@ -149,6 +153,11 @@ int fstat(int fd, struct stat *st) {
  * @return 0 on success, -1 on error (errno set)
  */
 int stat(const char *path, struct stat *st) {
+    return do_syscall(SYSTEM_CALL_STAT, (uintptr_t)path, (uintptr_t)st, 0);
+}
+
+int lstat(const char *path, struct stat *st) {
+    /* No symlinks on Serotonin — lstat == stat */
     return do_syscall(SYSTEM_CALL_STAT, (uintptr_t)path, (uintptr_t)st, 0);
 }
 
@@ -291,6 +300,10 @@ int pause(void) {
  */
 unsigned int alarm(unsigned int seconds) {
     return (unsigned int)do_syscall(SYSTEM_CALL_ALARM, seconds, 0, 0);
+}
+
+int usleep(useconds_t useconds) {
+    return do_syscall(SYSTEM_CALL_USLEEP, (uint32_t)useconds, 0, 0);
 }
 
 /**

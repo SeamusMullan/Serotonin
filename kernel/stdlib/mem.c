@@ -1,4 +1,4 @@
-#include "stdlib.h"
+#include <kernel/stdlib/stdlib.h>
 #include <stddef.h>
 
 /**

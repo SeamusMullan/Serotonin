@@ -1,24 +1,27 @@
 #include "syscall.h"
-#include "../stdio/stdio.h"
-#include "../schedule/schedule.h"
-#include "../io/io.h"
-#include "../kernel.h"
-#include "../stdlib/stdlib.h"
-#include "../vmm/paging_init.h"
-#include "../vmm/vmm.h"
-#include "../string.h"
-#include "../filesystem/vfs.h"
-#include "../filesystem/vfs_perm.h"
-#include "../filesystem/devfs/devfs.h"
-#include "../filesystem/user_fs/user_fs.h"
-#include "../video/vbe/vbe.h"
-#include "../io/serial.h"
-#include "sys/errno.h"
-#include "sys/types.h"
-#include "sys/timespec.h"
-#include "sys/file.h"
 #include "sys/lib5ht.h"
-#include "../pty/pty.h"
+#include <kernel/syscall/syscall.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/io/io.h>
+#include <kernel/kernel.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/vmm/paging_init.h>
+#include <kernel/vmm/vmm.h>
+#include <kernel/string.h>
+#include <kernel/filesystem/vfs.h>
+#include <kernel/filesystem/vfs_perm.h>
+#include <kernel/filesystem/devfs/devfs.h>
+#include <kernel/filesystem/user_fs/user_fs.h>
+#include <kernel/video/vbe/vbe.h>
+#include <kernel/io/serial.h>
+#include <kernel/syscall/sys/errno.h>
+#include <kernel/syscall/sys/types.h>
+#include <kernel/syscall/sys/timespec.h>
+#include <kernel/syscall/sys/file.h>
+#include <kernel/syscall/sys/lib5ht.h>
+#include <kernel/pty/pty.h>
+#include <kernel/device/ide/ide_pci.h>
 #include <stdint.h>
 
 
@@ -68,33 +71,20 @@ static uint32_t layer_priv_find_free(uint32_t size) {
     uint32_t end = layer_priv_end();
 
     while (addr + size <= end) {
-        uint32_t next_start = end;
-        uint32_t next_size = 0;
-        int found = 0;
-
+        int collision = 0;
         for (uint32_t i = 0; i < VBE_NUM_Z_LAYERS; i++) {
             if (!layer_states[i].allocated)
                 continue;
             uint32_t start = layer_states[i].fb_priv_va;
             uint32_t stop = start + layer_states[i].priv_region_size;
-            if (stop <= addr)
-                continue;
-            if (start <= addr && stop > addr) {
+            if (addr < stop && addr + size > start) {
                 addr = align_up(stop, PAGE_SIZE);
-                found = 1;
+                collision = 1;
                 break;
             }
-            if (start < next_start) {
-                next_start = start;
-                next_size = layer_states[i].priv_region_size;
-                found = 1;
-            }
         }
-
-        if (!found || addr + size <= next_start)
+        if (!collision)
             return addr;
-
-        addr = align_up(next_start + next_size, PAGE_SIZE);
     }
 
     return 0;
@@ -166,6 +156,16 @@ static void layer_release_state(uint16_t id, layer_state_t *state, address_space
     memset(state, 0, sizeof(*state));
 }
 
+void cleanup_layers(process_control_block_t *task) {
+    for (uint16_t i = 1; i < VBE_NUM_Z_LAYERS; i++) {
+        layer_state_t *state = &layer_states[i];
+        if (state->allocated && state->owner_pid == task->pid) {
+            vbe_layer_detach((uint8_t)i);
+            layer_release_state(i, state, task->address_space);
+        }
+    }
+}
+
 static int layer_config_valid(const fb_layer_config_t *cfg) {
     if (!cfg)
         return 0;
@@ -179,10 +179,15 @@ static int layer_config_valid(const fb_layer_config_t *cfg) {
         return 0;
     if (cfg->stride < (uint32_t)(cfg->x1 - cfg->x0) * sizeof(uint32_t))
         return 0;
+    if (cfg->alpha > FB_LAYER_ALPHA_BLEND)
+        return 0;
+    if (cfg->hints & ~FB_LAYER_HINT_ALL_MASK)
+        return 0;
     return 1;
 }
 
 static int layer_prepare_state(uint16_t id, const fb_layer_config_t *cfg, layer_state_t *state) {
+    // cppcheck-suppress unreadVariable
     uint32_t width = (uint32_t)(cfg->x1 - cfg->x0);
     uint32_t height = (uint32_t)(cfg->y1 - cfg->y0);
     uint32_t fb_size = cfg->stride * height;
@@ -240,6 +245,7 @@ static void layer_fill_info(uint16_t id, fb_layer_info_t *info) {
     info->layer_id = id;
 
     if (id < VBE_NUM_Z_LAYERS && layer_states[id].allocated) {
+        // cppcheck-suppress constVariablePointer
         layer_state_t *state = &layer_states[id];
         info->owned = 1;
         info->fb_user_va = state->fb_user_va;
@@ -285,11 +291,11 @@ static int dir_has_entries(vfs_node_t *node) {
         if (!child) break;
 
         if (strcmp(child->name, ".") != 0 && strcmp(child->name, "..") != 0) {
-            vfs_close(child);
+            vfs_put(child);
             return 1;
         }
 
-        vfs_close(child);
+        vfs_put(child);
     }
 
     return 0;
@@ -367,23 +373,40 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
             return;
         }
 
+        // submit disk based file to worker
+        if (handle->node->flags & VFS_FLAG_DISKIO) {
+            char *kbuf = (char *)kernel_malloc(buf_size);
+            if (!kbuf) {
+                errno = -ENOMEM;
+                return;
+            }
+            if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
+                kernel_free(kbuf);
+                errno = -EFAULT;
+                return;
+            }
+            ide_submit_disk_write(current_task, handle, current_task->address_space, (uint32_t)write_ptr, buf_size, kbuf, handle->flags);
+            __builtin_unreachable();
+        }
+
         if (handle->flags & O_APPEND) {
             handle->offset = handle->node->size;
         }
 
-        char *kbuf = (char*)kernel_malloc(buf_size);
+        char stack_buf[SYSCALL_STACK_BUF];
+        char *kbuf = (buf_size <= SYSCALL_STACK_BUF) ? stack_buf : (char*)kernel_malloc(buf_size);
         if (!kbuf) {
             errno = -ENOMEM;
             return;
         }
         if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
-            kernel_free(kbuf);
+            if (kbuf != stack_buf) kernel_free(kbuf);
             errno = -EFAULT;
             return;
         }
 
         int written = vfs_write(handle->node, handle->offset, buf_size, kbuf);
-        kernel_free(kbuf);
+        if (kbuf != stack_buf) kernel_free(kbuf);
         if (written < 0) {
             errno = (written == -1) ? -EIO : written;
             return;
@@ -397,20 +420,21 @@ static void sys_write(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_con
     // fd 1 (stdout) or fd 2 (stderr) without file handle, write thru PTY slave
     if (fd == WRITE_STDOUT || fd == WRITE_STDERR) {
         if (buf_size) {
-            char *kbuf = (char*)kernel_malloc(buf_size);
+            char stack_buf[SYSCALL_STACK_BUF];
+            char *kbuf = (buf_size <= SYSCALL_STACK_BUF) ? stack_buf : (char*)kernel_malloc(buf_size);
             if (!kbuf) {
                 errno = -ENOMEM;
                 return;
             }
             if (copy_from_user(current_task->address_space, kbuf, (uint32_t)write_ptr, buf_size) != 0) {
-                kernel_free(kbuf);
+                if (kbuf != stack_buf) kernel_free(kbuf);
                 errno = -EFAULT;
                 return;
             }
             // route thru PTY slave write
             pty_t *pty = &pty_table[active_vty];
             pty_slave_write(pty->slave_node, 0, buf_size, kbuf);
-            kernel_free(kbuf);
+            if (kbuf != stack_buf) kernel_free(kbuf);
         }
         errno = (int)buf_size;
         return;
@@ -445,30 +469,37 @@ static void sys_read(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
             return;
         }
 
-        char* read_buf = kernel_malloc(buf_size);
+        // submit disk based file to worker
+        if (handle->node->flags & VFS_FLAG_DISKIO) {
+            ide_submit_disk_read(current_task, handle,current_task->address_space, (uint32_t)read_ptr, buf_size, handle->flags);
+            __builtin_unreachable();
+        }
+
+        char stack_buf[SYSCALL_STACK_BUF];
+        char *read_buf = (buf_size <= SYSCALL_STACK_BUF) ? stack_buf : (char*)kernel_malloc(buf_size);
         if (!read_buf) {
             errno = -ENOMEM;
             return;
         }
 
-    current_task->current_fd_flags = handle->flags;
-    current_task->current_user_buf = (uint32_t)read_ptr;
-    int read_bytes = vfs_read(handle->node, handle->offset, buf_size, read_buf);
-    if (read_bytes < 0) {
-        kernel_free(read_buf);
-        errno = (read_bytes == -1) ? -EIO : read_bytes;
-        return;
-    }
+        current_task->current_fd_flags = handle->flags;
+        current_task->current_user_buf = (uint32_t)read_ptr;
+        int read_bytes = vfs_read(handle->node, handle->offset, buf_size, read_buf);
+        if (read_bytes < 0) {
+            if (read_buf != stack_buf) kernel_free(read_buf);
+            errno = (read_bytes == -1) ? -EIO : read_bytes;
+            return;
+        }
 
         if (copy_to_user(current_task->address_space, (uint32_t)read_ptr, read_buf, (size_t)read_bytes) != 0) {
-            kernel_free(read_buf);
+            if (read_buf != stack_buf) kernel_free(read_buf);
             errno = -EFAULT;
             return;
         }
         handle->offset += read_bytes;
         errno = read_bytes;
 
-        kernel_free(read_buf);
+        if (read_buf != stack_buf) kernel_free(read_buf);
         return;
     }
 
@@ -543,6 +574,7 @@ static void sys_get_pid(processor_context_t *ctx) {
  * @param ctx The processor context.
  */
 static void sys_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char*)arg2;
     int flags = (int)arg3;
     int mode = (int)arg4;
@@ -560,9 +592,11 @@ static void sys_open(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_cont
             split_path(abs_path, parent_path, child_name);
             vfs_node_t *parent_node = vfs_resolve_path(parent_path);
             if (parent_node && vfs_check_dir_write(parent_node, current_task) != 0) {
+                vfs_put(parent_node);
                 errno = -EACCES;
                 return;
             }
+            vfs_put(parent_node);
             node = vfs_create(abs_path);
             goto nodeCreated;
         }
@@ -1197,6 +1231,12 @@ static void sys_dup(uint32_t arg2, uint32_t arg3) {
     errno = newfd;
 }
 
+static void free_string_array(const char **arr, int count) {
+    for (int i = 0; i < count; i++)
+        kernel_free((void*)arr[i]);
+    kernel_free(arr);
+}
+
 static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
     char abs_path[256];
     if (build_abs_path((char*)arg2, abs_path, sizeof(abs_path)) != 0) {
@@ -1216,6 +1256,7 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
     }
 
     if (vfs_check_permission(node, current_task, PERM_EXEC) != 0) {
+        vfs_put(node);
         kernel_free(path);
         errno = -EACCES;
         return;
@@ -1224,6 +1265,10 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
     uint32_t exec_mode = node->mode;
     uint16_t exec_uid = node->uid;
     uint16_t exec_gid = node->gid;
+    char pname[256];
+    strncpy(pname, node->name, sizeof(pname));
+    pname[sizeof(pname) - 1] = '\0';
+    vfs_put(node);
 
     const char **argv_temp = (const char**)arg3;
     const char **envp_temp = (const char**)arg4;
@@ -1265,7 +1310,7 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
     current_task->brk_start   = USER_HEAP_START;
     current_task->brk_end     = USER_HEAP_START;
 
-    int execve_stat = kernel_load_elf(current_task, path, path, argv, argc, envp, envc);
+    int execve_stat = kernel_load_elf(current_task, path, pname, argv, argc, envp, envc);
     if (!execve_stat) {
         destroy_address_space(oldas);
         if (exec_mode & S_ISUID) current_task->euid = exec_uid;
@@ -1276,14 +1321,14 @@ static void sys_execve(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_co
         current_task->signal_bitmask = 0;
         current_task->in_signal_handler = 0;
         printfs(PRINT_STATUS_DEBUG, "execve: executing %s, pid=%d\n", path, current_task->pid);
-        kernel_free(argv);
-        kernel_free(envp);
+        free_string_array(argv, argc);
+        free_string_array(envp, envc);
         kernel_free(path);
         task_yield(0);
     } else {
         printfs(PRINT_STATUS_WARNING, "execve: failed to load elf %s, pid=%d\n", path, current_task->pid);
-        kernel_free(argv);
-        kernel_free(envp);
+        free_string_array(argv, argc);
+        free_string_array(envp, envc);
         kernel_free(path);
         printf("lol:%p\n",current_task->processor_context->eip);
         errno = -EIO;
@@ -1308,11 +1353,7 @@ static void sys_sbrk(uint32_t arg2, processor_context_t *ctx) {
         }
     } else if (increment < 0) {
         for (uint32_t va = new_brk; va < old_brk; va += PAGE_SIZE) {
-            uint32_t phys = get_mapping(current_task->address_space, va);
-            if (phys) {
-                unmap_page(current_task->address_space, va, 1);
-                free_frame((void*)phys);
-            }
+            unmap_page(current_task->address_space, va, 1);
         }
     }
 
@@ -1332,6 +1373,7 @@ static void sys_waitpid(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) 
         return;
     }
 
+    // cppcheck-suppress constVariablePointer
     process_control_block_t *target = task_lookup_by_pid(pid);
 
     if (!target) {
@@ -1352,6 +1394,7 @@ static void sys_waitpid(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) 
     return;
 }
 
+// cppcheck-suppress constParameterPointer
 static void sys_lseek(uint32_t arg2, uint32_t arg3, uint32_t arg4, processor_context_t *ctx) {
     int fd = arg2;
     int offset = (uint32_t)arg3;
@@ -1427,6 +1470,7 @@ static void sys_fstat(uint32_t arg2, uint32_t arg3, processor_context_t *ctx) {
 }
 
 static void sys_stat(uint32_t arg2, uint32_t arg3) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char*)arg2;
     struct stat *statbuf = (struct stat*)arg3;
     char abs_path[256];
@@ -1482,8 +1526,9 @@ static void sys_isatty(uint32_t arg2) {
 
 static void sys_gettimeofday(uint32_t arg2) {
     struct timeval *timestr = (struct timeval*)arg2;
-    timestr->tv_sec = unix_timestamp;
-    timestr->tv_usec = 0;
+    uint32_t ms = (uint32_t)timer_ticks; /* low 32 bits — wraps ~49 days, fine for diffs */
+    timestr->tv_sec  = (long)(ms / 1000u);
+    timestr->tv_usec = (long)((ms % 1000u) * 1000u);
     errno = 0;
 }
 
@@ -1597,6 +1642,7 @@ static void sys_shm_unmap(uint32_t arg2) {
 }
 
 static void sys_mkdir(uint32_t arg2) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char*)arg2;
     char abs_path[256];
 
@@ -1605,7 +1651,9 @@ static void sys_mkdir(uint32_t arg2) {
         return;
     }
 
-    if (vfs_resolve_path(abs_path)) {
+    vfs_node_t *existing = vfs_resolve_path(abs_path);
+    if (existing) {
+        vfs_put(existing);
         errno = -EEXIST;
         return;
     }
@@ -1614,9 +1662,11 @@ static void sys_mkdir(uint32_t arg2) {
     split_path(abs_path, parent_path, child_name);
     vfs_node_t *parent_node = vfs_resolve_path(parent_path);
     if (parent_node && vfs_check_dir_write(parent_node, current_task) != 0) {
+        vfs_put(parent_node);
         errno = -EACCES;
         return;
     }
+    vfs_put(parent_node);
 
     if (vfs_mkdir(abs_path) != 0) {
         errno = -EIO;
@@ -1627,6 +1677,7 @@ static void sys_mkdir(uint32_t arg2) {
 }
 
 static void sys_unlink(uint32_t arg2) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char*)arg2;
     char abs_path[256];
 
@@ -1641,6 +1692,7 @@ static void sys_unlink(uint32_t arg2) {
         return;
     }
     if (node->flags & VFS_FLAG_DIRECTORY) {
+        vfs_put(node);
         errno = -EISDIR;
         return;
     }
@@ -1650,15 +1702,21 @@ static void sys_unlink(uint32_t arg2) {
     vfs_node_t *parent_node = vfs_resolve_path(parent_path);
     if (parent_node) {
         if (vfs_check_dir_write(parent_node, current_task) != 0) {
+            vfs_put(node);
+            vfs_put(parent_node);
             errno = -EACCES;
             return;
         }
         if ((parent_node->mode & S_ISVTX) && current_task->euid != 0 &&
             current_task->euid != node->uid && current_task->euid != parent_node->uid) {
+            vfs_put(node);
+            vfs_put(parent_node);
             errno = -EACCES;
             return;
         }
     }
+    vfs_put(node);
+    vfs_put(parent_node);
 
     if (vfs_unlink(abs_path) != 0) {
         errno = -EIO;
@@ -1669,6 +1727,7 @@ static void sys_unlink(uint32_t arg2) {
 }
 
 static void sys_rmdir(uint32_t arg2) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char*)arg2;
     char abs_path[256];
 
@@ -1683,11 +1742,13 @@ static void sys_rmdir(uint32_t arg2) {
         return;
     }
     if (!(node->flags & VFS_FLAG_DIRECTORY)) {
+        vfs_put(node);
         errno = -ENOTDIR;
         return;
     }
 
     if (!node->ops || !node->ops->rmdir) {
+        vfs_put(node);
         errno = -ENOSYS;
         return;
     }
@@ -1697,20 +1758,27 @@ static void sys_rmdir(uint32_t arg2) {
     vfs_node_t *parent_node = vfs_resolve_path(parent_path);
     if (parent_node) {
         if (vfs_check_dir_write(parent_node, current_task) != 0) {
+            vfs_put(node);
+            vfs_put(parent_node);
             errno = -EACCES;
             return;
         }
         if ((parent_node->mode & S_ISVTX) && current_task->euid != 0 &&
             current_task->euid != node->uid && current_task->euid != parent_node->uid) {
+            vfs_put(node);
+            vfs_put(parent_node);
             errno = -EACCES;
             return;
         }
     }
+    vfs_put(parent_node);
 
     if (dir_has_entries(node)) {
+        vfs_put(node);
         errno = -ENOTEMPTY;
         return;
     }
+    vfs_put(node);
 
     if (vfs_rmdir(abs_path) != 0) {
         errno = -EIO;
@@ -1721,6 +1789,7 @@ static void sys_rmdir(uint32_t arg2) {
 }
 
 static void sys_chdir(uint32_t arg2) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char*)arg2;
     char abs_path[256];
 
@@ -1735,14 +1804,17 @@ static void sys_chdir(uint32_t arg2) {
         return;
     }
     if (!(node->flags & VFS_FLAG_DIRECTORY)) {
+        vfs_put(node);
         errno = -ENOTDIR;
         return;
     }
 
     if (vfs_check_permission(node, current_task, PERM_EXEC) != 0) {
+        vfs_put(node);
         errno = -EACCES;
         return;
     }
+    vfs_put(node);
 
     char temp[256];
     strncpy(temp, abs_path, sizeof(temp));
@@ -1827,6 +1899,7 @@ static void sys_getcwd(uint32_t arg2, uint32_t arg3) {
 }
 
 static void sys_listdir(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char*)arg2;
     char *buf = (char*)arg3;
     size_t size = (size_t)arg4;
@@ -1848,10 +1921,12 @@ static void sys_listdir(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
         return;
     }
     if (!(node->flags & VFS_FLAG_DIRECTORY)) {
+        vfs_put(node);
         errno = -ENOTDIR;
         return;
     }
     if (!node->ops || !node->ops->readdir) {
+        vfs_put(node);
         errno = -ENOSYS;
         return;
     }
@@ -1862,33 +1937,35 @@ static void sys_listdir(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
         if (!child) break;
 
         size_t len = strlen(child->name);
-        if (off + len + 1 >= size) {
-            vfs_close(child);
-            errno = off;
-            return;
+        int done = (off + len + 1 >= size);
+        int fail = 0;
+
+        if (!done) {
+            if (copy_to_user(current_task->address_space, (uint32_t)(buf + off), child->name, len) != 0) {
+                fail = 1;
+            } else {
+                off += len;
+                if (copy_to_user(current_task->address_space, (uint32_t)(buf + off), "\n", 1) != 0)
+                    fail = 1;
+                else
+                    off += 1;
+            }
         }
 
-        if (copy_to_user(current_task->address_space, (uint32_t)(buf + off), child->name, len) != 0) {
-            vfs_close(child);
-            errno = -EFAULT;
-            return;
-        }
-        off += len;
-        if (copy_to_user(current_task->address_space, (uint32_t)(buf + off), "\n", 1) != 0) {
-            vfs_close(child);
-            errno = -EFAULT;
-            return;
-        }
-        off += 1;
-        vfs_close(child);
+        vfs_put(child);
+
+        if (done) { vfs_put(node); errno = off; return; }
+        if (fail) { vfs_put(node); errno = -EFAULT; return; }
     }
 
     if (off < size) {
         if (copy_to_user(current_task->address_space, (uint32_t)(buf + off), "\0", 1) != 0) {
+            vfs_put(node);
             errno = -EFAULT;
             return;
         }
     }
+    vfs_put(node);
     errno = off;
 }
 
@@ -1899,6 +1976,7 @@ static void sys_5ht_list_proc(uint32_t arg2, uint32_t arg3) {
 
     proc_5ht_t k_buf = {0};
 
+    // cppcheck-suppress constVariablePointer
     process_control_block_t *task = task_list;
     while (task) {
         if (count >= max)
@@ -1908,6 +1986,18 @@ static void sys_5ht_list_proc(uint32_t arg2, uint32_t arg3) {
         k_buf.priority = task->priority;
         strncpy(k_buf.name, task->name, 32);
         k_buf.name[31] = '\0';
+        k_buf.cpu_user_ticks   = task->cpu_user_ticks;
+        k_buf.cpu_kernel_ticks = task->cpu_kernel_ticks;
+        k_buf.disk_bytes       = task->disk_bytes;
+        k_buf.uid              = task->uid;
+        k_buf.gid              = task->gid;
+        if (task->priv == CPU_USER_MODE) {
+            k_buf.mem_bytes = (task->brk_end >= task->brk_start)
+                              ? (task->brk_end - task->brk_start)
+                              : 0;
+        } else {
+            k_buf.mem_bytes = KERNEL_STACK_SIZE;
+        }
 
         if (copy_to_user(current_task->address_space, (uint32_t)(&buf[count]), &k_buf, sizeof(k_buf)) != 0) {
             errno = -EFAULT;
@@ -2062,8 +2152,13 @@ static void sys_5ht_rcfg_layer(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
         return;
     }
 
-    int needs_realloc = (cfg.x0 != state->cfg.x0) || (cfg.y0 != state->cfg.y0) ||
-                        (cfg.x1 != state->cfg.x1) || (cfg.y1 != state->cfg.y1) ||
+    /* Only reallocate if the layer dimensions (buffer size) changed,
+       not when just the position changed */
+    uint16_t old_w = state->cfg.x1 - state->cfg.x0;
+    uint16_t old_h = state->cfg.y1 - state->cfg.y0;
+    uint16_t new_w = cfg.x1 - cfg.x0;
+    uint16_t new_h = cfg.y1 - cfg.y0;
+    int needs_realloc = (new_w != old_w) || (new_h != old_h) ||
                         (cfg.stride != state->cfg.stride);
     if (needs_realloc) {
         layer_state_t new_state = {0};
@@ -2090,6 +2185,55 @@ static void sys_5ht_rcfg_layer(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
         return;
     }
 
+    errno = 0;
+}
+
+/* Window layer z indices reserved for WM + GUI clients (see user/wm/wm.h). */
+#define WM_APP_LAYER_FIRST 2u
+#define WM_APP_LAYER_LAST  12u
+
+static int current_task_is_wm(void) {
+    return current_task && strcmp(current_task->name, "wm") == 0;
+}
+
+/**
+ * @brief Exchange two compositor layer slots (full `layer_state_t` swap).
+ *
+ * Only the window manager may call this: it reorders cross-process surfaces
+ * while keeping each task's SHM mappings valid.
+ */
+static void sys_5ht_swap_layers(uint32_t arg2, uint32_t arg3) {
+    uint16_t za = (uint16_t)arg2;
+    uint16_t zb = (uint16_t)arg3;
+
+    if (!current_task_is_wm()) {
+        errno = -EPERM;
+        return;
+    }
+    if (za < WM_APP_LAYER_FIRST || za > WM_APP_LAYER_LAST ||
+        zb < WM_APP_LAYER_FIRST || zb > WM_APP_LAYER_LAST || za == zb) {
+        errno = -EINVAL;
+        return;
+    }
+
+    layer_state_t *sa = &layer_states[za];
+    layer_state_t *sb = &layer_states[zb];
+    if (!sa->allocated || !sb->allocated) {
+        errno = -ENOENT;
+        return;
+    }
+
+    vbe_layer_detach((uint8_t)za);
+    vbe_layer_detach((uint8_t)zb);
+
+    layer_state_t tmp = *sa;
+    *sa = *sb;
+    *sb = tmp;
+
+    vbe_layer_attach((uint8_t)za, (uint32_t *)sa->fb_priv_va, &sa->cfg,
+                     (fb_layer_metadata_t *)sa->meta_priv_va);
+    vbe_layer_attach((uint8_t)zb, (uint32_t *)sb->fb_priv_va, &sb->cfg,
+                     (fb_layer_metadata_t *)sb->meta_priv_va);
     errno = 0;
 }
 
@@ -2177,6 +2321,7 @@ static void sys_getgroups(uint32_t arg2, uint32_t arg3) {
 
 static void sys_setgroups(uint32_t arg2, uint32_t arg3) {
     int size = (int)arg2;
+    // cppcheck-suppress constVariablePointer
     uint16_t *list = (uint16_t *)arg3;
 
     if (current_task->euid != 0) {
@@ -2195,6 +2340,7 @@ static void sys_setgroups(uint32_t arg2, uint32_t arg3) {
 }
 
 static void sys_chmod(uint32_t arg2, uint32_t arg3) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char *)arg2;
     uint32_t new_mode = arg3;
     char abs_path[256];
@@ -2211,15 +2357,18 @@ static void sys_chmod(uint32_t arg2, uint32_t arg3) {
     }
 
     if (current_task->euid != 0 && current_task->euid != node->uid) {
+        vfs_put(node);
         errno = -EPERM;
         return;
     }
 
     node->mode = (node->mode & S_IFMT) | (new_mode & ~S_IFMT);
+    vfs_put(node);
     errno = 0;
 }
 
 static void sys_chown(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
+    // cppcheck-suppress constVariablePointer
     char *path = (char *)arg2;
     uint16_t new_uid = (uint16_t)arg3;
     uint16_t new_gid = (uint16_t)arg4;
@@ -2249,6 +2398,7 @@ static void sys_chown(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
     } else {
         errno = -EPERM;
     }
+    vfs_put(node);
 }
 
 static void sys_umask(uint32_t arg2) {
@@ -2275,6 +2425,7 @@ static void sys_uname(uint32_t arg2) {
 }
 
 static void sys_sethostname(uint32_t arg2, uint32_t arg3) {
+    // cppcheck-suppress unreadVariable
     const char *name = (const char *)arg2;
     size_t len = (size_t)arg3;
 
@@ -2298,6 +2449,7 @@ static void sys_sethostname(uint32_t arg2, uint32_t arg3) {
 }
 
 void sys_5ht_set_fid(uint32_t arg2) {
+    // cppcheck-suppress constVariablePointer
     process_control_block_t *fid_task = task_lookup_by_pid((int)arg2);
 
     if (fid_task->priv == CPU_KERNEL_MODE) {
@@ -2489,14 +2641,17 @@ static int fd_poll_check_task(process_control_block_t *task, int fd) {
     if (fd < 0 || fd >= FD_MAX || task->fd_table[fd] == NULL)
         return POLLNVAL;
 
+    // cppcheck-suppress constVariablePointer
     file_handle_t *handle = task->fd_table[fd];
     vfs_node_t *node = handle->node;
     if (!node)
         return POLLNVAL;
 
     if (node->flags & VFS_FLAG_PIPE) {
+        // cppcheck-suppress constVariablePointer
         pipe_endpoint_t *ep = (pipe_endpoint_t*)node->fs_data;
         if (ep && ep->pipe) {
+            // cppcheck-suppress constVariablePointer
             pipe_state_t *p = ep->pipe;
             if (ep->is_read_end) {
                 if (p->data_len > 0)   revents |= POLLIN;
@@ -2510,8 +2665,10 @@ static int fd_poll_check_task(process_control_block_t *task, int fd) {
     }
 
     if (node->flags & VFS_FLAG_SOCKET) {
+        // cppcheck-suppress constVariablePointer
         sock_endpoint_t *sep = (sock_endpoint_t*)node->fs_data;
         if (sep && sep->sock) {
+            // cppcheck-suppress constVariablePointer
             unix_socket_t *s = sep->sock;
 
             if (s->state == SOCK_STATE_LISTENING) {
@@ -2644,6 +2801,32 @@ static int poll_waiter_try_poll(poll_waiter_t *w) {
         return ready;
     }
     return -1;
+}
+
+static void sys_usleep(uint32_t us) {
+    if (us == 0) {
+        errno = 0;
+        return;
+    }
+
+    uint64_t timeout_ms = ((uint64_t)us + 999) / 1000;
+    uint64_t deadline   = timer_ticks + timeout_ms;
+
+    poll_waiter_t *w = kernel_malloc(sizeof(poll_waiter_t));
+    if (!w) { errno = -ENOMEM; return; }
+
+    memset(w, 0, sizeof(*w));
+    w->task        = current_task;
+    w->type        = POLL_WAITER_SELECT;
+    w->has_timeout = 1;
+    w->deadline    = deadline;
+
+    lock_scheduler();
+    poll_waiter_add(w);
+    current_task->state = PROCESS_STATE_BLOCKED;
+    unlock_scheduler();
+    task_yield(1);
+    __builtin_unreachable();
 }
 
 void poll_waiter_tick(void) {
@@ -2802,11 +2985,11 @@ static void sys_poll(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
     }
 
     uint32_t pfd_size = nfds * sizeof(struct kernel_pollfd);
-    struct kernel_pollfd *pfds = kernel_malloc(pfd_size);
-    if (!pfds) { errno = -ENOMEM; return; }
+
+    struct kernel_pollfd stack_pfds[FD_SETSIZE];
+    struct kernel_pollfd *pfds = stack_pfds;
 
     if (copy_from_user(current_task->address_space, pfds, fds_ptr, pfd_size) != 0) {
-        kernel_free(pfds);
         errno = -EFAULT;
         return;
     }
@@ -2831,19 +3014,22 @@ static void sys_poll(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
 
     if (ready > 0 || timeout == 0) {
         copy_to_user(current_task->address_space, fds_ptr, pfds, pfd_size);
-        kernel_free(pfds);
         errno = ready;
         return;
     }
 
+    struct kernel_pollfd *heap_pfds = kernel_malloc(pfd_size);
+    if (!heap_pfds) { errno = -ENOMEM; return; }
+    __builtin_memcpy(heap_pfds, pfds, pfd_size);
+
     poll_waiter_t *w = kernel_malloc(sizeof(poll_waiter_t));
-    if (!w) { kernel_free(pfds); errno = -ENOMEM; return; }
+    if (!w) { kernel_free(heap_pfds); errno = -ENOMEM; return; }
 
     w->task          = current_task;
     w->type          = POLL_WAITER_POLL;
     w->has_timeout   = (timeout >= 0);
     w->deadline      = (timeout >= 0) ? timer_ticks + (uint64_t)timeout : 0;
-    w->pfds          = pfds;
+    w->pfds          = heap_pfds;
     w->poll_nfds     = nfds;
     w->poll_fds_ptr  = fds_ptr;
     w->nfds          = 0;
@@ -2860,6 +3046,26 @@ static void sys_poll(uint32_t arg2, uint32_t arg3, uint32_t arg4) {
     unlock_scheduler();
     task_yield(1);
     __builtin_unreachable();
+}
+
+static void sys_5ht_sysinfo(uint32_t arg2) {
+    sysinfo_5ht_t sysinfo = {0};
+    sysinfo.mem_free = (buddy_free_pages() *4000)/1000000;
+    sysinfo.mem_total = (buddy_total_pages() *4000)/1000000;
+
+    uint32_t cpu_kernel = 0;
+    uint32_t cpu_user = 0;
+    for (process_control_block_t *t = task_list; t; t = t->next) {
+        cpu_user   += t->cpu_user_ticks;
+        cpu_kernel += t->cpu_kernel_ticks;
+    }
+    sysinfo.cpu_kernel_total = cpu_kernel;
+    sysinfo.cpu_user_total   = cpu_user;
+
+    if (copy_to_user(current_task->address_space, (uint32_t)arg2, &sysinfo, sizeof(sysinfo)) != 0) {
+        errno = -EFAULT;
+        return;
+    }
 }
 
 /**
@@ -2982,6 +3188,9 @@ void system_call(processor_context_t *ctx) {
         case SYSTEM_CALL_5HT_RCFG_LAYER:
             sys_5ht_rcfg_layer(arg2, arg3, arg4);
             break;
+        case SYSTEM_CALL_5HT_SWAP_LAYERS:
+            sys_5ht_swap_layers(arg2, arg3);
+            break;
         case SYSTEM_CALL_5HT_QUERY_INFO:
             sys_5ht_query_info(arg2);
             break;
@@ -3092,6 +3301,16 @@ void system_call(processor_context_t *ctx) {
             break;
         case SYSTEM_CALL_POLL:
             sys_poll(arg2, arg3, arg4);
+            break;
+        case SYSTEM_CALL_5HT_GRAB_INPUT:
+            keyboard_grab_active = arg2 ? 1 : 0;
+            ctx->eax = 0;
+            break;
+        case SYSTEM_CALL_5HT_SYSINFO:
+            sys_5ht_sysinfo(arg2);
+            break;
+        case SYSTEM_CALL_USLEEP:
+            sys_usleep(arg2);
             break;
         default:
             handle_illegal_call(arg2, arg3, arg4, ctx->eip);

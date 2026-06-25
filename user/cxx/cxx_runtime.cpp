@@ -27,6 +27,7 @@ int __cxa_atexit(void (*func)(void*), void* arg, void* dso) {
     return 0;
 }
 
+// cppcheck-suppress constParameterPointer
 void __cxa_finalize(void* dso) {
     if (dso == NULL) {
         while (dtor_count > 0) {

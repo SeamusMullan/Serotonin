@@ -9,18 +9,18 @@
  * it becomes available.
  */
 
-#include "dev_keyboard.h"
-#include "../../kernel.h"
-#include "../../filesystem/devfs/devfs.h"
-#include "../../filesystem/vfs.h"
-#include "../../io/io.h"
-#include "../../stdio/stdio.h"
-#include "../../stdlib/stdlib.h"
-#include "../../string.h"
-#include "../../syscall/sys/file.h"
-#include "../../syscall/sys/errno.h"
-#include "../../schedule/schedule.h"
-#include "../../vmm/vmm.h"
+#include <kernel/device/keyboard/dev_keyboard.h>
+#include <kernel/kernel.h>
+#include <kernel/filesystem/devfs/devfs.h>
+#include <kernel/filesystem/vfs.h>
+#include <kernel/io/io.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/string.h>
+#include <kernel/syscall/sys/file.h>
+#include <kernel/syscall/sys/errno.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/vmm/vmm.h>
 
 /** Ring buffer for keyboard events */
 static keyboard_event_t event_buffer[KEYBOARD_EVENT_BUFFER_SIZE];
@@ -30,6 +30,13 @@ static volatile uint32_t event_count = 0;  /**< Number of events in buffer */
 
 /** VFS node for /dev/keyboard/event, used for wake queue access */
 vfs_node_t *dev_keyboard_event_node = NULL;
+
+static int dev_keyboard_poll(vfs_node_t *node) {
+    (void)node;
+    if (event_count > 0)
+        return POLLIN;
+    return 0;
+}
 
 /** VFS operations for /dev/keyboard/event */
 static vfs_ops_t dev_keyboard_event_ops = {
@@ -43,7 +50,8 @@ static vfs_ops_t dev_keyboard_event_ops = {
     .readdir = NULL,
     .finddir = NULL,
     .create = NULL,
-    .mkdir = NULL
+    .mkdir = NULL,
+    .poll = dev_keyboard_poll
 };
 
 int dev_keyboard_read_event(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer) {
@@ -62,6 +70,7 @@ int dev_keyboard_read_event(vfs_node_t *node, uint32_t offset, uint32_t size, ch
 
         // Check if an event is available in the buffer
         if (event_count > 0) {
+            // cppcheck-suppress constVariablePointer
             keyboard_event_t *ev = &event_buffer[event_tail];
             memcpy(buffer, ev, sizeof(keyboard_event_t));
             event_tail = (event_tail + 1) % KEYBOARD_EVENT_BUFFER_SIZE;

@@ -1,8 +1,8 @@
 #ifndef _DEVICE_SERIAL_H
 #define _DEVICE_SERIAL_H
 
-#include "../../filesystem/devfs/devfs.h"
-#include "../../filesystem/vfs.h"
+#include <kernel/filesystem/devfs/devfs.h>
+#include <kernel/filesystem/vfs.h>
 #include <stdint.h>
 
 #define SERIAL_RING_SIZE 4096

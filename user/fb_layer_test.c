@@ -8,7 +8,7 @@
  */
 
 #include <stdint.h>
-#include "syscall/lib5ht/lib5ht.h"
+#include <lib5ht.h>
 
 /** @brief Bytes per pixel (32-bit ARGB) */
 #define BYTES_PER_PIXEL 4
@@ -79,6 +79,7 @@ int main(void) {
     cfg.x1 = LAYER_X0 + LAYER_WIDTH;
     cfg.y1 = LAYER_Y0 + LAYER_HEIGHT;
     cfg.alpha = 1;
+    cfg.hints = FB_LAYER_HINT_FREQUENT_UPDATES;
     cfg.stride = STRIDE_BYTES;
 
     fb_layer_info_t info = {0};
