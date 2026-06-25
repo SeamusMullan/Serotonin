@@ -1,12 +1,12 @@
 #ifndef _DEV_RTL8139_H
 #define _DEV_RTL8139_H
 
-#include "rtl8139.h"
-#include "../../filesystem/devfs/devfs.h"
-#include "../../filesystem/vfs.h"
+#include <kernel/device/rtl8139/rtl8139.h>
+#include <kernel/filesystem/devfs/devfs.h>
+#include <kernel/filesystem/vfs.h>
 #include <stdint.h>
 
-#define RTL8139_TUN_BUFFER_SIZE 128
+#define RTL8139_TUN_BUFFER_SIZE 4096
 
 typedef struct rtl8139_packet {
     uint8_t  src_mac[ETH_ALEN];

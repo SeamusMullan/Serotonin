@@ -10,10 +10,10 @@
 #ifndef _FS_DEVFS
 #define _FS_DEVFS
 
-#include "../vfs.h"
-#include "../../schedule/schedule.h"
-#include "../../syscall/sys/types.h"
-#include "../../syscall/sys/file.h"
+#include <kernel/filesystem/vfs.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/syscall/sys/types.h>
+#include <kernel/syscall/sys/file.h>
 
 /**
  * @brief Node in a device wait queue

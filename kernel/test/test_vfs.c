@@ -1,9 +1,9 @@
 // kernel/test/test_vfs.c
-#include "ktest.h"
-#include "../filesystem/vfs.h"
-#include "../stdio/stdio.h"
-#include "../stdlib/stdlib.h"
-#include "../string.h"
+#include <kernel/test/ktest.h>
+#include <kernel/filesystem/vfs.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/string.h>
 
 // Get strlen from string.h
 extern size_t strlen(const char *str);

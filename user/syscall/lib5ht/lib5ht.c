@@ -6,7 +6,7 @@
  * process listing and framebuffer layer management.
  */
 
-#include "lib5ht.h"
+#include <lib5ht.h>
 #include "../syscall_table.h"
 #include <unistd.h>
 
@@ -30,6 +30,10 @@ int sys_5ht_rcfg_layer(uint16_t id, const fb_layer_config_t *cfg, fb_layer_info_
     return do_syscall(SYSTEM_CALL_5HT_RCFG_LAYER, (uint32_t)id, (uint32_t)cfg, (uint32_t)out);
 }
 
+int sys_5ht_swap_layers(uint16_t layer_a, uint16_t layer_b) {
+    return do_syscall(SYSTEM_CALL_5HT_SWAP_LAYERS, (uint32_t)layer_a, (uint32_t)layer_b, 0);
+}
+
 /** @copydoc sys_5ht_query_info */
 int sys_5ht_query_info(fb_info_t *out) {
     return do_syscall(SYSTEM_CALL_5HT_QUERY_INFO, (uint32_t)out, 0, 0);
@@ -38,6 +42,10 @@ int sys_5ht_query_info(fb_info_t *out) {
 /** @copydoc sys_5ht_query_layer */
 int sys_5ht_query_layer(uint16_t id, fb_layer_info_t *out) {
     return do_syscall(SYSTEM_CALL_5HT_QUERY_LAYER, (uint32_t)id, (uint32_t)out, 0);
+}
+
+int sys_5ht_sysinfo(sysinfo_5ht_t *out) {
+    return do_syscall(SYSTEM_CALL_5HT_SYSINFO, (uint32_t)out, 0, 0);
 }
 
 int sys_5ht_set_fid(pid_t pid) {
@@ -62,6 +70,10 @@ int sys_5ht_pty_winsize(int fd, pty_winsize_t *ws, int get) {
 
 int sys_5ht_pty_setpgrp(int fd) {
     return do_syscall(SYSTEM_CALL_5HT_PTY_SETPGRP, (uint32_t)fd, 0, 0);
+}
+
+int sys_5ht_grab_input(int grab) {
+    return do_syscall(SYSTEM_CALL_5HT_GRAB_INPUT, (uint32_t)grab, 0, 0);
 }
 
 int ioctl(int fd, unsigned long request, void *arg) {

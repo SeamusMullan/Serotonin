@@ -21,7 +21,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include "syscall/lib5ht/lib5ht.h"
+#include <lib5ht.h>
 
 /* ── ANSI helpers ─────────────────────────────────────────────────────────── */
 #define CLR          "\033[2J\033[H"

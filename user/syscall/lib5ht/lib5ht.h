@@ -28,11 +28,24 @@ extern "C" {
  * via sys_5ht_list_processes().
  */
 typedef struct proc_5ht {
-    int pid;            /**< Process ID */
-    char name[32];      /**< Process name */
-    int priority;       /**< Scheduling priority */
-    int priv;           /**< Privilege level (0=kernel, 3=user) */
+    int pid;                    /**< Process ID */
+    char name[32];              /**< Process name */
+    int priority;               /**< Scheduling priority */
+    int priv;                   /**< Privilege level (0=kernel, 3=user) */
+    uint32_t cpu_user_ticks;    /**< PIT ticks while this task ran in user mode */
+    uint32_t cpu_kernel_ticks;  /**< PIT ticks spent in kernel mode on this task's behalf (e.g. syscalls) */
+    uint32_t mem_bytes;         /**< Approximate memory usage (bytes) */
+    uint32_t disk_bytes;        /**< Bytes of disk I/O attributed to this task */
+    uint16_t uid;               /**< Real user id of the task owner */
+    uint16_t gid;               /**< Real group id of the task owner */
 } proc_5ht_t;
+
+typedef struct sysinfo_5ht {
+    uint32_t mem_free;          /**< Free memory (MB) */
+    uint32_t mem_total;         /**< Total memory (MB) */
+    uint32_t cpu_kernel_total;  /**< Accumulated PIT ticks across kernel-mode tasks */
+    uint32_t cpu_user_total;    /**< Accumulated PIT ticks across user-mode tasks */
+} sysinfo_5ht_t;
 
 /**
  * @defgroup mouse Mouse Event Interface
@@ -107,6 +120,16 @@ typedef struct fb_info {
     uint32_t alignment;         /**< Required memory alignment */
 } fb_info_t;
 
+#define FB_LAYER_ALPHA_OPAQUE 0
+#define FB_LAYER_ALPHA_BLEND  1
+#define FB_LAYER_HINT_NONE              0x0000u
+#define FB_LAYER_HINT_OPAQUE_CONTENT    0x0001u
+#define FB_LAYER_HINT_STATIC_CONTENT    0x0002u
+#define FB_LAYER_HINT_FREQUENT_UPDATES  0x0004u
+#define FB_LAYER_HINT_CURSOR_SPRITE     0x0008u
+#define FB_LAYER_HINT_TRANSIENT         0x0010u
+#define FB_LAYER_HINT_ALL_MASK          0x001Fu
+
 /**
  * @brief Framebuffer layer configuration
  *
@@ -118,8 +141,9 @@ typedef struct fb_layer_config {
     uint16_t x1;        /**< Right edge X coordinate */
     uint16_t y0;        /**< Top edge Y coordinate */
     uint16_t y1;        /**< Bottom edge Y coordinate */
-    uint8_t  alpha;     /**< Alpha blending enable (0=opaque, 1=blend) */
+    uint8_t  alpha;     /**< Blend mode: FB_LAYER_ALPHA_OPAQUE or FB_LAYER_ALPHA_BLEND */
     uint16_t stride;    /**< Stride in bytes per row */
+    uint16_t hints;     /**< FB_LAYER_HINT_* bitmask (performance/compositor hints) */
 } fb_layer_config_t;
 
 /**
@@ -251,6 +275,15 @@ int sys_5ht_rel_buf(uint16_t id);
 int sys_5ht_rcfg_layer(uint16_t id, const fb_layer_config_t *cfg, fb_layer_info_t *out);
 
 /**
+ * @brief Swap two app-layer compositor slots (WM only; see kernel).
+ *
+ * @param layer_a First layer id in 2..12
+ * @param layer_b Second layer id in 2..12
+ * @return 0 on success, -1 on failure (see errno)
+ */
+int sys_5ht_swap_layers(uint16_t layer_a, uint16_t layer_b);
+
+/**
  * @brief Query global framebuffer information
  *
  * @param out Output structure for framebuffer information
@@ -266,12 +299,23 @@ int sys_5ht_query_info(fb_info_t *out);
  * @return 0 on success, negative error code on failure
  */
 int sys_5ht_query_layer(uint16_t id, fb_layer_info_t *out);
+/**
+ * @brief Query system-wide information (memory + aggregate CPU ticks).
+ *
+ * Per-process CPU, memory, and disk I/O counters live on @c proc_5ht_t and
+ * are returned by @c sys_5ht_list_processes .
+ *
+ * @param out Output sysinfo struct to populate.
+ * @return 0 on success, negative error code on failure.
+ */
+int sys_5ht_sysinfo(sysinfo_5ht_t *out);
 int sys_5ht_set_fid(pid_t pid);
 int sys_5ht_pty_open(int fds[2]);
 int sys_5ht_pty_setattr(int fd, const pty_attr_t *attr);
 int sys_5ht_pty_getattr(int fd, pty_attr_t *attr);
 int sys_5ht_pty_winsize(int fd, pty_winsize_t *ws, int get);
 int sys_5ht_pty_setpgrp(int fd);
+int sys_5ht_grab_input(int grab);
 int ioctl(int fd, unsigned long request, void *arg);
 
 /** @} */ /* end of lib5ht group */

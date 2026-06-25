@@ -1,8 +1,8 @@
-#include "user_fs.h"
+#include <kernel/filesystem/user_fs/user_fs.h>
 #include <stddef.h>
-#include "../vfs.h"
-#include "../../kernel.h"
-#include "../../schedule/schedule.h"
+#include <kernel/filesystem/vfs.h>
+#include <kernel/kernel.h>
+#include <kernel/schedule/schedule.h>
 
 /**
  * @brief Allocates a file descriptor for a process.

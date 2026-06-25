@@ -1,11 +1,11 @@
-#include "tmpfs.h"
-#include "../vfs.h"
-#include "../../stdlib/stdlib.h"
-#include "../../stdio/stdio.h"
-#include "../../string.h"
-#include "../../kernel.h"
-#include "../../schedule/schedule.h"
-#include "../../syscall/sys/file.h"
+#include <kernel/filesystem/tmpfs/tmpfs.h>
+#include <kernel/filesystem/vfs.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/string.h>
+#include <kernel/kernel.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/syscall/sys/file.h>
 
 // Forward declarations
 static vfs_node_t *tmpfs_mount(const char *device);
@@ -116,6 +116,7 @@ static int tmpfs_close(vfs_node_t *node) {
 static int tmpfs_read(vfs_node_t *node, uint32_t offset, uint32_t size, char *buffer) {
     if (!(node->flags & VFS_FLAG_FILE)) return -1;
 
+    // cppcheck-suppress constVariablePointer
     tmpfs_file_t *file = (tmpfs_file_t *) node->fs_data;
     if (offset >= file->size) return 0;
 
@@ -301,6 +302,7 @@ static int tmpfs_rmdir(vfs_node_t *parent, const char *name) {
 static vfs_node_t *tmpfs_readdir(vfs_node_t *node, uint32_t index) {
     if (!(node->flags & VFS_FLAG_DIRECTORY)) return NULL;
 
+    // cppcheck-suppress constVariablePointer
     tmpfs_dir_t *dir = (tmpfs_dir_t *) node->fs_data;
     tmpfs_dir_entry_t *entry = dir->entries;
 
@@ -326,6 +328,7 @@ static vfs_node_t *tmpfs_readdir(vfs_node_t *node, uint32_t index) {
 static vfs_node_t *tmpfs_finddir(vfs_node_t *node, const char *name) {
     if (!(node->flags & VFS_FLAG_DIRECTORY)) return NULL;
 
+    // cppcheck-suppress constVariablePointer
     tmpfs_dir_t *dir = (tmpfs_dir_t *) node->fs_data;
     tmpfs_dir_entry_t *entry = dir->entries;
 

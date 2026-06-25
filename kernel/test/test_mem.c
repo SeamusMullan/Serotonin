@@ -1,8 +1,8 @@
 // kernel/test/test_mem.c
-#include "ktest.h"
-#include "../kernel.h"
-#include "../stdlib/stdlib.h"
-#include "../stdio/stdio.h"
+#include <kernel/test/ktest.h>
+#include <kernel/kernel.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/stdio/stdio.h>
 
 extern void* kernel_malloc(uint32_t size);
 extern void kernel_free(void* ptr);
@@ -123,8 +123,11 @@ KTEST_DEFINE(memmove_basic) {
 
 // Test memcmp
 KTEST_DEFINE(memcmp_basic) {
+    // cppcheck-suppress constVariable
     char buf1[32] = "Hello";
+    // cppcheck-suppress constVariable
     char buf2[32] = "Hello";
+    // cppcheck-suppress constVariable
     char buf3[32] = "World";
     
     KTEST_ASSERT_EQ(memcmp(buf1, buf2, 5), 0, "memcmp equal buffers");

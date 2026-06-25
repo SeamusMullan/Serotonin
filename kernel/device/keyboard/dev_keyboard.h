@@ -12,8 +12,8 @@
 #ifndef _DEVICE_KEYBOARD_H
 #define _DEVICE_KEYBOARD_H
 
-#include "../../filesystem/devfs/devfs.h"
-#include "../../filesystem/vfs.h"
+#include <kernel/filesystem/devfs/devfs.h>
+#include <kernel/filesystem/vfs.h>
 #include <stdint.h>
 
 /** Size of the internal event ring buffer */

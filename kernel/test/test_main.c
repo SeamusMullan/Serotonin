@@ -1,6 +1,6 @@
 // kernel/test/test_main.c
-#include "ktest.h"
-#include "../stdio/stdio.h"
+#include <kernel/test/ktest.h>
+#include <kernel/stdio/stdio.h>
 
 // External test suite functions
 extern void test_string_suite(void);

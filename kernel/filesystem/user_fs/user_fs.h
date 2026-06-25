@@ -1,7 +1,7 @@
 #ifndef _USER_FS
 #define _USER_FS
 
-#include "../vfs.h"
+#include <kernel/filesystem/vfs.h>
 #include <stddef.h>
 
 #define FD_MAX 64

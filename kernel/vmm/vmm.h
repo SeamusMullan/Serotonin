@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "paging_init.h"
-#include "../multiboot.h"
+#include <kernel/vmm/paging_init.h>
+#include <kernel/multiboot.h>
 
 typedef struct process_control_block process_control_block_t;
 

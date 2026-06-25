@@ -2,9 +2,9 @@
 #define _KERNEL_SCHEDULER
 
 #include <stdint.h>
-#include "../io/io.h"
-#include "../filesystem/user_fs/user_fs.h"
-#include "../vmm/vmm.h"
+#include <kernel/io/io.h>
+#include <kernel/filesystem/user_fs/user_fs.h>
+#include <kernel/vmm/vmm.h>
 
 #define USER_MODE_SEGMENT      0x23
 #define USER_MODE_CODE_SEGMENT 0x1B
@@ -15,6 +15,7 @@
 #define MAX_PRIORITY           256
 #define PRIORITY_DECAY_RATE    10
 #define PRIORITY_QUANTA_PUNISH 10
+#define PRIORITY_RESET_DECAY   10
 
 #define MAX_BOUND_SOCKETS 64
 
@@ -68,6 +69,7 @@ typedef struct process_control_block {
     uint8_t exit_status;
     uint32_t quanta_used;
     uint8_t original_priority;
+    uint8_t reset_count;
     uint32_t signal_handlers[16];
     uint32_t signal_bitmask;
     uint32_t blocked_signals;
@@ -82,7 +84,10 @@ typedef struct process_control_block {
     uint32_t umask;
     uint32_t current_fd_flags;
     uint32_t current_user_buf;
-    uint32_t alarm_ticks;       /* ticks remaining until SIGALRM (0 = inactive) */
+    uint32_t alarm_ticks;
+    uint32_t cpu_user_ticks;
+    uint32_t cpu_kernel_ticks;
+    uint32_t disk_bytes;
 } process_control_block_t;
 
 typedef struct pipe_waiter {
@@ -213,6 +218,10 @@ typedef struct lock_semaphore {
     wait_node_t *waiters_tail;
 } lock_semaphore_t;
 
+void task_semaphore_init(lock_semaphore_t *semaphore, uint32_t count);
+void task_semaphore_acquire(lock_semaphore_t *semaphore);
+void task_semaphore_release(lock_semaphore_t *semaphore);
+
 typedef struct {
     process_control_block_t *head;
     process_control_block_t *tail;
@@ -271,8 +280,8 @@ void unlock_scheduler(void);
 void task_set_state(process_control_block_t *pcb, int state);
 void task_block(void);
 void task_unblock(process_control_block_t *pcb);
-void *alloc_user_stack(void);
 void *alloc_kernel_stack(void);
+void free_kernel_stack(void *base);
 void kernel_yield(void);
 void task_lock_init(lock_t *lock, uint8_t block_on_hold);
 int task_lock_acquire(lock_t *lock);

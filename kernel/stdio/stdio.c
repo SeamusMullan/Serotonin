@@ -1,14 +1,14 @@
-#include "../stdlib/stdlib.h"
-#include "../tty.h"
-#include "stdio.h"
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/tty.h>
+#include <kernel/stdio/stdio.h>
 #include <stdint.h>
 #include <stddef.h>
-#include "../string.h"
-#include "../video/vbe/vbe.h"
-#include "../schedule/schedule.h"
-#include "../vmm/vmm.h"
-#include "../vmm/paging_init.h"
-#include "../io/io.h"
+#include <kernel/string.h>
+#include <kernel/video/vbe/vbe.h>
+#include <kernel/schedule/schedule.h>
+#include <kernel/vmm/vmm.h>
+#include <kernel/vmm/paging_init.h>
+#include <kernel/io/io.h>
 
 static uint32_t printfs_status_mask = 0xFFFFFFFF;
 
@@ -29,6 +29,7 @@ static int copy_user_string(char *dst, size_t dst_size, const char *src) {
         }
 
         clear_interrupts();
+        // cppcheck-suppress constVariablePointer
         uint8_t *mapped = (uint8_t *)kmap(phys);
         uint8_t c = mapped[va & (PAGE_SIZE - 1)];
         kunmap();
@@ -56,6 +57,7 @@ void printf_internal(const char* p, void** arg_ptr) {
     while (*p) {
         if (*p == '%' && *(p + 1)) {
             p++;
+            // cppcheck-suppress unreadVariable
             const char* fmt_start = p;
 
             char pad_char = ' ';
@@ -89,6 +91,7 @@ void printf_internal(const char* p, void** arg_ptr) {
                 }
             }
 
+            // cppcheck-suppress constVariablePointer
             char* str = buffer;
 
             switch (*p) {
@@ -293,6 +296,7 @@ void printfs(enum print_status_types status_type, const char* fmt, ...)
  * @param c Character to write.
  * @return New buffer position.
  */
+// cppcheck-suppress constParameterPointer
 static char* buf_putchar(char* buf, char* end, char c) {
     if (buf < end) {
         *buf = c;
@@ -364,6 +368,7 @@ static int sprintf_internal(char* buf, size_t size, const char* p, void** arg_pt
                 }
             }
 
+            // cppcheck-suppress constVariablePointer
             char* str = tmpbuf;
 
             switch (*p) {
@@ -428,6 +433,7 @@ static int sprintf_internal(char* buf, size_t size, const char* p, void** arg_pt
                 }
 
                 case 's': {
+                    // cppcheck-suppress constVariablePointer
                     char* str_arg = (char*)*arg_ptr++;
                     if (!str_arg) {
                         str_arg = "(null)";

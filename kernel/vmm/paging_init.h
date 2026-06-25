@@ -39,12 +39,14 @@ extern page_directory_t page_directory;
 #define KERNEL_PHYS_BASE 0x00200000U   // linked at physical 1 MiB
 #define KERNEL_VMA_BASE  0xC0000000U   // where code/data live after paging
 
-#define KERNEL_HEAP_VMA   0xD0000000U   // heap virtual base (after 256MB kernel)
-#define KERNEL_HEAP_PHYS  0x10200000U   // heap physical base (after 256MB kernel phys)
-#define KERNEL_HEAP_SIZE ((uint32_t)(256 * 1024 * 1024U)) // 256 MB heap
+#define KERNEL_HEAP_VMA   0xC1000000U   // heap virtual base
+#define KERNEL_HEAP_PHYS  0x10200000U   // heap physical base
+#define KERNEL_HEAP_SIZE  ((uint32_t)(256 * 1024 * 1024U)) // 256 MB heap
+#define KERNEL_PDE_COUNT  ((KERNEL_HEAP_SIZE + 0x3FFFFFU) / 0x400000U)
+#define KERNEL_HEAP_PDA   (KERNEL_HEAP_VMA >> 22)   // heap virtual base
 
 #define FB_VMA_BASE      0xE0000000U   // virtual base for the framebuffer mapping
-#define FB_MAX_SIZE      (1920U * 1080U * 4U) // max framebuffer size in bytes
+#define FB_MAX_SIZE      (2560U * 1440U * 4U) // max framebuffer size in bytes
 #define FB_PDE_COUNT     ((FB_MAX_SIZE + 0x3FFFFFU) / 0x400000U)
 #define LAYER_PDE_BASE   ((FB_VMA_BASE >> 22) + FB_PDE_COUNT)
 #define LAYER_PDE_COUNT  ((KERNEL_STACK_VMA >> 22) - LAYER_PDE_BASE)

@@ -3,17 +3,34 @@
  * Virtual Filesystem for Serotonin
 */
 
-#include "vfs.h"
+#include <kernel/filesystem/vfs.h>
 #include <stdint.h>
-#include "../string.h"
-#include "../stdlib/stdlib.h"
-#include "../stdio/stdio.h"
-#include "../kernel.h"
+#include <kernel/string.h>
+#include <kernel/stdlib/stdlib.h>
+#include <kernel/stdio/stdio.h>
+#include <kernel/kernel.h>
 
 // Global VFS state
 vfs_node_t *vfs_root = NULL;
 filesystem_t *registered_filesystems = NULL;
 vfs_mount_entry_t *vfs_mounts = NULL;
+
+static vfs_node_t *vfs_create_virtual_mountpoint(vfs_node_t *parent, const char *name) {
+    if (!parent || !name || !*name) return NULL;
+    if (!(parent->flags & VFS_FLAG_DIRECTORY)) return NULL;
+
+    vfs_node_t *node = kernel_malloc(sizeof(*node));
+    if (!node) return NULL;
+    memset(node, 0, sizeof(*node));
+    strncpy(node->name, name, sizeof(node->name));
+    node->name[sizeof(node->name) - 1] = '\0';
+    node->flags = VFS_FLAG_DIRECTORY;
+    node->refcount = 1;
+    node->parent = parent;
+    node->next = parent->children;
+    parent->children = node;
+    return node;
+}
 
 /**
  * @brief Attaches a mounted filesystem root onto an existing mountpoint node.
@@ -21,6 +38,7 @@ vfs_mount_entry_t *vfs_mounts = NULL;
  * This keeps the mountpoint node pointer stable (so parent->finddir still works),
  * while replacing its filesystem-specific fields with the mounted root's.
  */
+// cppcheck-suppress constParameterPointer
 void vfs_attach_mount(vfs_node_t *mountpoint, vfs_node_t *root) {
     char saved_name[256];
     vfs_node_t *saved_parent = mountpoint->parent;
@@ -91,11 +109,14 @@ int vfs_mount(const char *device, const char *mountpoint, const char *fs_type) {
                     split_path(mountpoint, parent_path, name);
                     vfs_node_t *parent = vfs_open(parent_path);
                     if (!parent) return -1;
-                    if (!parent->ops || !parent->ops->mkdir) {
-                        vfs_close(parent);
-                        return -1;
+                    vfs_node_t *newdir = NULL;
+                    if (parent->ops && parent->ops->mkdir) {
+                        newdir = parent->ops->mkdir(parent, name);
                     }
-                    vfs_node_t *newdir = parent->ops->mkdir(parent, name);
+                    if (!newdir) {
+                        // Read-only roots (e.g. ISO module) still need mountpoints like /dev and /tmp.
+                        newdir = vfs_create_virtual_mountpoint(parent, name);
+                    }
                     vfs_close(parent);
                     if (!newdir) return -1;
                     mp = newdir;
@@ -118,6 +139,19 @@ int vfs_mount(const char *device, const char *mountpoint, const char *fs_type) {
  * @param path The absolute path to resolve.
  * @return Pointer to the corresponding VFS node, or NULL if not found.
  */
+/**
+ * @brief Frees intermediate DISKIO nodes allocated during path resolution,
+ *        keeping only the result node alive.
+ */
+// cppcheck-suppress constParameterPointer
+static void resolve_cleanup(vfs_node_t **allocs, size_t count, vfs_node_t *keep) {
+    for (size_t i = 0; i < count; i++) {
+        if (allocs[i] != keep) {
+            vfs_put(allocs[i]);
+        }
+    }
+}
+
 vfs_node_t *vfs_resolve_path(const char *path) {
     if (!vfs_root || !path || path[0] != '/') return NULL;
 
@@ -129,6 +163,11 @@ vfs_node_t *vfs_resolve_path(const char *path) {
     vfs_node_t *stack[64];
     size_t depth = 0;
     stack[depth++] = current;
+
+    /* Track DISKIO nodes allocated by finddir so we can free intermediates */
+    vfs_node_t *diskio_allocs[64];
+    size_t diskio_count = 0;
+
     char resolved[256];
     size_t resolved_len = 1;
     resolved[0] = '/';
@@ -160,13 +199,17 @@ vfs_node_t *vfs_resolve_path(const char *path) {
         }
 
         if (!(current->flags & VFS_FLAG_DIRECTORY)) {
+            resolve_cleanup(diskio_allocs, diskio_count, NULL);
             return NULL; // Can't descend into non-directory
         }
 
         char next_path[256];
         size_t next_len = resolved_len;
         if (next_len > 1) {
-            if (next_len + 1 >= sizeof(next_path)) return NULL;
+            if (next_len + 1 >= sizeof(next_path)) {
+                resolve_cleanup(diskio_allocs, diskio_count, NULL);
+                return NULL;
+            }
             memcpy(next_path, resolved, next_len);
             next_path[next_len++] = '/';
         } else {
@@ -174,7 +217,10 @@ vfs_node_t *vfs_resolve_path(const char *path) {
             next_len = 1;
         }
         size_t token_len = strlen(token);
-        if (next_len + token_len >= sizeof(next_path)) return NULL;
+        if (next_len + token_len >= sizeof(next_path)) {
+            resolve_cleanup(diskio_allocs, diskio_count, NULL);
+            return NULL;
+        }
         memcpy(next_path + next_len, token, token_len);
         next_len += token_len;
         next_path[next_len] = '\0';
@@ -185,12 +231,18 @@ vfs_node_t *vfs_resolve_path(const char *path) {
         } else if (current->ops && current->ops->finddir) {
             current = current->ops->finddir(current, token);
             if (!current) {
+                resolve_cleanup(diskio_allocs, diskio_count, NULL);
                 return NULL;
+            }
+            if (current->flags & VFS_FLAG_DISKIO) {
+                if (diskio_count < 64)
+                    diskio_allocs[diskio_count++] = current;
             }
             if (!current->parent) {
                 current->parent = stack[depth - 1];
             }
         } else {
+            resolve_cleanup(diskio_allocs, diskio_count, NULL);
             return NULL;
         }
 
@@ -202,6 +254,9 @@ vfs_node_t *vfs_resolve_path(const char *path) {
         resolved_len = strlen(resolved);
         token = strtok(NULL, "/");
     }
+
+    /* Free all intermediate DISKIO nodes except the result */
+    resolve_cleanup(diskio_allocs, diskio_count, current);
 
     return current;
 }
@@ -272,6 +327,7 @@ vfs_node_t *vfs_open(const char *path) {
 
     if (node->ops && node->ops->open) {
         if (node->ops->open(node) != 0) {
+            vfs_put(node);
             return NULL; // open failed
         }
     }
@@ -322,7 +378,21 @@ int vfs_truncate(vfs_node_t *node, uint32_t size) {
 }
 
 /**
- * @brief Closes a previously opened VFS node.
+ * @brief Releases an ephemeral DISKIO node returned by vfs_resolve_path or readdir.
+ *
+ * Only frees nodes that were dynamically allocated by finddir/readdir (refcount == 0).
+ * Persistent nodes (root, created files/dirs with refcount >= 1) are left alone.
+ */
+void vfs_put(vfs_node_t *node) {
+    if (!node) return;
+    if ((node->flags & VFS_FLAG_DISKIO) && node->refcount == 0) {
+        if (node->fs_data) kernel_free(node->fs_data);
+        kernel_free(node);
+    }
+}
+
+/**
+ * @brief Closes a previously opened VFS node (from vfs_open).
  *
  * @param node Pointer to the VFS node to close.
  */
@@ -335,6 +405,12 @@ void vfs_close(vfs_node_t *node) {
 
     if (node->refcount > 0) {
         node->refcount--;
+    }
+
+    /* Free dynamically-allocated disk-backed nodes when no longer referenced */
+    if (node->refcount == 0 && (node->flags & VFS_FLAG_DISKIO)) {
+        if (node->fs_data) kernel_free(node->fs_data);
+        kernel_free(node);
     }
 }
 
@@ -367,7 +443,7 @@ void vfs_list_dir(const char *path) {
             child->name,
             child->size);
 
-        vfs_close(child);
+        vfs_put(child);
     }
 
     vfs_close(dir);
@@ -483,6 +559,7 @@ int vfs_mkdir(const char *path) {
         return -1;
     }
 
+    // cppcheck-suppress constVariablePointer
     vfs_node_t *newdir = dir->ops->mkdir(dir, name);
     vfs_close(dir);
     return newdir ? 0 : -1;

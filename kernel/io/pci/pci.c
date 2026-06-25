@@ -1,7 +1,7 @@
-#include "pci.h"
-#include "../io.h"
-#include "../../kernel.h"
-#include "../../stdio/stdio.h"
+#include <kernel/io/pci/pci.h>
+#include <kernel/io/io.h>
+#include <kernel/kernel.h>
+#include <kernel/stdio/stdio.h>
 
 #define PCI_LOG(fmt, ...) printfs(PRINT_STATUS_INFO, "pci: " fmt, ##__VA_ARGS__)
 
@@ -315,14 +315,17 @@ void pci_enable_memory_space(uint8_t bus, uint8_t slot, uint8_t func) {
     pci_config_write16(bus, slot, func, PCI_REG_COMMAND, cmd);
 }
 
+// cppcheck-suppress constParameterPointer
 void pci_func_enable_bus_mastering(pci_function_t *fn) {
     pci_enable_bus_mastering(fn->bus, fn->slot, fn->function);
 }
 
+// cppcheck-suppress constParameterPointer
 void pci_func_enable_io_space(pci_function_t *fn) {
     pci_enable_io_space(fn->bus, fn->slot, fn->function);
 }
 
+// cppcheck-suppress constParameterPointer
 void pci_func_enable_memory_space(pci_function_t *fn) {
     pci_enable_memory_space(fn->bus, fn->slot, fn->function);
 }
@@ -334,6 +337,7 @@ void pci_register_driver(const pci_driver_t *driver) {
         pci_driver_table[pci_driver_count++] = driver;
 }
 
+// cppcheck-suppress constParameterPointer
 static int pci_driver_matches(const pci_driver_t *drv, pci_function_t *fn) {
     if (drv->vendor_id != PCI_DRIVER_MATCH_ANY && drv->vendor_id != fn->vendor_id)
         return 0;

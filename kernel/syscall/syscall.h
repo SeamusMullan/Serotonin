@@ -2,8 +2,8 @@
 #define _KERNEL_SYSCALl
 
 #include <stdint.h>
-#include "../io/io.h"
-#include "../schedule/schedule.h"
+#include <kernel/io/io.h>
+#include <kernel/schedule/schedule.h>
 
 #define STDIN_BUFFER_SIZE 4096
 #define FIRST_FD 3
@@ -19,6 +19,8 @@
 #define POLL_WAITER_POLL   1
 
 #define SOCK_BUFFER_SIZE_ALLOC 4096
+
+#define SYSCALL_STACK_BUF 4096
 
 typedef struct { uint32_t bits[_FD_WORDS]; } kernel_fd_set;
 
@@ -131,7 +133,11 @@ enum {
     SYSTEM_CALL_SHUTDOWN   = 67,
     SYSTEM_CALL_SOCKETPAIR = 68,
     SYSTEM_CALL_SELECT     = 69,
-    SYSTEM_CALL_POLL       = 70
+    SYSTEM_CALL_POLL       = 70,
+    SYSTEM_CALL_5HT_GRAB_INPUT = 71,
+    SYSTEM_CALL_5HT_SYSINFO = 72,
+    SYSTEM_CALL_USLEEP = 73,
+    SYSTEM_CALL_5HT_SWAP_LAYERS = 74
 };
 
 /**
@@ -153,14 +159,17 @@ enum {
     READ_STDIN = 0
 };
 
+#ifndef SEEK_SET
 enum {
     SEEK_SET = 0,
     SEEK_CUR = 1,
     SEEK_END = 2
 };
+#endif
 
 void system_call(processor_context_t *ctx);
 void poll_waiter_tick(void);
+void cleanup_layers(process_control_block_t *task);
 extern void isr_syscall(void);
 
 #endif

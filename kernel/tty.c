@@ -1,8 +1,8 @@
 #include <stdint.h>
 #include <stddef.h>
-#include "string.h"
-#include "tty.h"
-#include "io/io.h"
+#include <kernel/string.h>
+#include <kernel/tty.h>
+#include <kernel/io/io.h>
 
 #define VGA_WIDTH   80
 #define VGA_HEIGHT  25

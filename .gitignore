@@ -5,6 +5,14 @@
 *.elf
 build/binutils-user-build
 build/binutils-user-stage
+build/gcc-user-build
+build/gcc-user-stage
+build-tools/cross/
+user/gcc/
+user/vim/
+user/bash-5.3/
+user/make-4.4/
+user/STLport-5.2.1/
 build-tools/bin
 build-tools/src
 sysroot/
@@ -33,3 +41,10 @@ user/lwip
 *.vrb
 user/lua/lua-5.4.8.tar.gz
 user/lua/lua-5.4.8/src/liblua.a
+binutils-user-build/
+binutils-user-stage/
+gcc-user-stage/
+gcc-user-build/
+user/binutils-user-build
+user/gcc-user-build
+user/binutils-user-stage

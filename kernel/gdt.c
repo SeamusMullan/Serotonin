@@ -1,6 +1,6 @@
 #include <stdint.h>
-#include "kernel.h"
-#include "gdt.h"
+#include <kernel/kernel.h>
+#include <kernel/gdt.h>
 
 /**
  * @brief GDT entry structure.
