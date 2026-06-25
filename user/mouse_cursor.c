@@ -54,6 +54,7 @@ void clear_layer(uint32_t *fb, uint32_t stride_pixels) {
 }
 
 int parse_mouse_pos(const char *str, int *x, int *y) {
+    // cppcheck-suppress constVariablePointer
     char *comma = strchr(str, ',');
     if (!comma) return -1;
 

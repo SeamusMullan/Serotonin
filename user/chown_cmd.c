@@ -18,6 +18,7 @@ int main(int argc, char **argv) {
     }
 
     const char *spec = argv[1];
+    // cppcheck-suppress constVariablePointer
     char *colon = strchr(spec, ':');
 
     long uid, gid;

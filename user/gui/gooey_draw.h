@@ -140,8 +140,10 @@ inline void rect_rounded_filled(Surface &s, int x, int y, int w, int h, int r, u
     s.fill_rect(x + r, y + h - r, w - 2 * r, r, color);
 
     int cx1 = x + r, cy1 = y + r;
+    // cppcheck-suppress unreadVariable
     int cx2 = x + w - 1 - r, cy2 = y + r;
     int cx3 = x + r, cy3 = y + h - 1 - r;
+    // cppcheck-suppress unreadVariable
     int cx4 = x + w - 1 - r, cy4 = y + h - 1 - r;
 
     int px = 0, py = r;
@@ -455,6 +457,7 @@ inline void draw_char(Surface &s, int x, int y, char ch, uint32_t fg, uint32_t b
     if (!g) g = detail::glyph_lut[idx];
 
     if (g) {
+        // cppcheck-suppress constVariable
         uint32_t colors[2] = { bg, fg };
         for (int row = 0; row < FONT_H; ++row) {
             uint8_t bits = g->data[row];

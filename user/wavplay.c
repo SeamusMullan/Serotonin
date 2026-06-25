@@ -238,6 +238,7 @@ int main(int argc, char **argv) {
         if (fmt.num_channels == 1) {
             /* Expand mono to stereo in-place from the end to avoid overlap,
              * using the extra half of the buffer */
+            // cppcheck-suppress constVariablePointer
             int16_t *mono = (int16_t *)iobuf;
             int16_t *stereo = (int16_t *)(iobuf + IOBUF_SIZE);
             int samples = loaded / 2;

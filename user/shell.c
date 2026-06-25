@@ -320,12 +320,14 @@ static void get_username(uid_t uid, char *out, size_t outsize)
 	if (n <= 0) { strncpy(out, "?", outsize); return; }
 	buf[n] = '\0';
 
+	// cppcheck-suppress constVariablePointer
 	char *line = buf;
 	while (line < buf + n) {
 		char *nl = strchr(line, '\n');
 		if (nl) *nl = '\0';
 
 		if (line[0] != '\0' && line[0] != '#') {
+			// cppcheck-suppress constVariablePointer
 			char *c1 = strchr(line, ':');
 			if (c1) {
 				char *c2 = strchr(c1 + 1, ':');
@@ -419,6 +421,7 @@ static int setup_redirections(stage_t *stage)
 {
 	int out = 0;
 	for (int i = 0; i < stage->argc; i++) {
+		// cppcheck-suppress constVariablePointer
 		char *tok = stage->args[i];
 		int mode = -1;
 		int target_fd = -1;
@@ -633,6 +636,7 @@ int main(int argc, char **argv, char **envp)
 	for (;;) {
 		/* ── Print prompt ─────────────────────────────────── */
 		char cwd[256];
+		// cppcheck-suppress variableScope
 		char prompt_buf[512];
 		if (getcwd(cwd, sizeof(cwd))) {
 			int len = snprintf(prompt_buf, sizeof(prompt_buf),

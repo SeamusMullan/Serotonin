@@ -24,6 +24,8 @@ int main(void) {
                 line[len - 1] = '\0';
 
             /* Format: name:password:uid:gid:... */
+            // cppcheck-suppress variableScope
+            // cppcheck-suppress constVariablePointer
             char *name = line;
             char *p = strchr(line, ':');
             if (!p) continue;

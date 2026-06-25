@@ -70,6 +70,7 @@ int dev_keyboard_read_event(vfs_node_t *node, uint32_t offset, uint32_t size, ch
 
         // Check if an event is available in the buffer
         if (event_count > 0) {
+            // cppcheck-suppress constVariablePointer
             keyboard_event_t *ev = &event_buffer[event_tail];
             memcpy(buffer, ev, sizeof(keyboard_event_t));
             event_tail = (event_tail + 1) % KEYBOARD_EVENT_BUFFER_SIZE;

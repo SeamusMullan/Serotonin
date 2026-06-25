@@ -12,9 +12,9 @@
 #include "gui/gooey_frame.h"
 #include "gui/gooey_theme.h"
 
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include <unistd.h>
 
@@ -35,11 +35,11 @@ static const char *k_wp_names[N_WP] = {
 };
 
 static int parse_idx_env(const char *name, int lo, int hi, int defv) {
-    const char *s = std::getenv(name);
+    const char *s = getenv(name);
     if (!s || !*s)
         return defv;
     char *end = nullptr;
-    long v = std::strtol(s, &end, 10);
+    long v = strtol(s, &end, 10);
     if (end == s)
         return defv;
     if (v < lo || v > hi)
@@ -113,7 +113,7 @@ int main(void) {
 
         for (;;) {
             Event ev;
-            std::memset(&ev, 0, sizeof(ev));
+            memset(&ev, 0, sizeof(ev));
             ssize_t r = poll_gui_event(evfd, &ev);
             if (r == 0)
                 break;

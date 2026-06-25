@@ -159,11 +159,13 @@ enum {
     READ_STDIN = 0
 };
 
+#ifndef SEEK_SET
 enum {
     SEEK_SET = 0,
     SEEK_CUR = 1,
     SEEK_END = 2
 };
+#endif
 
 void system_call(processor_context_t *ctx);
 void poll_waiter_tick(void);

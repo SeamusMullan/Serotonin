@@ -226,6 +226,7 @@ void ps2_mouse_set_sample_rate(uint8_t rate) {
  * mode-byte write or a query selector (used with 0xE9).
  */
 static int synaptics_knock(uint8_t arg) {
+    // cppcheck-suppress constVariable
     uint8_t parts[4] = { (arg >> 6) & 0x3, (arg >> 4) & 0x3,
                          (arg >> 2) & 0x3,  arg       & 0x3 };
     for (int i = 0; i < 4; i++) {

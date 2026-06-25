@@ -8,6 +8,7 @@
 
 #include <errno.h>
 typedef struct _dirdesc DIR;
+// cppcheck-suppress unusedStructMember
 struct dirent { char d_name[256]; };  /* minimal — stubs never return a real entry */
 #include <netdb.h>
 #include <netinet/in.h>

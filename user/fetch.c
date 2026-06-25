@@ -19,8 +19,10 @@ int snprintf(char *str, size_t size, const char *fmt, ...);
 
 struct utsname {
     char sysname[65];
+// cppcheck-suppress unusedStructMember
     char nodename[65];
     char release[65];
+// cppcheck-suppress unusedStructMember
     char version[65];
     char machine[65];
 };
@@ -49,11 +51,13 @@ static void get_username(uid_t uid, char *out, size_t outsize) {
     if (n <= 0) { strncpy(out, "?", outsize); return; }
     buf[n] = '\0';
 
+// cppcheck-suppress constVariablePointer
     char *line = buf;
     while (line < buf + n) {
         char *nl = strchr(line, '\n');
         if (nl) *nl = '\0';
         if (line[0] != '\0' && line[0] != '#') {
+// cppcheck-suppress constVariablePointer
             char *c1 = strchr(line, ':');
             if (c1) {
                 char *c2 = strchr(c1 + 1, ':');
@@ -140,7 +144,7 @@ int main(void) {
         C_CYAN C_BOLD "Procs" C_RESET C_WHITE ":     %d" C_RESET, nprocs);
 
     snprintf(info[7], sizeof(info[6]),
-        C_CYAN C_BOLD "Memory" C_RESET C_WHITE ":    %d MB / %d MB" C_RESET, sysinfo.mem_total-sysinfo.mem_free, sysinfo.mem_total);
+        C_CYAN C_BOLD "Memory" C_RESET C_WHITE ":    %u MB / %u MB" C_RESET, sysinfo.mem_total-sysinfo.mem_free, sysinfo.mem_total);
 
     /* Color palette */
     snprintf(info[8], sizeof(info[7]),

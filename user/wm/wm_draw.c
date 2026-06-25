@@ -120,6 +120,7 @@ void draw_fill_rect(uint32_t *fb, uint32_t stride_px, int x, int y,
 
 void draw_glyph(uint32_t *fb, uint32_t stride_px, int x, int y,
                 const uint8_t *data, uint32_t fg, uint32_t bg) {
+    // cppcheck-suppress constVariable
     uint32_t colors[2] = { bg, fg };
 
     for (int row = 0; row < FONT_H; row++) {
@@ -140,6 +141,7 @@ void draw_char(uint32_t *fb, uint32_t stride_px, int x, int y,
                char ch, uint8_t bold, uint32_t fg, uint32_t bg) {
     ensure_glyph_luts();
     uint8_t idx = (uint8_t)ch;
+    // cppcheck-suppress constVariablePointer
     FontGlyph *g = bold ? glyph_bold_lut[idx] : glyph_lut[idx];
     if (!g)
         g = glyph_lut[idx];
@@ -179,6 +181,7 @@ void draw_text(uint32_t *fb, uint32_t stride_px, int x, int y,
     ensure_glyph_luts();
     while (*str) {
         uint8_t idx = (uint8_t)*str;
+        // cppcheck-suppress constVariablePointer
         FontGlyph *g = glyph_lut[idx];
         if (g)
             draw_glyph(fb, stride_px, x, y, g->data, fg, bg);

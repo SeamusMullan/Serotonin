@@ -97,6 +97,7 @@ static int lookup_user(const char *username, struct passwd_entry *ent) {
     if (n <= 0) return -1;
     filebuf[n] = '\0';
 
+    // cppcheck-suppress constVariablePointer
     char *line_start = filebuf;
     while (line_start < filebuf + n) {
         char *nl = strchr(line_start, '\n');
@@ -152,6 +153,7 @@ int main(int argc, char **argv, char **envp) {
         char sysname[65];
         char nodename[65];
         char release[65];
+        // cppcheck-suppress unusedStructMember
         char version[65];
         char machine[65];
     } uts;

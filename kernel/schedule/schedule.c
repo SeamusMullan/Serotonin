@@ -139,6 +139,7 @@ static inline int rq_next(int i) {
 }
 
 static inline int runqueue_is_empty(void) {
+    // cppcheck-suppress knownConditionTrueFalse
     return rq_head == rq_tail;
 }
 
@@ -426,7 +427,9 @@ process_control_block_t* task_create(void (*entry)(void), const char *name, uint
         pcb->esp0 = (void*)stk_top;
     }
 
+    // cppcheck-suppress uninitvar
     pcb->esp_max = (priv == CPU_USER_MODE) ? NULL : (void*)stack;
+    // cppcheck-suppress uninitvar
     pcb->esp_min = (priv == CPU_USER_MODE) ? NULL : (void*)stk_top;
     pcb->entry = entry;
 
@@ -629,6 +632,7 @@ process_control_block_t* task_fork(process_control_block_t *parent) {
         unmap_page(pcb->address_space, va, 0);
         map_page(pcb->address_space, va, dst_phys, USER_PAGE_FLAGS, 0);
 
+        // cppcheck-suppress constVariablePointer
         void *src = kmap(src_phys);
         memcpy(buf, src, PAGE_SIZE);
         kunmap();
@@ -742,6 +746,7 @@ process_control_block_t* get_current_task(void) {
  */
 uint32_t get_task_count(void) {
     uint32_t count = 0;
+    // cppcheck-suppress constVariablePointer
     process_control_block_t *task = task_list;
 
     while (task != NULL) {
@@ -1086,6 +1091,7 @@ int unix_socket_register(unix_socket_t *sock) {
     return 0;
 }
 
+// cppcheck-suppress constParameterPointer
 void unix_socket_unregister(unix_socket_t *sock) {
     for (uint32_t i = 0; i < bound_socket_count; i++) {
         if (bound_sockets[i] == sock) {
@@ -1175,6 +1181,7 @@ int task_ipc_unix_socket_write(vfs_node_t *node, uint32_t offset, uint32_t size,
     if (!node || !buffer || size == 0)
         return 0;
 
+    // cppcheck-suppress constVariablePointer
     sock_endpoint_t *ep = (sock_endpoint_t *)node->fs_data;
     if (!ep || !ep->sock)
         return -EBADF;

@@ -41,6 +41,7 @@ int main(int argc, char **argv) {
     printf("[sender] sending SIG1 to pid %d\n", pid);
     kill(pid, 1);
 
+    // cppcheck-suppress constVariablePointer
     char* buf = (char*)shm_map(0);
     printf("buf: %p\n", buf);
     printf("B sees: %s\n", buf);

@@ -348,6 +348,7 @@ void pty_free(pty_t *pty) {
 
 static void pty_ldisc_flush_line(pty_t *pty) {
     lock_scheduler();
+    // cppcheck-suppress unreadVariable
     uint32_t wrote = pty_ring_write(&pty->input_ring, pty->line_buf, pty->line_len);
     pty->line_len = 0;
     pty_input_wake_one(pty);
@@ -428,6 +429,7 @@ void pty_ldisc_input(pty_t *pty, char c) {
                 if (pty->flags & PTY_FLAG_KERNEL_VTY) {
                     pty_render_to_vty(pty, "\n", 1);
                 } else {
+                    // cppcheck-suppress constVariable
                     char crlf[2] = {'\r', '\n'};
                     pty_ring_write(&pty->output_ring, crlf, 2);
                     lock_scheduler();

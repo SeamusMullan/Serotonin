@@ -19,9 +19,9 @@
 #include "gui/gooey_frame.h"
 #include "gui/gooey_theme.h"
 
-#include <cstdio>
-#include <cstring>
-#include <cstdlib>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 #include <signal.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -85,14 +85,16 @@ static void resolve_username(unsigned uid, char *out, size_t outsize) {
     if (n <= 0) { snprintf(out, outsize, "%u", uid); return; }
     buf[n] = '\0';
 
+    // cppcheck-suppress constVariablePointer
     char *line = buf;
     while (line < buf + n) {
-        char *nl = std::strchr(line, '\n');
+        char *nl = strchr(line, '\n');
         if (nl) *nl = '\0';
         if (line[0] != '\0' && line[0] != '#') {
-            char *c1 = std::strchr(line, ':');
+            // cppcheck-suppress constVariablePointer
+            char *c1 = strchr(line, ':');
             if (c1) {
-                char *c2 = std::strchr(c1 + 1, ':');
+                char *c2 = strchr(c1 + 1, ':');
                 if (c2) {
                     unsigned entry_uid = 0;
                     for (char *p = c2 + 1; *p >= '0' && *p <= '9'; ++p)
@@ -100,7 +102,7 @@ static void resolve_username(unsigned uid, char *out, size_t outsize) {
                     if (entry_uid == uid) {
                         size_t ulen = (size_t)(c1 - line);
                         if (ulen >= outsize) ulen = outsize - 1;
-                        std::memcpy(out, line, ulen);
+                        memcpy(out, line, ulen);
                         out[ulen] = '\0';
                         return;
                     }
@@ -130,11 +132,11 @@ static void refresh_process_table(uint32_t *kernel_total_out,
                                   uint32_t *kernel_frac_permil_out,
                                   bool      split_columns) {
     proc_5ht_t procs[MAX_PROCS];
-    std::memset(procs, 0, sizeof(procs));
+    memset(procs, 0, sizeof(procs));
     sys_5ht_list_processes(procs, MAX_PROCS);
 
     sysinfo_5ht_t totals;
-    std::memset(&totals, 0, sizeof(totals));
+    memset(&totals, 0, sizeof(totals));
     sys_5ht_sysinfo(&totals);
 
     uint32_t dk = totals.cpu_kernel_total - g_prev_kernel_ticks;
@@ -148,7 +150,7 @@ static void refresh_process_table(uint32_t *kernel_total_out,
     for (int i = 0; i < MAX_PROCS; i++) {
         if (procs[i].name[0] == '\0')
             break;
-        if (std::strcmp(procs[i].name, g_idle_task_name) == 0) {
+        if (strcmp(procs[i].name, g_idle_task_name) == 0) {
             cur_idle_kernel = procs[i].cpu_kernel_ticks;
             break;
         }
@@ -188,7 +190,7 @@ static void refresh_process_table(uint32_t *kernel_total_out,
         r.priv = (char)procs[i].priv;
 
         if (split_columns) {
-            std::snprintf(r.line, ROW_LEN,
+            snprintf(r.line, ROW_LEN,
                           "%4d %-8s %-4s %-16s %3lu.%lu%% %3lu.%lu%% %-8s %-8s",
                           procs[i].pid,
                           user_buf,
@@ -200,7 +202,7 @@ static void refresh_process_table(uint32_t *kernel_total_out,
                           (unsigned long)(sys_permil % 10u),
                           mem_buf, disk_buf);
         } else {
-            std::snprintf(r.line, ROW_LEN,
+            snprintf(r.line, ROW_LEN,
                           "%4d %-8s %-4s %-16s %3lu.%lu%%  %-8s %-8s",
                           procs[i].pid,
                           user_buf,
@@ -316,7 +318,7 @@ int main(void) {
 
         for (;;) {
             Event ev;
-            std::memset(&ev, 0, sizeof(ev));
+            memset(&ev, 0, sizeof(ev));
             ssize_t r = poll_gui_event(evfd, &ev);
             if (r == 0) break;
             if (r < 0) goto done;
@@ -366,7 +368,7 @@ int main(void) {
             mem_graph.push((int)mem_permil);
         }
 
-        std::snprintf(totals_buf, sizeof(totals_buf),
+        snprintf(totals_buf, sizeof(totals_buf),
                       "Tasks: %d   Kernel ticks: %lu   User ticks: %lu   Mem: %lu/%lu MB",
                       proc_count,
                       (unsigned long)kern_ticks,
@@ -375,10 +377,10 @@ int main(void) {
                       (unsigned long)mem_total);
 
         if (split) {
-            std::snprintf(header_buf, sizeof(header_buf),
+            snprintf(header_buf, sizeof(header_buf),
                           " PID  USER     PRIV NAME             USR%%    SYS%%    MEM      DISK");
         } else {
-            std::snprintf(header_buf, sizeof(header_buf),
+            snprintf(header_buf, sizeof(header_buf),
                           " PID  USER     PRIV NAME             CPU%%     MEM      DISK");
         }
 
@@ -433,7 +435,7 @@ int main(void) {
                     (uint32_t)((uint64_t)(mem_total - mem_free) * 1000u / mem_total) : 0u;
                 mem_graph.push((int)mem_permil);
 
-                std::snprintf(status_buf, sizeof(status_buf), "Refreshed.");
+                snprintf(status_buf, sizeof(status_buf), "Refreshed.");
                 status_label.text = status_buf;
             }
 
@@ -442,14 +444,14 @@ int main(void) {
                 int target_pid = g_rows[lbox.selected].pid;
                 int sig = btn_kill.clicked ? 9 /* SIGKILL */ : 15 /* SIGTERM */;
                 if (target_pid <= 0) {
-                    std::snprintf(status_buf, sizeof(status_buf),
+                    snprintf(status_buf, sizeof(status_buf),
                                   "Refusing to signal pid %d.", target_pid);
                 } else if (kill(target_pid, sig) < 0) {
-                    std::snprintf(status_buf, sizeof(status_buf),
+                    snprintf(status_buf, sizeof(status_buf),
                                   "kill(pid=%d, sig=%d) failed: errno=%d",
                                   target_pid, sig, errno);
                 } else {
-                    std::snprintf(status_buf, sizeof(status_buf),
+                    snprintf(status_buf, sizeof(status_buf),
                                   "Sent signal %d to pid %d (%s)",
                                   sig, target_pid,
                                   g_rows[lbox.selected].priv == 0 ? "kernel" : "user");

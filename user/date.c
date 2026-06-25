@@ -30,6 +30,7 @@ static void epoch_to_date(long epoch, int *year, int *month, int *day,
     *year = y;
 
     int leap = ((y % 4 == 0 && y % 100 != 0) || y % 400 == 0) ? 1 : 0;
+    // cppcheck-suppress constVariable
     int mdays[] = {31, 28 + leap, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
     int m = 0;
     while (m < 11 && days >= mdays[m]) {

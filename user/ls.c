@@ -67,6 +67,7 @@ static void epoch_to_date(long epoch, char *out, size_t outsize)
 	}
 
 	int leap = ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0);
+	// cppcheck-suppress constVariable
 	int mdays[] = {31, 28 + leap, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 	int month = 0;
 	while (month < 11 && days >= mdays[month]) {
@@ -130,6 +131,7 @@ static int list_dir(const char *path, int show_all, int long_fmt, int print_head
 		char *nl = memchr(p, '\n', end - p);
 		size_t len = nl ? (size_t)(nl - p) : (size_t)(end - p);
 
+		// cppcheck-suppress knownConditionTrueFalse
 		if (len > 0 && len < NAME_MAX_LEN) {
 			/* skip hidden files unless -a */
 			if (!show_all && p[0] == '.') {

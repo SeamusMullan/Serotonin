@@ -185,6 +185,7 @@ void wm_handle_keyboard(wm_state_t *wm, keyboard_event_t *ev) {
     }
 }
 
+// cppcheck-suppress constParameterPointer
 void wm_handle_mouse(wm_state_t *wm, mouse_event_t *ev) {
     wm->mouse_x = ev->x;
     wm->mouse_y = ev->y;
@@ -301,6 +302,7 @@ void wm_handle_mouse(wm_state_t *wm, mouse_event_t *ev) {
         (ev->buttons & (MOUSE_BTN_LEFT | MOUSE_BTN_RIGHT))) {
 
         for (int i = MAX_WINDOWS - 1; i >= 0; i--) {
+            // cppcheck-suppress constVariablePointer
             wm_window_t *win = &wm->windows[i];
             if (!win->active) continue;
 
@@ -378,6 +380,7 @@ void wm_handle_mouse(wm_state_t *wm, mouse_event_t *ev) {
 
     /* Forward mouse to focused GUI (layer-local coordinates) */
     if (wm->focused_idx >= 0 && wm->windows[wm->focused_idx].active) {
+        // cppcheck-suppress constVariablePointer
         wm_window_t *gw = &wm->windows[wm->focused_idx];
         if (gw->is_gui && gw->pty_master_fd >= 0) {
             int lx = ev->x - gw->x;

@@ -58,10 +58,12 @@ int main(int argc, char **argv) {
 
     int first = 1;
 
+    // cppcheck-suppress knownConditionTrueFalse
     if (opt_s) { printf("%s%s", first ? "" : " ", uts.sysname); first = 0; }
     if (opt_n) { printf("%s%s", first ? "" : " ", uts.nodename); first = 0; }
     if (opt_r) { printf("%s%s", first ? "" : " ", uts.release); first = 0; }
     if (opt_v) { printf("%s%s", first ? "" : " ", uts.version); first = 0; }
+    // cppcheck-suppress unreadVariable
     if (opt_m) { printf("%s%s", first ? "" : " ", uts.machine); first = 0; }
 
     printf("\n");

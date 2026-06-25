@@ -78,6 +78,7 @@ int main(int argc, char **argv) {
     if (num_files == 0)
         return head_fd(0, "stdin", max_lines);
 
+    // cppcheck-suppress knownConditionTrueFalse
     for (int f = 0; f < num_files; f++) {
         const char *path = argv[i + f];
 

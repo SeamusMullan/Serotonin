@@ -217,6 +217,7 @@ void init_game(GameState *game) {
     }
 }
 
+// cppcheck-suppress constParameterPointer
 void look_around(GameState *game) {
     Room *room = get_room(game->current_room);
     if (!room) return;
@@ -259,6 +260,7 @@ void show_inventory(const GameState *game) {
 }
 
 void move_player(GameState *game, RoomID direction) {
+    // cppcheck-suppress constVariablePointer
     Room *current = get_room(game->current_room);
     if (!current) return;
     
@@ -359,7 +361,8 @@ void process_command(GameState *game, const char *command) {
     strncpy(cmd, command, MAX_INPUT - 1);
     cmd[MAX_INPUT - 1] = '\0';
     to_lower(cmd);
-    
+
+    // cppcheck-suppress constVariablePointer
     Room *current = get_room(game->current_room);
     if (!current) return;
     

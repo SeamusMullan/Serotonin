@@ -16,9 +16,9 @@
 #ifndef GOOEY_H
 #define GOOEY_H
 
-#include <cstdint>
-#include <cstdlib>
-#include <cstring>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include <errno.h>
 #include <unistd.h>
@@ -66,7 +66,7 @@ inline bool parse_uint(const char *s, uint32_t *out) {
     if (!s || !*s || !out)
         return false;
     char *end = nullptr;
-    unsigned long v = std::strtoul(s, &end, 0);
+    unsigned long v = strtoul(s, &end, 0);
     if (end == s)
         return false;
     *out = static_cast<uint32_t>(v);
@@ -77,7 +77,7 @@ inline bool parse_u64(const char *s, uint64_t *out) {
     if (!s || !*s || !out)
         return false;
     char *end = nullptr;
-    unsigned long long v = std::strtoull(s, &end, 0);
+    unsigned long long v = strtoull(s, &end, 0);
     if (end == s)
         return false;
     *out = static_cast<uint64_t>(v);
@@ -125,7 +125,7 @@ inline ssize_t read_gui_event(int fd, Event *out) {
     if (!out || fd < 0)
         return -1;
     sg_gui_event_t raw;
-    std::memset(&raw, 0, sizeof(raw));
+    memset(&raw, 0, sizeof(raw));
     unsigned char *buf = reinterpret_cast<unsigned char *>(&raw);
     size_t got = 0;
     while (got < sizeof(raw)) {
@@ -161,7 +161,7 @@ inline ssize_t read_gui_event(int fd, Event *out) {
         out->layer.layer_id = raw.u.layer.layer_id;
         break;
     case SG_GUI_EV_THEME:
-        std::memcpy(out->theme.wm, &raw.u.theme, sizeof(out->theme.wm));
+        memcpy(out->theme.wm, &raw.u.theme, sizeof(out->theme.wm));
         break;
     default:
         out->kind = Event::k_none;
@@ -199,7 +199,7 @@ inline bool wm_send_gui_cli_index(int fd, uint8_t cli_type, int index) {
     if (index < -32768 || index > 32767)
         return false;
     sg_gui_event_t msg;
-    std::memset(&msg, 0, sizeof(msg));
+    memset(&msg, 0, sizeof(msg));
     msg.type = cli_type;
     msg.u.cli_index.index = static_cast<int16_t>(index);
     ssize_t w = write(fd, reinterpret_cast<const unsigned char *>(&msg), sizeof(msg));
@@ -275,12 +275,12 @@ public:
     /** Try WM-provided addresses in the environment (non-owning). */
     bool attach_from_environment() {
         close();
-        const char *es = std::getenv(env_name::k_fb_va);
-        const char *em = std::getenv(env_name::k_meta_va);
-        const char *ew = std::getenv(env_name::k_width_px);
-        const char *eh = std::getenv(env_name::k_height_px);
-        const char *est = std::getenv(env_name::k_stride_px);
-        const char *el = std::getenv(env_name::k_layer_id);
+        const char *es = getenv(env_name::k_fb_va);
+        const char *em = getenv(env_name::k_meta_va);
+        const char *ew = getenv(env_name::k_width_px);
+        const char *eh = getenv(env_name::k_height_px);
+        const char *est = getenv(env_name::k_stride_px);
+        const char *el = getenv(env_name::k_layer_id);
         if (!es || !em || !ew || !eh || !est)
             return false;
 
@@ -314,7 +314,7 @@ public:
             return false;
 
         fb_layer_config_t cfg;
-        std::memset(&cfg, 0, sizeof(cfg));
+        memset(&cfg, 0, sizeof(cfg));
         cfg.size = sizeof(cfg);
         cfg.x0 = x0;
         cfg.y0 = y0;
@@ -325,7 +325,7 @@ public:
         cfg.stride = static_cast<uint16_t>((x1 - x0) * 4);
 
         fb_layer_info_t info;
-        std::memset(&info, 0, sizeof(info));
+        memset(&info, 0, sizeof(info));
         if (sys_5ht_req_buf(layer_id, &cfg, &info) != 0)
             return false;
 
@@ -446,7 +446,7 @@ public:
             return false;
 
         fb_layer_config_t cfg;
-        std::memset(&cfg, 0, sizeof(cfg));
+        memset(&cfg, 0, sizeof(cfg));
         cfg.size = sizeof(cfg);
         cfg.x0 = ev.configure.x0;
         cfg.y0 = ev.configure.y0;
@@ -457,7 +457,7 @@ public:
         cfg.stride = static_cast<uint16_t>((cfg.x1 - cfg.x0) * 4);
 
         fb_layer_info_t info;
-        std::memset(&info, 0, sizeof(info));
+        memset(&info, 0, sizeof(info));
         if (sys_5ht_rcfg_layer(layer_id_, &cfg, &info) != 0)
             return false;
 
@@ -485,11 +485,11 @@ public:
      */
     bool attach_layer_from_wm_environment() {
         close();
-        const char *el = std::getenv(env_name::k_layer_id);
-        const char *ex0 = std::getenv(env_name::k_x0);
-        const char *ey0 = std::getenv(env_name::k_y0);
-        const char *ex1 = std::getenv(env_name::k_x1);
-        const char *ey1 = std::getenv(env_name::k_y1);
+        const char *el = getenv(env_name::k_layer_id);
+        const char *ex0 = getenv(env_name::k_x0);
+        const char *ey0 = getenv(env_name::k_y0);
+        const char *ex1 = getenv(env_name::k_x1);
+        const char *ey1 = getenv(env_name::k_y1);
         if (!el || !ex0 || !ey0 || !ex1 || !ey1)
             return false;
 
@@ -506,7 +506,7 @@ public:
 
     /** Events fd: `SEROTONIN_GUI_EVENTS_FD` or `SG_GUI_EVENTS_FD`. */
     static int events_fd_from_environment() {
-        const char *es = std::getenv(env_name::k_events_fd);
+        const char *es = getenv(env_name::k_events_fd);
         if (es && *es) {
             uint32_t v = 0;
             if (parse_uint(es, &v) && v < 256u)
