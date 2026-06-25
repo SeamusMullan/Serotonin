@@ -131,7 +131,23 @@ $(USER_BUILD)/cxxtest.elf: $(USER_BUILD)/cxx_test.o $(CRT0) | $(SYSROOT_STAMP)
 	$(CXX) $(LDFLAGS_USER) $(CRT0) $< $(LDLIBS_USER) -o $@
 USER_ELFS += $(USER_BUILD)/cxxtest.elf
 
-# stltest iostr shplus omitted — require user/cxx/STLport-5.2.1/ (not yet in repo)
+# stltest iostr shplus omitted — STLport abandoned in 0.4.3, scheduled for rework in 0.6
+
+# ---------------------------------------------------------------------------
+# Gooey GUI apps (header-only lib; source in user/gui/)
+# ---------------------------------------------------------------------------
+GOOEY_CXXFLAGS := -I$(USER_DIR)
+
+GOOEY_APPS := gooey_demo settings taskman tax_calc widget_demo
+
+$(USER_BUILD)/gui/%.o: $(USER_DIR)/gui/%.cpp | $(SYSROOT_STAMP)
+	@mkdir -p $(dir $@)
+	$(CXX) -c $< -o $@ $(USER_CXXFLAGS) $(GOOEY_CXXFLAGS) -MMD -MP
+
+$(foreach app,$(GOOEY_APPS),\
+  $(eval $(USER_BUILD)/$(app).elf: $(USER_BUILD)/gui/$(app).o $(USER_BUILD)/libgcc_stubs.o $(CRT0) | $(SYSROOT_STAMP); \
+    $$(CXX) $$(LDFLAGS_USER) $$(CRT0) $(USER_BUILD)/gui/$(app).o $(USER_BUILD)/libgcc_stubs.o $$(LDLIBS_USER) -o $$@) \
+  $(eval USER_ELFS += $(USER_BUILD)/$(app).elf))
 
 # ---------------------------------------------------------------------------
 .PHONY: user

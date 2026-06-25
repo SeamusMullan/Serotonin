@@ -8,8 +8,8 @@
 #include "gui/gooey_theme.h"
 #include "gui/gooey_widgets.h"
 
-#include <cstdio>
-#include <cstring>
+#include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 int main(void) {
@@ -35,7 +35,7 @@ int main(void) {
         /* Drain available events without blocking */
         for (;;) {
             gooey::Event ev;
-            std::memset(&ev, 0, sizeof(ev));
+            memset(&ev, 0, sizeof(ev));
             ssize_t r = gooey::poll_gui_event(evfd, &ev);
             if (r == 0)
                 break;

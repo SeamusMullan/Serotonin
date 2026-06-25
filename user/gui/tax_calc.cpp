@@ -12,10 +12,10 @@
 #include "gui/gooey_frame.h"
 #include "gui/gooey_theme.h"
 
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <climits>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <limits.h>
 
 #include <unistd.h>
 
@@ -42,7 +42,7 @@ static bool parse_income(const char *s, double *out) {
     if (!tmp[0])
         return false;
     char *end = nullptr;
-    double v = std::strtod(tmp, &end);
+    double v = strtod(tmp, &end);
     if (end == tmp)
         return false;
     while (*end == ' ' || *end == '\t')
@@ -181,7 +181,7 @@ int main(void) {
 
         for (;;) {
             Event ev;
-            std::memset(&ev, 0, sizeof(ev));
+            memset(&ev, 0, sizeof(ev));
             ssize_t r = poll_gui_event(evfd, &ev);
             if (r == 0)
                 break;
@@ -306,16 +306,16 @@ int main(void) {
                     const double eff = gross > 0.0 ? (total_tax / gross) * 100.0 : 0.0;
 
                     /* Integer printf only — avoids broken/missing float conversion in libc */
-                    std::snprintf(buf_tax, sizeof(buf_tax), "Tax: $%lu (inc $%lu + pay $%lu)",
+                    snprintf(buf_tax, sizeof(buf_tax), "Tax: $%lu (inc $%lu + pay $%lu)",
                                   money_ul(total_tax), money_ul(income_tax), money_ul(payroll));
-                    std::snprintf(buf_net, sizeof(buf_net), "Net: $%ld", money_sl(net));
+                    snprintf(buf_net, sizeof(buf_net), "Net: $%ld", money_sl(net));
                     {
                         int eff10 = static_cast<int>(eff * 10.0 + (eff >= 0.0 ? 0.5 : -0.5));
                         if (eff10 < 0)
                             eff10 = 0;
                         int eff_i = eff10 / 10;
                         int eff_f = eff10 % 10;
-                        std::snprintf(buf_eff, sizeof(buf_eff), "Effective rate: %d.%d%%", eff_i, eff_f);
+                        snprintf(buf_eff, sizeof(buf_eff), "Effective rate: %d.%d%%", eff_i, eff_f);
                     }
 
                     lbl_tax.text = buf_tax;

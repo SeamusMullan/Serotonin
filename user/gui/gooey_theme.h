@@ -6,8 +6,8 @@
 #ifndef GOOEY_THEME_H
 #define GOOEY_THEME_H
 
-#include <cstdlib>
-#include <cstring>
+#include <stdlib.h>
+#include <string.h>
 
 #include "gooey_frame.h"
 #include "gooey_widgets.h"
@@ -63,15 +63,15 @@ inline void map_wm_palette(const uint32_t c[SG_GUI_WM_THEME_NCOLORS], widgets::T
 inline bool parse_theme_env_value(const char *digits, uint32_t out[SG_GUI_WM_THEME_NCOLORS]) {
     if (!digits || !out)
         return false;
-    size_t len = std::strlen(digits);
+    size_t len = strlen(digits);
     if (len != static_cast<size_t>(SG_GUI_WM_THEME_NCOLORS) * 8u)
         return false;
     for (unsigned i = 0; i < SG_GUI_WM_THEME_NCOLORS; ++i) {
         char chunk[9];
-        std::memcpy(chunk, digits + i * 8u, 8u);
+        memcpy(chunk, digits + i * 8u, 8u);
         chunk[8] = '\0';
         char *end = nullptr;
-        unsigned long v = std::strtoul(chunk, &end, 16);
+        unsigned long v = strtoul(chunk, &end, 16);
         if (end != chunk + 8)
             return false;
         out[i] = static_cast<uint32_t>(v);
@@ -81,7 +81,7 @@ inline bool parse_theme_env_value(const char *digits, uint32_t out[SG_GUI_WM_THE
 
 /** If @c SG_GUI_ENV_THEME set and valid, overwrite @p th / @p cc (non-null only). */
 inline bool sync_from_wm_environment(widgets::Theme *th, frame::ChromeColors *cc) {
-    const char *s = std::getenv(SG_GUI_ENV_THEME);
+    const char *s = getenv(SG_GUI_ENV_THEME);
     if (!s || !*s)
         return false;
     uint32_t buf[SG_GUI_WM_THEME_NCOLORS];

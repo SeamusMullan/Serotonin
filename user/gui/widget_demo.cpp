@@ -9,8 +9,8 @@
 #include "gui/gooey_frame.h"
 #include "gui/gooey_theme.h"
 
-#include <cstdio>
-#include <cstring>
+#include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 using namespace gooey;
@@ -102,7 +102,7 @@ int main(void) {
 
         for (;;) {
             Event ev;
-            std::memset(&ev, 0, sizeof(ev));
+            memset(&ev, 0, sizeof(ev));
             ssize_t r = poll_gui_event(evfd, &ev);
             if (r == 0) break;
             if (r < 0) goto done;

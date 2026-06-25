@@ -121,12 +121,12 @@ inline void paint(Surface &s, int sw, int sh, const char *title, bool focused, c
         title_max_w = draw::FONT_W;
 
     const char *t = title;
-    size_t n = std::strlen(title);
+    size_t n = strlen(title);
     char buf[160];
     if (n >= sizeof(buf))
         n = sizeof(buf) - 1;
     while (n > 0) {
-        std::memcpy(buf, t, n);
+        memcpy(buf, t, n);
         buf[n] = '\0';
         if (draw::text_width(buf) <= title_max_w)
             break;
